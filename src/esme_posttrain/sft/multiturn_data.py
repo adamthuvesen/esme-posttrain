@@ -29,7 +29,7 @@ from esme_posttrain.sft.data import (
     MultiTurnExample,
     SourceSurvivorCounts,
     TokenizedExample,
-    _iter_rows,
+    iter_rows,
     measure_multi_turn_lengths,
     tokenize_multi_turn,
 )
@@ -88,7 +88,7 @@ def _select_multi_turn_rows(
     selected_tokens = 0
     skipped = 0
     budget_stop: str | None = None
-    rows = _iter_rows(source, allow_remote_download=allow_remote_download)
+    rows = iter_rows(source, allow_remote_download=allow_remote_download)
     try:
         for row_id, parsed in iter_multi_turn_examples(source, rows):
             counts.rows_seen += 1
@@ -102,7 +102,6 @@ def _select_multi_turn_rows(
             if prompt_chars > source.max_prompt_chars or response_chars > source.max_response_chars:
                 counts.rejected_too_long_chars += 1
                 continue
-            counts.survivors += 1
             example = _to_multi_turn_example(source, row_id, parsed)
             try:
                 tokenized = tokenize_multi_turn(
@@ -114,6 +113,7 @@ def _select_multi_turn_rows(
                 )
                 counts.rejected_too_long_tokens += 1
                 continue
+            counts.survivors += 1
             if skipped < skip_selected:
                 skipped += 1
                 continue

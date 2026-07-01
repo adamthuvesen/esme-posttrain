@@ -668,7 +668,7 @@ def _eval_splits(
     for source in config.train_sources:
         report = matched_eval_reports[source.name]
         splits.append(EvalSplit(source.name, report.examples, selector_weight=source.mix_ratio))
-    splits.append(EvalSplit("no_robots", no_robots_examples, guardrail=True))
+    splits.append(EvalSplit("no_robots", no_robots_examples))
     return tuple(splits)
 
 

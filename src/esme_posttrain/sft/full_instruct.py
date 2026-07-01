@@ -38,6 +38,9 @@ from esme_posttrain.sft.full_shared import (
 from esme_posttrain.sft.full_shared import (
     trained_tokens_for_steps as _trained_tokens_for_steps,
 )
+from esme_posttrain.sft.full_shared import (
+    write_eval_suite_manifests as _write_eval_suite_manifests,
+)
 from esme_posttrain.sft.launch_instruct import EXPECTED_ARTIFACTS, SFTLaunchConfig
 from esme_posttrain.sft.trainer import EvalSplit, SFTTrainerConfig, WandbConfig, run_sft_training
 from esme_posttrain.training.checkpointing import latest_checkpoint_path
@@ -115,7 +118,6 @@ def run_full_instruct_sft(
     optimizer_config = config.payload["optimizer"]
     monitoring_config = config.payload["monitoring"]
     sequence_config = config.payload["sequence"]
-    budgets = config.budgets
     train_steps = _steps_for_target_tokens(
         train_report.examples,
         target_train_tokens=int(budgets["target_train_tokens"]),
@@ -337,7 +339,7 @@ def _eval_splits(
             matched_eval_reports["tulu-3-personas"].examples,
             selector_weight=0.2,
         ),
-        EvalSplit("no_robots", no_robots_report.examples, guardrail=True),
+        EvalSplit("no_robots", no_robots_report.examples),
     )
 
 
@@ -367,13 +369,3 @@ def _config_evidence(
             "condition": "spend approval only after the real full-run path is safe",
         },
     }
-
-
-def _write_eval_suite_manifests(
-    output_dir: Path, matched_eval_reports: dict[str, Any], no_robots_report: Any
-) -> None:
-    for name, report in matched_eval_reports.items():
-        write_selected_row_manifest(output_dir / f"eval-{name}-manifest.jsonl", report.examples)
-    write_selected_row_manifest(
-        output_dir / "eval-no_robots-manifest.jsonl", no_robots_report.examples
-    )

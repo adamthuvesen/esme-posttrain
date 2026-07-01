@@ -5,9 +5,21 @@ from typing import Any
 
 import torch
 
+from esme_posttrain.run_artifacts import write_selected_row_manifest
+
 
 class SFTFullRunError(RuntimeError):
     pass
+
+
+def write_eval_suite_manifests(
+    output_dir: Path, matched_eval_reports: dict[str, Any], no_robots_report: Any
+) -> None:
+    for name, report in matched_eval_reports.items():
+        write_selected_row_manifest(output_dir / f"eval-{name}-manifest.jsonl", report.examples)
+    write_selected_row_manifest(
+        output_dir / "eval-no_robots-manifest.jsonl", no_robots_report.examples
+    )
 
 
 def assert_full_run_data_safe(

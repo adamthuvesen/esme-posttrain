@@ -7,7 +7,6 @@ round-trip, and the extra ``multi-turn-samples.md`` artifact.
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +30,7 @@ from esme_posttrain.sft.data import (
     tokenize_multi_turn,
 )
 from esme_posttrain.sft.launch_multiturn import EXPECTED_ARTIFACTS, MultiTurnLaunchConfig
+from esme_posttrain.sft.launch_shared import prepare_evidence_dir as _prepare_evidence_dir
 from esme_posttrain.sft.multiturn_data import turn_distribution
 from esme_posttrain.sft.sample_artifacts import write_multi_turn_samples
 from esme_posttrain.sft.trainer import (
@@ -47,7 +47,7 @@ def run_multi_turn_cpu_fixture(
     output_dir: Path | None = None,
     wandb_enabled: bool = False,
 ) -> dict[str, Any]:
-    evidence_dir = _prepare_evidence_dir(config, output_dir)
+    evidence_dir = _prepare_evidence_dir(config.output_dir, output_dir)
 
     tokenizer = tiny_chat_tokenizer()
     model = DenseBackbone(tiny_backbone_config())
@@ -183,7 +183,7 @@ def _fixture_eval_splits(eval_examples: tuple[TokenizedExample, ...]) -> tuple[E
     return (
         EvalSplit("smol-smoltalk", eval_examples, selector_weight=0.85),
         EvalSplit("tulu-3-personas", eval_examples, selector_weight=0.15),
-        EvalSplit("no_robots", eval_examples, guardrail=True),
+        EvalSplit("no_robots", eval_examples),
     )
 
 
@@ -209,20 +209,6 @@ def _assert_multi_turn_masking(examples: tuple[TokenizedExample, ...]) -> bool:
             "multi-turn fixture must include at least one example with >1 assistant turn"
         )
     return True
-
-
-def _prepare_evidence_dir(config: MultiTurnLaunchConfig, output_dir: Path | None) -> Path:
-    if output_dir is None:
-        evidence_dir = (Path.cwd() / config.output_dir.parent / "local-cpu-fixture").resolve()
-        if evidence_dir.exists():
-            shutil.rmtree(evidence_dir)
-        evidence_dir.mkdir(parents=True)
-        return evidence_dir
-    evidence_dir = output_dir.expanduser().resolve()
-    if evidence_dir.exists() and any(evidence_dir.iterdir()):
-        raise ValueError(f"custom output_dir must be empty or absent: {evidence_dir}")
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-    return evidence_dir
 
 
 def tiny_backbone_config() -> BackboneConfig:

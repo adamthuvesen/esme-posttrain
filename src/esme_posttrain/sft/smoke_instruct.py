@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +21,7 @@ from esme_posttrain.sft.data import (
     tokenize_single_turn,
 )
 from esme_posttrain.sft.launch_instruct import EXPECTED_ARTIFACTS, SFTLaunchConfig
+from esme_posttrain.sft.launch_shared import prepare_evidence_dir as _prepare_evidence_dir
 from esme_posttrain.sft.trainer import SFTTrainerConfig, WandbConfig, run_sft_training
 
 
@@ -31,7 +31,7 @@ def run_cpu_fixture_sft(
     output_dir: Path | None = None,
     wandb_enabled: bool = False,
 ) -> dict[str, Any]:
-    evidence_dir = _prepare_evidence_dir(config, output_dir)
+    evidence_dir = _prepare_evidence_dir(config.output_dir, output_dir)
 
     tokenizer = tiny_tokenizer()
     model = DenseBackbone(tiny_backbone_config())
@@ -145,21 +145,6 @@ def run_cpu_fixture_sft(
             name: (evidence_dir / name).is_file() for name in EXPECTED_ARTIFACTS
         },
     }
-
-
-def _prepare_evidence_dir(config: SFTLaunchConfig, output_dir: Path | None) -> Path:
-    if output_dir is None:
-        evidence_dir = (Path.cwd() / config.output_dir.parent / "local-cpu-fixture").resolve()
-        if evidence_dir.exists():
-            shutil.rmtree(evidence_dir)
-        evidence_dir.mkdir(parents=True)
-        return evidence_dir
-
-    evidence_dir = output_dir.expanduser().resolve()
-    if evidence_dir.exists() and any(evidence_dir.iterdir()):
-        raise ValueError(f"custom output_dir must be empty or absent: {evidence_dir}")
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-    return evidence_dir
 
 
 def tiny_backbone_config() -> BackboneConfig:

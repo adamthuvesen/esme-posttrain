@@ -6,8 +6,9 @@ multi-turn prompts K>=5 times and reports the mean score with its spread, so a
 single noisy judge pass cannot be mistaken for a result.
 
 The judge callable is injected so the aggregation is testable without spend; the
-full run wires in a real chat-judge model. If no judge is configured the score is
-recorded as unavailable rather than silently faked.
+full run does not yet wire in a real chat-judge model (it passes judge=None). If
+no judge is configured the score is recorded as unavailable rather than silently
+faked.
 """
 
 from __future__ import annotations

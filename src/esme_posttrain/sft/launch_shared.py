@@ -1,9 +1,26 @@
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
 from typing import Any
 
 from esme_posttrain.launch.config_guards import LaunchError, positive_int, require_keys, str_field
 from esme_posttrain.sft.data import DatasetSource
+
+
+def prepare_evidence_dir(default_output_dir: Path, output_dir: Path | None) -> Path:
+    if output_dir is None:
+        evidence_dir = (Path.cwd() / default_output_dir.parent / "local-cpu-fixture").resolve()
+        if evidence_dir.exists():
+            shutil.rmtree(evidence_dir)
+        evidence_dir.mkdir(parents=True)
+        return evidence_dir
+
+    evidence_dir = output_dir.expanduser().resolve()
+    if evidence_dir.exists() and any(evidence_dir.iterdir()):
+        raise ValueError(f"custom output_dir must be empty or absent: {evidence_dir}")
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    return evidence_dir
 
 
 def validate_eval_source(

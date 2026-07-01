@@ -381,7 +381,7 @@ def run_interval_eval_sweep(
                 arm_id=arm_id,
                 output_dir=arm_output_dir,
                 error=error,
-                max_sequence_tokens=1024,
+                max_sequence_tokens=int(budgets["max_sequence_tokens"]),
             )
             arm_payloads.append(failure)
             break
@@ -391,7 +391,7 @@ def run_interval_eval_sweep(
                 arm_id=arm_id,
                 output_dir=arm_output_dir,
                 error=error,
-                max_sequence_tokens=1024,
+                max_sequence_tokens=int(budgets["max_sequence_tokens"]),
             )
             arm_payloads.append(failure)
         finally:
@@ -668,7 +668,7 @@ def _eval_splits(
             matched_eval_reports["tulu-3-personas"].examples,
             selector_weight=0.2,
         ),
-        EvalSplit("no_robots", no_robots_examples, guardrail=True),
+        EvalSplit("no_robots", no_robots_examples),
     )
 
 

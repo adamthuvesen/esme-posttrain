@@ -31,8 +31,16 @@ from esme_posttrain.launch.modal_cli import (
     local_git_dirty,
     modal_call_id,
     validate_output_stem,
+    with_full_output_stem,
 )
-from esme_posttrain.sft.full_multiturn import run_full_multi_turn_sft
+from esme_posttrain.sft.full_multiturn import (
+    RESAMPLE_SPEND_CAP_USD,
+    RESAMPLE_TIMEOUT_HOURS,
+    build_resample_evidence_preflight,
+    resample_evidence_blockers,
+    resample_multi_turn_evidence,
+    run_full_multi_turn_sft,
+)
 from esme_posttrain.sft.launch_multiturn import (
     EXPECTED_ARTIFACTS,
     build_multi_turn_dry_run,
@@ -64,6 +72,12 @@ SFT_MODAL_GPU = os.environ.get("SFT_MODAL_GPU", "A100")
 SFT_TIMEOUT_HOURS = int(float(os.environ.get("SFT_TIMEOUT_HOURS", "1")))
 SFT_SWEEP_TIMEOUT_HOURS = int(float(os.environ.get("SFT_SWEEP_TIMEOUT_HOURS", SWEEP_TIMEOUT_HOURS)))
 SFT_PROBE_TIMEOUT_HOURS = int(float(os.environ.get("SFT_PROBE_TIMEOUT_HOURS", PROBE_TIMEOUT_HOURS)))
+# Evidence resample is generation-only; fractional hours must survive (the
+# emitted command sets 0.25), so this stays a float and converts to whole
+# seconds at the Modal function via int(hours * 3600).
+SFT_RESAMPLE_TIMEOUT_HOURS = float(
+    os.environ.get("SFT_RESAMPLE_TIMEOUT_HOURS", str(RESAMPLE_TIMEOUT_HOURS))
+)
 VOLUME_MOUNT = Path("/posttrain")
 MODAL_APP_NAME = "esme-posttrain-esme-sft-multiturn"
 MODAL_SMOKE_OUTPUT_STEM = "esme-214m-sft-multiturn-modal-smoke"
@@ -83,6 +97,16 @@ except ImportError:  # pragma: no cover - Modal is a runtime dependency for laun
 run_modal_full_sft = None
 run_modal_sweep = None
 run_modal_throughput_probe = None
+run_modal_resample_evidence = None
+
+
+def _base_bundle_blocker() -> str | None:
+    if BASE_BUNDLE_LOCAL.is_dir():
+        return None
+    return (
+        f"base bundle missing at {BASE_BUNDLE_LOCAL}; "
+        "re-export Esme-214M-Base from esme-pretrain before a training launch"
+    )
 
 
 if modal is not None:  # pragma: no cover - exercised by Modal, not local unit tests.
@@ -91,8 +115,12 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
         .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
         .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
         .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
-        .add_local_dir(str(BASE_BUNDLE_LOCAL), remote_path=str(BASE_BUNDLE_REMOTE))
     )
+    # The base bundle is regenerable esme-pretrain output. Training modes need
+    # it in the image and are guarded loudly at launch; the generation-only
+    # evidence resample reads the trained checkpoint from the Volume instead.
+    if BASE_BUNDLE_LOCAL.is_dir():
+        image = image.add_local_dir(str(BASE_BUNDLE_LOCAL), remote_path=str(BASE_BUNDLE_REMOTE))
     posttrain_volume = modal.Volume.from_name(MODAL_VOLUME_NAME, create_if_missing=True)
     app = modal.App(MODAL_APP_NAME)
 
@@ -194,6 +222,34 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
         finally:
             posttrain_volume.commit()
 
+    @app.function(
+        image=image,
+        gpu=SFT_MODAL_GPU,
+        timeout=int(SFT_RESAMPLE_TIMEOUT_HOURS * 3600),
+        volumes={str(VOLUME_MOUNT): posttrain_volume},
+    )
+    def run_modal_resample_evidence(
+        config_payload: dict[str, Any],
+        commit: str,
+        dirty: bool,
+        modal_gpu: str,
+        timeout_hours: float,
+        output_stem: str,
+    ) -> dict[str, Any]:
+        started = time.perf_counter()
+        try:
+            return _run_modal_resample_evidence_body(
+                config_payload,
+                commit=commit,
+                dirty=dirty,
+                modal_gpu=modal_gpu,
+                timeout_hours=timeout_hours,
+                output_stem=output_stem,
+                started=started,
+            )
+        finally:
+            posttrain_volume.commit()
+
     @app.local_entrypoint()
     def main(
         config: str,
@@ -202,6 +258,7 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
         full_run: bool = False,
         modal_sweep: bool = False,
         throughput_probe: bool = False,
+        resample_evidence: bool = False,
         dry_run: bool = False,
         resume: bool = False,
     ) -> None:
@@ -212,12 +269,16 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
                 argv.append("--modal-sweep")
             if throughput_probe:
                 argv.append("--throughput-probe")
+            if resample_evidence:
+                argv.append("--resample-evidence")
             if full_run:
                 argv.append("--full-run")
         elif full_run:
             argv.append("--full-run")
         elif throughput_probe:
             argv.append("--throughput-probe")
+        elif resample_evidence:
+            argv.append("--resample-evidence")
         elif modal_sweep:
             argv.append("--modal-sweep")
         else:
@@ -261,6 +322,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--full-run", action="store_true", help="Launch the approved, capped full Modal SFT run."
     )
     parser.add_argument(
+        "--resample-evidence",
+        action="store_true",
+        help=(
+            "Regenerate multi-turn-samples-v2.md from the completed full-run checkpoint "
+            "(generation only, <=$1)."
+        ),
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="For --full-run, resume from the latest checkpoint in the stable Volume output dir.",
@@ -280,6 +349,7 @@ def launch(argv: list[str] | None = None) -> int:
             args.full_run,
             args.modal_sweep,
             args.throughput_probe,
+            args.resample_evidence,
         )
     )
     if mode_count > 1:
@@ -304,6 +374,13 @@ def launch(argv: list[str] | None = None) -> int:
             payload = build_multi_turn_probe_preflight(
                 config, modal_gpu=SFT_MODAL_GPU, timeout_hours=SFT_PROBE_TIMEOUT_HOURS
             )
+        elif args.resample_evidence:
+            payload = build_resample_evidence_preflight(
+                config,
+                modal_gpu=SFT_MODAL_GPU,
+                output_stem=full_output_stem,
+                timeout_hours=SFT_RESAMPLE_TIMEOUT_HOURS,
+            )
         elif args.modal_sweep:
             payload = build_multi_turn_sweep_preflight(
                 config, timeout_hours=SFT_SWEEP_TIMEOUT_HOURS, modal_gpu=SFT_MODAL_GPU
@@ -315,7 +392,11 @@ def launch(argv: list[str] | None = None) -> int:
                 full_run_modal_gpu=SFT_MODAL_GPU if args.full_run else None,
             )
             if args.full_run:
-                payload = _with_full_output_stem(payload, config, full_output_stem)
+                payload = with_full_output_stem(
+                    payload,
+                    full_launch_command=_full_launch_command(config, full_output_stem),
+                    volume_output_dir=str(VOLUME_MOUNT / full_output_stem),
+                )
         print(_format_payload(payload, json_output=args.json))
         return 0
     if args.local_cpu_smoke:
@@ -324,6 +405,10 @@ def launch(argv: list[str] | None = None) -> int:
         return 0
     if args.throughput_probe:
         return _launch_throughput_probe(config, approved=args.approved, json_output=args.json)
+    if args.resample_evidence:
+        return _launch_resample_evidence(
+            config, approved=args.approved, json_output=args.json, output_stem=full_output_stem
+        )
     if args.modal_sweep:
         return _launch_modal_sweep(config, approved=args.approved, json_output=args.json)
     if args.full_run:
@@ -344,6 +429,9 @@ def launch(argv: list[str] | None = None) -> int:
         )
         return 2
     blockers = smoke_launch_blockers(config)
+    bundle_blocker = _base_bundle_blocker()
+    if bundle_blocker:
+        blockers = [*blockers, bundle_blocker]
     if blockers:
         print("multi-turn SFT Modal smoke refused: " + "; ".join(blockers), file=sys.stderr)
         return 2
@@ -379,6 +467,9 @@ def _launch_throughput_probe(config: Any, *, approved: bool, json_output: bool) 
     blockers = multi_turn_probe_blockers(
         modal_gpu=SFT_MODAL_GPU, timeout_hours=SFT_PROBE_TIMEOUT_HOURS
     )
+    bundle_blocker = _base_bundle_blocker()
+    if bundle_blocker:
+        blockers = [*blockers, bundle_blocker]
     if blockers:
         payload = {**preflight, "status": "throughput_probe_refused", "launch_blockers": blockers}
         print(_format_payload(payload, json_output=json_output))
@@ -413,6 +504,65 @@ def _launch_throughput_probe(config: Any, *, approved: bool, json_output: bool) 
     return 0
 
 
+def _launch_resample_evidence(
+    config: Any, *, approved: bool, json_output: bool, output_stem: str
+) -> int:
+    preflight = build_resample_evidence_preflight(
+        config,
+        modal_gpu=SFT_MODAL_GPU,
+        output_stem=output_stem,
+        timeout_hours=SFT_RESAMPLE_TIMEOUT_HOURS,
+    )
+    if not approved:
+        payload = {
+            **preflight,
+            "status": "resample_evidence_refused",
+            "launch_blockers": [f"multi-turn evidence resample requires {LAUNCH_APPROVAL_FLAG}"],
+        }
+        print(_format_payload(payload, json_output=json_output))
+        return 2
+    blockers = resample_evidence_blockers(
+        config, modal_gpu=SFT_MODAL_GPU, timeout_hours=SFT_RESAMPLE_TIMEOUT_HOURS
+    )
+    if blockers:
+        payload = {**preflight, "status": "resample_evidence_refused", "launch_blockers": blockers}
+        print(_format_payload(payload, json_output=json_output))
+        return 2
+    if modal is None or run_modal_resample_evidence is None:
+        print("multi-turn evidence resample failed: modal is not installed", file=sys.stderr)
+        return 2
+    try:
+        function_call = run_modal_resample_evidence.spawn(
+            config.payload,
+            local_git_commit(REPO_ROOT),
+            local_git_dirty(REPO_ROOT),
+            SFT_MODAL_GPU,
+            SFT_RESAMPLE_TIMEOUT_HOURS,
+            output_stem,
+        )
+    except Exception as error:
+        print(f"multi-turn evidence resample failed before Modal spawn: {error}", file=sys.stderr)
+        return 2
+    call_id = modal_call_id(function_call)
+    payload = {
+        "status": "modal_resample_evidence_launched",
+        "will_start_modal_job": True,
+        "modal_result_awaited": False,
+        "modal_app": MODAL_APP_NAME,
+        "modal_call_id": call_id,
+        "resample_evidence_command": preflight["resample_evidence_command"],
+        "volume": config.runtime["modal_volume"],
+        "volume_output_dir": str(VOLUME_MOUNT / output_stem),
+        "checkpoint": preflight["checkpoint"],
+        "outputs": preflight["outputs"],
+        "timeout_hours": SFT_RESAMPLE_TIMEOUT_HOURS,
+        "timeout_cost_ceiling_usd": preflight["runtime"]["timeout_cost_ceiling_usd"],
+        "spend_cap_usd": RESAMPLE_SPEND_CAP_USD,
+    }
+    print(_format_payload(payload, json_output=json_output))
+    return 0
+
+
 def _launch_modal_sweep(config: Any, *, approved: bool, json_output: bool) -> int:
     preflight = build_multi_turn_sweep_preflight(
         config, timeout_hours=SFT_SWEEP_TIMEOUT_HOURS, modal_gpu=SFT_MODAL_GPU
@@ -428,6 +578,9 @@ def _launch_modal_sweep(config: Any, *, approved: bool, json_output: bool) -> in
     blockers = multi_turn_sweep_blockers(
         config, timeout_hours=SFT_SWEEP_TIMEOUT_HOURS, modal_gpu=SFT_MODAL_GPU
     )
+    bundle_blocker = _base_bundle_blocker()
+    if bundle_blocker:
+        blockers = [*blockers, bundle_blocker]
     if blockers:
         payload = {**preflight, "status": "modal_sweep_refused", "launch_blockers": blockers}
         print(_format_payload(payload, json_output=json_output))
@@ -464,6 +617,9 @@ def _launch_full_run(
 ) -> int:
     full_launch_command = _full_launch_command(config, output_stem)
     blockers = full_launch_blockers(config, approved=approved, modal_gpu=SFT_MODAL_GPU)
+    bundle_blocker = _base_bundle_blocker()
+    if bundle_blocker:
+        blockers = [*blockers, bundle_blocker]
     if blockers:
         payload = {
             "status": "full_run_refused",
@@ -610,6 +766,38 @@ def _run_modal_throughput_probe_body(
     )
 
 
+def _run_modal_resample_evidence_body(
+    config_payload: dict[str, Any],
+    *,
+    commit: str,
+    dirty: bool,
+    modal_gpu: str,
+    timeout_hours: float,
+    output_stem: str,
+    started: float,
+) -> dict[str, Any]:
+    output_stem = _validated_full_output_stem(output_stem)
+    config = validate_multi_turn_payload(
+        config_payload,
+        Path("configs/esme-214m-sft-multiturn.json"),
+        require_base_bundle_exists=False,
+    )
+    blockers = resample_evidence_blockers(config, modal_gpu=modal_gpu, timeout_hours=timeout_hours)
+    if blockers:
+        raise RuntimeError(
+            "multi-turn evidence resample refused inside Modal: " + "; ".join(blockers)
+        )
+    return resample_multi_turn_evidence(
+        config,
+        output_dir=VOLUME_MOUNT / output_stem,
+        allow_remote_download=True,
+        require_cuda=True,
+        started=started,
+        commit=commit,
+        dirty=dirty,
+    )
+
+
 def _run_modal_full_sft_body(
     config_payload: dict[str, Any],
     *,
@@ -657,22 +845,6 @@ def _full_launch_command(config: Any, output_stem: str) -> str:
     )
 
 
-def _with_full_output_stem(
-    payload: dict[str, Any], config: Any, output_stem: str
-) -> dict[str, Any]:
-    full_launch_command = _full_launch_command(config, output_stem)
-    updated = {
-        **payload,
-        "full_launch_command": full_launch_command,
-        "volume_output_dir": str(VOLUME_MOUNT / output_stem),
-    }
-    preflight = dict(updated.get("preflight", {}))
-    preflight["exact_launch_command"] = full_launch_command
-    preflight["volume_output_dir"] = str(VOLUME_MOUNT / output_stem)
-    updated["preflight"] = preflight
-    return updated
-
-
 def _format_payload(payload: dict[str, Any], *, json_output: bool) -> str:
     return format_payload(
         payload,
@@ -685,6 +857,9 @@ def _format_payload(payload: dict[str, Any], *, json_output: bool) -> str:
             "modal_smoke_command",
             "modal_sweep_command",
             "throughput_probe_command",
+            "resample_evidence_command",
+            "resampled_samples_path",
+            "original_samples_path",
             "full_launch_command",
         ),
     )

@@ -223,8 +223,6 @@ class LoadedSFTCheckpoint:
 def build_full_finetune_optimizer(
     model: DenseBackbone, config: SFTTrainerConfig
 ) -> tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LRScheduler]:
-    if config.tuning_mode != "full":
-        raise TrainerError(f"unsupported tuning_mode for SFT trainer: {config.tuning_mode}")
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
     )
@@ -289,11 +287,14 @@ def run_sft_training(
             )
 
     wandb_run = _start_wandb(config, base_bundle_manifest)
-    append_metric(
-        metrics_path,
-        base_eval_suite.to_metric_payload(step=start_step),
-        wandb_run,
-    )
+    if resumed_from_checkpoint is None:
+        # The base eval predates the checkpoint load; logging it on resume would
+        # append a base-model row mislabeled with the resumed step.
+        append_metric(
+            metrics_path,
+            base_eval_suite.to_metric_payload(step=start_step),
+            wandb_run,
+        )
 
     model.train()
     last_components: dict[str, float] = {}
@@ -453,6 +454,22 @@ def run_sft_training(
                     supervised_tokens=supervised_tokens,
                     retain_last=config.retain_last_checkpoints,
                 )
+        model.eval()
+        if last_eval_step != last_completed_step:
+            last_eval_suite = evaluate_eval_suite(
+                model, eval_suite, batch_size=config.micro_batch_size
+            )
+            append_metric(
+                metrics_path,
+                last_eval_suite.to_metric_payload(step=last_completed_step),
+                wandb_run,
+            )
+            if _no_robots_catastrophic_regression(
+                last_eval_suite,
+                baseline=no_robots_baseline,
+                multiplier=config.no_robots_catastrophic_regression_multiplier,
+            ):
+                raise TrainerError("no_robots catastrophic regression threshold fired")
     except KeyboardInterrupt:
         failure_checkpoint, failure_checkpoint_error = _save_failure_checkpoint(
             output_dir,
@@ -493,20 +510,6 @@ def run_sft_training(
         )
         raise
 
-    model.eval()
-    if last_eval_step != last_completed_step:
-        last_eval_suite = evaluate_eval_suite(model, eval_suite, batch_size=config.micro_batch_size)
-        append_metric(
-            metrics_path,
-            last_eval_suite.to_metric_payload(step=last_completed_step),
-            wandb_run,
-        )
-        if _no_robots_catastrophic_regression(
-            last_eval_suite,
-            baseline=no_robots_baseline,
-            multiplier=config.no_robots_catastrophic_regression_multiplier,
-        ):
-            raise TrainerError("no_robots catastrophic regression threshold fired")
     if last_eval_suite.selector_response_loss < best_selector_value:
         best_selector_value = last_eval_suite.selector_response_loss
         selected_step = last_completed_step
@@ -599,6 +602,7 @@ def run_sft_training(
     if wandb_run is not None:
         wandb_run.log({"manifest": manifest})
         wandb_run.finish()
+    instruct_beats_base = instruct_eval.response_loss < base_eval.response_loss
     return SFTTrainResult(
         output_dir=output_dir,
         checkpoint_path=checkpoint_path,
@@ -621,8 +625,8 @@ def run_sft_training(
         eval_examples=sum(len(split.examples) for split in eval_suite),
         effective_epochs=trained_tokens
         / max(1, sum(len(example.input_ids) for example in train_examples)),
-        response_loss_decreased=instruct_eval.response_loss < base_eval.response_loss,
-        instruct_beats_base=instruct_eval.response_loss < base_eval.response_loss,
+        response_loss_decreased=instruct_beats_base,
+        instruct_beats_base=instruct_beats_base,
         training_mode="resumed" if resumed_from_checkpoint is not None else "fresh",
         start_step=start_step,
         early_stopped=early_stopped,

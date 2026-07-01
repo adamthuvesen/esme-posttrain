@@ -9,14 +9,17 @@ refused unless the learning gate has passed (enforced in the launcher).
 
 from __future__ import annotations
 
+import json
 import time
 from functools import partial
 from pathlib import Path
 from typing import Any
 
 import torch
+from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.launch.config_guards import LAUNCH_APPROVAL_FLAG, MODAL_CLIENT_VERSION
 from esme_posttrain.run_artifacts import (
     RuntimeSpendTracker,
     refresh_manifest_files,
@@ -40,6 +43,9 @@ from esme_posttrain.sft.full_shared import (
 from esme_posttrain.sft.full_shared import (
     steps_for_target_tokens as _steps_for_target_tokens,
 )
+from esme_posttrain.sft.full_shared import (
+    write_eval_suite_manifests as _write_eval_suite_manifests,
+)
 from esme_posttrain.sft.launch_multiturn import EXPECTED_ARTIFACTS, MultiTurnLaunchConfig
 from esme_posttrain.sft.multiturn_data import (
     build_multi_turn_eval_set,
@@ -49,8 +55,23 @@ from esme_posttrain.sft.multiturn_data import (
 )
 from esme_posttrain.sft.multiturn_judge import run_multi_turn_judge
 from esme_posttrain.sft.sample_artifacts import write_multi_turn_samples
-from esme_posttrain.sft.trainer import EvalSplit, SFTTrainerConfig, WandbConfig, run_sft_training
+from esme_posttrain.sft.trainer import (
+    EvalSplit,
+    SFTTrainerConfig,
+    WandbConfig,
+    load_sft_checkpoint,
+    run_sft_training,
+)
 from esme_posttrain.training.checkpointing import latest_checkpoint_path
+
+# Bounded evidence-resample job: regenerate ``multi-turn-samples-v2.md`` from the
+# completed full-run checkpoint after the first-turn truncation fix (commit
+# 78f2094). Generation-only, so the spend cap is a hard $1; the 0.25h timeout
+# holds the worst case at 0.25h x $2.0988/h ~= $0.52 on the pinned A100.
+RESAMPLE_SPEND_CAP_USD = 1.0
+RESAMPLE_TIMEOUT_HOURS = 0.25
+ORIGINAL_SAMPLES_ARTIFACT = "multi-turn-samples.md"
+RESAMPLE_SAMPLES_ARTIFACT = "multi-turn-samples-v2.md"
 
 
 def run_full_multi_turn_sft(
@@ -322,6 +343,194 @@ def run_full_multi_turn_sft(
     }
 
 
+def resample_evidence_blockers(
+    config: MultiTurnLaunchConfig,
+    *,
+    modal_gpu: str,
+    timeout_hours: float = RESAMPLE_TIMEOUT_HOURS,
+) -> list[str]:
+    blockers: list[str] = []
+    if timeout_hours <= 0 or timeout_hours > 24:
+        blockers.append("resample-evidence timeout_hours must be between 0 and 24")
+    if modal_gpu != config.runtime["selected_gpu"]:
+        blockers.append(
+            "SFT_MODAL_GPU must match runtime.selected_gpu for resample-evidence cost accounting"
+        )
+    if timeout_hours * float(config.selected_gpu_profile["usd_per_hour"]) > RESAMPLE_SPEND_CAP_USD:
+        blockers.append("resample-evidence timeout cost ceiling exceeds the $1 resample spend cap")
+    return blockers
+
+
+def resample_evidence_command(config_path: Path, *, gpu: str, timeout_hours: float) -> str:
+    return (
+        f"SFT_MODAL_GPU='{gpu}' SFT_RESAMPLE_TIMEOUT_HOURS={timeout_hours} "
+        f"uv run --with modal=={MODAL_CLIENT_VERSION} modal run --detach "
+        f"scripts/modal_chat_sft.py --config {config_path.as_posix()} "
+        f"--resample-evidence {LAUNCH_APPROVAL_FLAG} --json"
+    )
+
+
+def build_resample_evidence_preflight(
+    config: MultiTurnLaunchConfig,
+    *,
+    modal_gpu: str,
+    output_stem: str,
+    timeout_hours: float = RESAMPLE_TIMEOUT_HOURS,
+) -> dict[str, Any]:
+    timeout_cost_ceiling = float(config.selected_gpu_profile["usd_per_hour"]) * timeout_hours
+    blockers = resample_evidence_blockers(config, modal_gpu=modal_gpu, timeout_hours=timeout_hours)
+    return {
+        "status": "ready_for_resample_evidence" if not blockers else "blocked_by_launch_safety",
+        "mode": "multi_turn_resample_evidence",
+        "run_id": config.run_id,
+        "artifact_name": config.artifact_name,
+        "requires_approval": True,
+        "approval_flag": LAUNCH_APPROVAL_FLAG,
+        "will_start_modal_job": False,
+        "will_download_data": False,
+        "generation_only": True,
+        "volume": config.runtime["modal_volume"],
+        "checkpoint": f"{output_stem}/best-checkpoint.pt",
+        "tokenizer": f"{output_stem}/tokenizer.json",
+        "data_report": f"{output_stem}/data-report.json",
+        "outputs": {
+            "resampled_markdown": f"{output_stem}/{RESAMPLE_SAMPLES_ARTIFACT}",
+            "original_preserved": f"{output_stem}/{ORIGINAL_SAMPLES_ARTIFACT}",
+        },
+        "runtime": {
+            "provider": "modal",
+            "selected_gpu": config.runtime["selected_gpu"],
+            "modal_gpu": modal_gpu,
+            "timeout_hours": timeout_hours,
+            "spend_cap_usd": RESAMPLE_SPEND_CAP_USD,
+            "timeout_cost_ceiling_usd": round(timeout_cost_ceiling, 4),
+            "sample_new_tokens": int(config.payload["monitoring"]["sample_new_tokens"]),
+        },
+        "dependency_pins": {"modal": MODAL_CLIENT_VERSION},
+        "launch_blockers": blockers,
+        "resample_evidence_command": resample_evidence_command(
+            config.config_path, gpu=modal_gpu, timeout_hours=timeout_hours
+        ),
+    }
+
+
+def resample_multi_turn_evidence(
+    config: MultiTurnLaunchConfig,
+    *,
+    output_dir: Path,
+    allow_remote_download: bool,
+    require_cuda: bool,
+    started: float | None = None,
+    commit: str = "unknown",
+    dirty: bool = True,
+    sample_pool: tuple[TokenizedExample, ...] | None = None,
+) -> dict[str, Any]:
+    """Regenerate the multi-turn sample evidence from a completed full run.
+
+    Loads ``best-checkpoint.pt`` and ``tokenizer.json`` from ``output_dir``,
+    rebuilds the matched held-out eval examples exactly like the full run
+    (skip counts come from the persisted ``data-report.json``), and writes the
+    fixed-truncation samples to ``multi-turn-samples-v2.md``. The original
+    ``multi-turn-samples.md`` is never touched, so the buggy evidence stays
+    inspectable next to the corrected artifact. ``sample_pool`` bypasses the
+    dataset rebuild for the no-download CPU fixture path.
+    """
+    started = started or time.perf_counter()
+    output_dir = output_dir.expanduser().resolve()
+    checkpoint_path = output_dir / "best-checkpoint.pt"
+    tokenizer_path = output_dir / "tokenizer.json"
+    for required, label in ((checkpoint_path, "best checkpoint"), (tokenizer_path, "tokenizer")):
+        if not required.is_file():
+            raise SFTFullRunError(f"resample requires the completed full-run {label}: {required}")
+
+    device = _select_full_run_device(require_cuda=require_cuda)
+    checkpoint = load_sft_checkpoint(checkpoint_path, map_location=device)
+    model = checkpoint.model.to(device)
+    tokenizer = Tokenizer.from_file(str(tokenizer_path))
+
+    if sample_pool is None:
+        matched_eval_reports = _rebuild_matched_eval_reports(
+            config, tokenizer, output_dir, allow_remote_download=allow_remote_download
+        )
+        sample_pool = _multi_turn_sample_pool(matched_eval_reports)
+    if not sample_pool:
+        raise SFTFullRunError("resample produced no multi-turn eval examples to sample from")
+
+    resampled_path = output_dir / RESAMPLE_SAMPLES_ARTIFACT
+    write_multi_turn_samples(
+        resampled_path,
+        model,
+        tokenizer,
+        sample_pool,
+        sample_new_tokens=int(config.payload["monitoring"]["sample_new_tokens"]),
+        selected_step=checkpoint.step,
+    )
+    resampled_markdown = resampled_path.read_text(encoding="utf-8")
+
+    elapsed = time.perf_counter() - started
+    usd_per_hour = float(config.selected_gpu_profile["usd_per_hour"])
+    estimated_cost = elapsed * usd_per_hour / 3600.0
+    if estimated_cost > RESAMPLE_SPEND_CAP_USD:
+        raise SFTFullRunError(
+            f"resample-evidence exceeded the ${RESAMPLE_SPEND_CAP_USD:.0f} cap "
+            f"(estimated ${estimated_cost:.4f})"
+        )
+    original_path = output_dir / ORIGINAL_SAMPLES_ARTIFACT
+    return {
+        "status": "resample_evidence_complete",
+        "run_id": config.run_id,
+        "artifact_name": config.artifact_name,
+        "output_dir": str(output_dir),
+        "volume": config.runtime["modal_volume"],
+        "device": device.type,
+        "paid_compute": True,
+        "commit": commit,
+        "dirty": dirty,
+        "selected_step": checkpoint.step,
+        "sample_new_tokens": int(config.payload["monitoring"]["sample_new_tokens"]),
+        "original_samples_path": str(original_path),
+        "original_samples_preserved": original_path.is_file(),
+        "resampled_samples_path": str(resampled_path),
+        "resampled_markdown": resampled_markdown,
+        "elapsed_seconds": elapsed,
+        "estimated_cost_usd": estimated_cost,
+        "spend_cap_usd": RESAMPLE_SPEND_CAP_USD,
+    }
+
+
+def _rebuild_matched_eval_reports(
+    config: MultiTurnLaunchConfig,
+    tokenizer: Tokenizer,
+    output_dir: Path,
+    *,
+    allow_remote_download: bool,
+) -> dict[str, Any]:
+    data_report_path = output_dir / "data-report.json"
+    if not data_report_path.is_file():
+        raise SFTFullRunError(
+            f"resample requires the completed full-run data report: {data_report_path}"
+        )
+    data_report = json.loads(data_report_path.read_text(encoding="utf-8"))
+    try:
+        counts_by_source = data_report["train"]["counts_by_source"]
+        skip_selected = {name: int(counts["selected"]) for name, counts in counts_by_source.items()}
+    except (KeyError, TypeError, ValueError) as error:
+        raise SFTFullRunError(
+            "full-run data report is missing train.counts_by_source selected counts: "
+            f"{data_report_path}"
+        ) from error
+    budgets = config.budgets
+    return build_multi_turn_matched_eval_sets(
+        config.train_sources,
+        tokenizer,
+        skip_selected_by_source=skip_selected,
+        max_samples_per_source=int(budgets["matched_eval_samples_per_source"]),
+        max_tokens_per_source=int(budgets["matched_eval_tokens_per_source"]),
+        max_sequence_tokens=int(budgets["max_sequence_tokens"]),
+        allow_remote_download=allow_remote_download,
+    )
+
+
 def _generate_chat_continuation(
     model: Any, tokenizer: Any, prompt: str, *, max_new_tokens: int
 ) -> str:
@@ -358,7 +567,7 @@ def _eval_splits(
     for source in config.train_sources:
         report = matched_eval_reports[source.name]
         splits.append(EvalSplit(source.name, report.examples, selector_weight=source.mix_ratio))
-    splits.append(EvalSplit("no_robots", no_robots_report.examples, guardrail=True))
+    splits.append(EvalSplit("no_robots", no_robots_report.examples))
     return tuple(splits)
 
 
@@ -382,13 +591,3 @@ def _config_evidence(
         "target_train_tokens": config.budgets["target_train_tokens"],
         "max_train_tokens": config.budgets["max_train_tokens"],
     }
-
-
-def _write_eval_suite_manifests(
-    output_dir: Path, matched_eval_reports: dict[str, Any], no_robots_report: Any
-) -> None:
-    for name, report in matched_eval_reports.items():
-        write_selected_row_manifest(output_dir / f"eval-{name}-manifest.jsonl", report.examples)
-    write_selected_row_manifest(
-        output_dir / "eval-no_robots-manifest.jsonl", no_robots_report.examples
-    )

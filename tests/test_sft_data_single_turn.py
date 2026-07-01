@@ -8,6 +8,12 @@ import torch
 
 from esme_posttrain.bundle import file_sha256
 from esme_posttrain.modeling import DenseBackbone
+from esme_posttrain.sft.adapters import (
+    CAPACITY_FILTERED_SUBSETS,
+    AdapterExample,
+    CapacityFiltered,
+    SmolTalkAdapter,
+)
 from esme_posttrain.sft.data import (
     DataError,
     DatasetSource,
@@ -225,6 +231,81 @@ def test_matched_eval_splits_skip_train_rows_and_count_target_truncation(
     manifest = matched["smol-smoltalk"].examples[0].manifest_entry()
     assert manifest["prompt_tokens"] > 0
     assert manifest["response_tokens"] > 0
+
+
+def test_single_turn_smoltalk_drops_capacity_filtered_subsets(tmp_path: Path) -> None:
+    filtered_rows = [
+        {
+            "source": subset,
+            "messages": [
+                {"role": "user", "content": "call the api"},
+                {"role": "assistant", "content": "done"},
+            ],
+        }
+        for subset in sorted(CAPACITY_FILTERED_SUBSETS)
+    ]
+    normal_row = {
+        "source": "smol-magpie-ultra",
+        "messages": [
+            {"role": "user", "content": "say red"},
+            {"role": "assistant", "content": "red"},
+        ],
+    }
+    smol_path = tmp_path / "smol.jsonl"
+    tulu_path = tmp_path / "tulu.jsonl"
+    _write_jsonl(smol_path, filtered_rows + [dict(normal_row) for _ in range(4)])
+    _write_jsonl(
+        tulu_path,
+        [
+            {
+                "messages": [
+                    {"role": "user", "content": "repeat one"},
+                    {"role": "assistant", "content": "one"},
+                ]
+            }
+        ],
+    )
+    sources = (
+        DatasetSource(
+            name="smol-smoltalk",
+            source="local-smol",
+            revision="0" * 40,
+            license="apache-2.0",
+            split="train",
+            role="train",
+            mix_ratio=0.8,
+            path=smol_path,
+        ),
+        DatasetSource(
+            name="tulu-3-personas",
+            source="local-tulu",
+            revision="1" * 40,
+            license="odc-by",
+            split="train",
+            role="train",
+            mix_ratio=0.2,
+            path=tulu_path,
+        ),
+    )
+
+    adapter = SmolTalkAdapter()
+    for row in filtered_rows:
+        assert isinstance(adapter.parse(sources[0], "0", row), CapacityFiltered)
+    accepted = adapter.parse(sources[0], "0", normal_row)
+    assert isinstance(accepted, AdapterExample)
+    assert accepted.instruction == "say red"
+
+    result = build_training_mix(
+        sources,
+        tiny_tokenizer(),
+        max_samples=5,
+        max_tokens=500,
+        max_sequence_tokens=24,
+    )
+    smol_counts = result.counts_by_source["smol-smoltalk"]
+    assert smol_counts.rejected_capacity_filtered == len(filtered_rows)
+    assert smol_counts.rejected_non_single_turn == 0
+    assert smol_counts.selected == 4
 
 
 def test_no_robots_adapter_is_eval_only(tmp_path: Path) -> None:

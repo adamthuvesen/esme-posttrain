@@ -43,7 +43,6 @@ class EvalSplit:
     name: str
     examples: tuple[TokenizedExample, ...]
     selector_weight: float = 0.0
-    guardrail: bool = False
 
     def __post_init__(self) -> None:
         if not self.name:

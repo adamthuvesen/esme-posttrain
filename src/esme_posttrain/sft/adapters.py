@@ -11,7 +11,8 @@ class AdapterError(ValueError):
 
 # Tasks beyond a 214M model's capacity. SmolLM2 dropped function calling and the
 # hardest reasoning from the small-model SFT mix; smol-smoltalk tags each row with
-# its `source` sub-dataset, so we can drop those rows here.
+# its `source` sub-dataset. Both smol-smoltalk adapters (SmolTalkAdapter and
+# SmolTalkMultiTurnAdapter) drop rows from these subsets.
 CAPACITY_FILTERED_SUBSETS: frozenset[str] = frozenset(
     {
         "apigen-80k",
@@ -35,6 +36,11 @@ class AdapterExample:
 
 
 @dataclass(frozen=True)
+class CapacityFiltered:
+    """Rejection marker: the row's subset is beyond a 214M model's capacity."""
+
+
+@dataclass(frozen=True)
 class ChatTurnLike:
     role: Literal["system", "user", "assistant"]
     content: str
@@ -52,12 +58,20 @@ class MultiTurnAdapterExample:
 
 
 class DatasetAdapter(Protocol):
-    def parse(self, source: DatasetSourceLike, row_id: str, row: Any) -> AdapterExample | None: ...
+    def parse(
+        self, source: DatasetSourceLike, row_id: str, row: Any
+    ) -> AdapterExample | CapacityFiltered | None: ...
 
 
 class SmolTalkAdapter:
-    def parse(self, source: DatasetSourceLike, row_id: str, row: Any) -> AdapterExample | None:
+    def parse(
+        self, source: DatasetSourceLike, row_id: str, row: Any
+    ) -> AdapterExample | CapacityFiltered | None:
         del source, row_id
+        if isinstance(row, dict):
+            subset = row.get("source")
+            if isinstance(subset, str) and subset in CAPACITY_FILTERED_SUBSETS:
+                return CapacityFiltered()
         return _single_turn_from_row(row)
 
 
@@ -151,7 +165,7 @@ def _constraints_from_row(row: dict[str, Any]) -> tuple[str, ...]:
 
 def iter_adapter_examples(
     source: DatasetSourceLike, rows: Iterator[tuple[str, Any]]
-) -> Iterator[tuple[str, AdapterExample | None]]:
+) -> Iterator[tuple[str, AdapterExample | CapacityFiltered | None]]:
     adapter = adapter_for(source)
     for row_id, row in rows:
         yield row_id, adapter.parse(source, row_id, row)

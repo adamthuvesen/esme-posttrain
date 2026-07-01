@@ -17,7 +17,8 @@ from esme_posttrain.launch.config_guards import LAUNCH_APPROVAL_FLAG, MODAL_CLIE
 from esme_posttrain.run_artifacts import RuntimeSpendTracker, write_json
 from esme_posttrain.sft.launch_multiturn import MultiTurnLaunchConfig
 from esme_posttrain.sft.multiturn_data import build_multi_turn_eval_set, build_multi_turn_mix
-from esme_posttrain.sft.sweep_shared import SFTSweepError
+from esme_posttrain.sft.sweep_shared import PROBE_GPU_USD_PER_HOUR, SFTSweepError
+from esme_posttrain.sft.sweep_shared import fresh_probe_id as _fresh_probe_id
 from esme_posttrain.sft.sweep_shared import select_sweep_device as _select_sweep_device
 from esme_posttrain.sft.trainer import SFTTrainerConfig, run_sft_training
 from esme_posttrain.training.wandb_init import WandbConfig
@@ -35,12 +36,6 @@ PROBE_RECIPE = {
     "micro_batch_size": 2,
     "gradient_accumulation_steps": 1,
     "effective_batch_size": 2,
-}
-PROBE_GPU_USD_PER_HOUR = {
-    "A100": 2.0988,
-    "H100!": 3.9492,
-    "H200": 4.5396,
-    "B200": 6.2496,
 }
 DEFAULT_MODAL_PROBE_ROOT = Path("/posttrain") / PROBE_OUTPUT_STEM
 
@@ -277,13 +272,3 @@ def run_multi_turn_throughput_probe(
     }
     write_json(output_dir / "throughput-probe.json", payload)
     return payload
-
-
-def _fresh_probe_id(output_root: Path, modal_gpu: str) -> str:
-    safe_gpu = modal_gpu.replace("!", "-strict").lower()
-    base = time.strftime(f"probe-%Y%m%dT%H%M%SZ-{safe_gpu}", time.gmtime())
-    for suffix in ("", *[f"-{index}" for index in range(1, 100)]):
-        candidate = f"{base}{suffix}"
-        if not (output_root / candidate).exists():
-            return candidate
-    raise SFTSweepError(f"could not find an isolated throughput probe id under {output_root}")

@@ -31,6 +31,7 @@ from esme_posttrain.sft.trainer import (
 )
 from esme_posttrain.training.checkpointing import latest_checkpoint_path
 from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import EVAL_METRIC_NAMES, TRAIN_METRIC_NAMES
 from esme_posttrain.training.runtime import resolve_torch_device
 
@@ -316,7 +317,7 @@ def test_matched_eval_selector_best_checkpoint_and_no_robots_guardrail(
         eval_splits=(
             EvalSplit("smol-smoltalk", smol_eval, selector_weight=0.8),
             EvalSplit("tulu-3-personas", tulu_eval, selector_weight=0.2),
-            EvalSplit("no_robots", no_robots_eval, guardrail=True),
+            EvalSplit("no_robots", no_robots_eval),
         ),
     )
 
@@ -457,6 +458,15 @@ def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) ->
     assert load_sft_checkpoint(second.checkpoint_path).step == 8
     assert second.selected_metric_value == 0.0
 
+    # Resumed runs must not append the pre-resume base-model eval mislabeled as
+    # the resumed step: fresh run logs [0, 5], each resume logs only its final eval.
+    rows = [
+        json.loads(line)
+        for line in (output_dir / "metrics.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    eval_steps = [row["step"] for row in rows if row["event"] == "eval"]
+    assert eval_steps == [0, 5, 5, 8]
+
 
 def test_sft_failure_saves_latest_checkpoint_and_preserves_error(tmp_path: Path) -> None:
     tokenizer = tiny_tokenizer()
@@ -504,6 +514,53 @@ def test_sft_failure_saves_latest_checkpoint_and_preserves_error(tmp_path: Path)
     assert checkpoint is not None
     assert failure_report["checkpoint_path"] == str(checkpoint)
     assert load_sft_checkpoint(checkpoint).step == 3
+
+
+def test_final_eval_regression_writes_failure_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tokenizer = tiny_tokenizer()
+    train_examples = tuple(
+        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
+        for example in (
+            SingleTurnExample("say red", "red", "fixture", "train-1"),
+            SingleTurnExample("say blue", "blue", "fixture", "train-2"),
+        )
+    )
+    eval_examples = tuple(
+        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
+        for example in (SingleTurnExample("say red", "red", "fixture", "eval-1"),)
+    )
+    output_dir = tmp_path / "final-eval-regression"
+    monkeypatch.setattr(
+        "esme_posttrain.sft.trainer._no_robots_catastrophic_regression",
+        lambda *args, **kwargs: True,
+    )
+
+    with pytest.raises(TrainerError, match="no_robots catastrophic regression"):
+        run_sft_training(
+            DenseBackbone(tiny_backbone_config()),
+            tokenizer,
+            train_examples,
+            eval_examples,
+            SFTTrainerConfig(
+                max_steps=2,
+                micro_batch_size=1,
+                gradient_accumulation_steps=1,
+                learning_rate=0.05,
+                seed=214,
+                output_dir=output_dir,
+            ),
+        )
+
+    failure_report = json.loads((output_dir / "failure-report.json").read_text())
+    checkpoint = latest_checkpoint_path(output_dir)
+
+    assert failure_report["status"] == "failed"
+    assert failure_report["step"] == 2
+    assert "no_robots catastrophic regression" in failure_report["message"]
+    assert checkpoint is not None
+    assert failure_report["checkpoint_path"] == str(checkpoint)
 
 
 def _load_config_payload() -> dict[str, object]:

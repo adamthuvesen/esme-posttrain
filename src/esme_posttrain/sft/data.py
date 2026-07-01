@@ -9,7 +9,7 @@ from typing import Any
 
 from tokenizers import Tokenizer
 
-from esme_posttrain.sft.adapters import AdapterError, iter_adapter_examples
+from esme_posttrain.sft.adapters import AdapterError, CapacityFiltered, iter_adapter_examples
 from esme_posttrain.sft.data_types import (
     IGNORE_INDEX as IGNORE_INDEX,
 )
@@ -364,7 +364,7 @@ def build_matched_eval_sets(
     if len(train_sources) != 2:
         raise DataError("matched eval requires exactly two train sources")
     return {
-        source.name: _build_source_holdout(
+        source.name: _build_single_source_set(
             source,
             tokenizer,
             skip_selected=int(skip_selected_by_source.get(source.name, 0)),
@@ -396,27 +396,6 @@ def build_eval_set(
         source,
         tokenizer,
         skip_selected=0,
-        max_samples=max_samples,
-        max_tokens=max_tokens,
-        max_sequence_tokens=max_sequence_tokens,
-        allow_remote_download=allow_remote_download,
-    )
-
-
-def _build_source_holdout(
-    source: DatasetSource,
-    tokenizer: Tokenizer,
-    *,
-    skip_selected: int,
-    max_samples: int,
-    max_tokens: int,
-    max_sequence_tokens: int,
-    allow_remote_download: bool,
-) -> DatasetBuildResult:
-    return _build_single_source_set(
-        source,
-        tokenizer,
-        skip_selected=skip_selected,
         max_samples=max_samples,
         max_tokens=max_tokens,
         max_sequence_tokens=max_sequence_tokens,
@@ -481,7 +460,7 @@ def _iter_tokenized_single_turns(
     max_sequence_tokens: int,
     allow_remote_download: bool,
 ) -> Iterator[TokenizedExample]:
-    rows = _iter_rows(source, allow_remote_download=allow_remote_download)
+    rows = iter_rows(source, allow_remote_download=allow_remote_download)
     try:
         adapter_rows = iter_adapter_examples(source, rows)
     except AdapterError as error:
@@ -489,6 +468,9 @@ def _iter_tokenized_single_turns(
     try:
         for row_id, adapter_example in adapter_rows:
             counts.rows_seen += 1
+            if isinstance(adapter_example, CapacityFiltered):
+                counts.rejected_capacity_filtered += 1
+                continue
             if adapter_example is None:
                 counts.rejected_non_single_turn += 1
                 continue
@@ -507,9 +489,8 @@ def _iter_tokenized_single_turns(
             ):
                 counts.rejected_too_long_chars += 1
                 continue
-            counts.survivors += 1
             try:
-                yield tokenize_single_turn(
+                tokenized = tokenize_single_turn(
                     tokenizer,
                     example,
                     max_sequence_tokens=max_sequence_tokens,
@@ -523,6 +504,8 @@ def _iter_tokenized_single_turns(
                 )
                 counts.rejected_too_long_tokens += 1
                 continue
+            counts.survivors += 1
+            yield tokenized
     except AdapterError as error:
         raise DataError(str(error)) from error
 
@@ -594,7 +577,7 @@ def _interleave_80_20(
             return mixed
 
 
-def _iter_rows(source: DatasetSource, *, allow_remote_download: bool) -> Iterator[tuple[str, Any]]:
+def iter_rows(source: DatasetSource, *, allow_remote_download: bool) -> Iterator[tuple[str, Any]]:
     if source.path is not None:
         yield from _iter_jsonl(source.path)
         return

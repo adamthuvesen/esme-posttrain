@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-IGNORE_INDEX = -100
+from esme_posttrain.training.collate import IGNORE_INDEX
 
 
 class DataError(ValueError):

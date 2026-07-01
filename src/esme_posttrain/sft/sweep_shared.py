@@ -16,6 +16,14 @@ class SFTSweepError(RuntimeError):
     pass
 
 
+PROBE_GPU_USD_PER_HOUR = {
+    "A100": 2.0988,
+    "H100!": 3.9492,
+    "H200": 4.5396,
+    "B200": 6.2496,
+}
+
+
 @dataclass(frozen=True)
 class SFTSweepArm:
     name: str
@@ -141,6 +149,16 @@ def fresh_launch_id(output_root: Path, arms: tuple[SFTSweepArm, ...]) -> str:
         if all(not path.exists() for path in paths):
             return candidate
     raise SFTSweepError(f"could not find an isolated sweep launch id under {output_root}")
+
+
+def fresh_probe_id(output_root: Path, modal_gpu: str) -> str:
+    safe_gpu = modal_gpu.replace("!", "-strict").lower()
+    base = time.strftime(f"probe-%Y%m%dT%H%M%SZ-{safe_gpu}", time.gmtime())
+    for suffix in ("", *[f"-{index}" for index in range(1, 100)]):
+        candidate = f"{base}{suffix}"
+        if not (output_root / candidate).exists():
+            return candidate
+    raise SFTSweepError(f"could not find an isolated throughput probe id under {output_root}")
 
 
 def arm_failure_payload(
