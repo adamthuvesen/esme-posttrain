@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "manifest_type": "rl_tasks",
+  "name": "esme_214m_rl_countdown_lite",
+  "sample_budget": 360,
+  "token_budget": 512000,
+  "reward_definitions": [
+    {
+      "name": "countdown_lite_exact_solve",
+      "reward_type": "execution_check",
+      "verifiable": true,
+      "verifier": "esme_posttrain.rl.countdown_lite.verify_countdown_lite_expression",
+      "pass_condition": "candidate is a valid arithmetic expression using each supplied number exactly once and evaluating exactly to target"
+    }
+  ],
+  "data_files": [
+    {
+      "path": "../rl/countdown_lite/train.jsonl",
+      "format": "jsonl",
+      "records": 300
+    },
+    {
+      "path": "../rl/countdown_lite/dev.jsonl",
+      "format": "jsonl",
+      "records": 30
+    },
+    {
+      "path": "../rl/countdown_lite/eval.jsonl",
+      "format": "jsonl",
+      "records": 30
+    }
+  ]
+}
