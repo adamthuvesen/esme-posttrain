@@ -25,10 +25,7 @@ The current RLVR target is Countdown-Lite: generate a short arithmetic expressio
 
 ## Why 214M?
 
-Esme-214M is intentionally small. That makes the full LLM lifecycle easier to
-build, keeps iteration fast and costs low, and makes failures easier to
-diagnose, while still going through real training, evaluation, export,
-post-training, and inference.
+Esme-214M is intentionally small for learning purposes. That makes the full LLM lifecycle easier to build, keeps iteration fast and costs low, and makes failures easier to diagnose, while still going through real training, evaluation, export, post-training, and inference.
 
 ## What Is Here
 
