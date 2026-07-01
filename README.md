@@ -2,6 +2,13 @@
 
 Esme is a 214M-parameter language model trained from scratch. `esme-posttrain` adapts an `Esme-214M-Base` checkpoint from `esme-pretrain` into instruction-following, preference-tuned, and verifier-trained model artifacts.
 
+## Why 214M?
+
+Esme-214M is intentionally small. That makes the full LLM lifecycle easier to
+build, keeps iteration fast and costs low, and makes failures easier to
+diagnose, while still going through real training, evaluation, export,
+post-training, and inference.
+
 The standard post-training path has three stages:
 
 ```text
@@ -27,7 +34,7 @@ The current RLVR target is Countdown-Lite: generate a short arithmetic expressio
 
 - Stage code for SFT, DPO, RLVR, launch validation, dense-bundle export, and shared artifact writing.
 - Configs and schemas for the current Esme-214M post-training path.
-- Evidence docs for accepted SFT, completed DPO, and completed Countdown-Lite GRPO.
+- Evidence docs for SFT, DPO, and completed Countdown-Lite GRPO.
 - Export tooling for `Esme-214M-Chat` bundles.
 
 ## Quickstart
