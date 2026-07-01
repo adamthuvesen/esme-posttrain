@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "manifest_type": "rl_tasks",
+  "name": "esme_214m_rl_countdown_heldout",
+  "sample_budget": 60,
+  "reward_definitions": [
+    {
+      "name": "countdown_lite_exact_solve",
+      "reward_type": "execution_check",
+      "verifiable": true,
+      "verifier": "esme_posttrain.rl.countdown_lite.verify_countdown_lite_expression",
+      "pass_condition": "candidate is a valid arithmetic expression using each supplied number exactly once and evaluating exactly to target"
+    }
+  ],
+  "data_files": [
+    {
+      "path": "../rl/countdown_heldout/heldout_fresh.jsonl",
+      "format": "jsonl",
+      "records": 30
+    },
+    {
+      "path": "../rl/countdown_heldout/heldout_shift.jsonl",
+      "format": "jsonl",
+      "records": 30
+    }
+  ]
+}

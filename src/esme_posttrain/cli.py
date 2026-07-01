@@ -9,8 +9,9 @@ from typing import Any
 from esme_posttrain import __version__
 from esme_posttrain.dpo.launch import build_dpo_dry_run, load_dpo_config
 from esme_posttrain.dpo.smoke import run_dpo_cpu_fixture
-from esme_posttrain.export.dense_bundle import ExportError, ExportRequest, export_dense_bundle
+from esme_posttrain.export.dense_bundle import ExportRequest, export_dense_bundle
 from esme_posttrain.launch.config_guards import LaunchError
+from esme_posttrain.rl.countdown_heldout import write_countdown_heldout_dataset
 from esme_posttrain.rl.countdown_lite import CountdownLiteError, write_countdown_lite_dataset
 from esme_posttrain.rl.countdown_lite_baseline import (
     CountdownBaselineRequest,
@@ -71,6 +72,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     countdown_build.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     countdown_build.set_defaults(handler=_handle_countdown_lite_build_data)
+
+    heldout_build = subparsers.add_parser(
+        "rlvr-countdown-heldout-build-data",
+        help="Generate deterministic held-out Countdown transfer sets and manifest.",
+    )
+    heldout_build.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path("."),
+        help="Repository root containing data/manifests.",
+    )
+    heldout_build.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    heldout_build.set_defaults(handler=_handle_countdown_heldout_build_data)
 
     countdown_baseline = subparsers.add_parser(
         "rlvr-countdown-lite-baseline",
@@ -171,8 +185,17 @@ def main(argv: list[str] | None = None) -> int:
     export_bundle.add_argument("--model-id", default="esme-214m-chat")
     export_bundle.add_argument("--source-volume", default="esme-posttrain-esme-chat-dpo")
     export_bundle.add_argument("--source-path", default="esme-214m-chat-dpo-full")
-    export_bundle.add_argument("--wandb-run", default="pgt1zlpq")
-    export_bundle.add_argument("--dpo-step", type=int, default=600)
+    export_bundle.add_argument(
+        "--wandb-run",
+        required=True,
+        help="W&B run id of the training run being exported (stamped into provenance).",
+    )
+    export_bundle.add_argument(
+        "--dpo-step",
+        type=int,
+        required=True,
+        help="DPO step of the exported checkpoint (stamped into provenance).",
+    )
     export_bundle.add_argument("--config-hash")
     export_bundle.add_argument("--max-new-tokens", type=int, default=16)
     export_bundle.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
@@ -220,6 +243,17 @@ def _handle_countdown_lite_build_data(
 ) -> int:
     try:
         payload = write_countdown_lite_dataset(args.repo_root)
+    except CountdownLiteError as exc:
+        parser.exit(2, f"error: {exc}\n")
+    _emit_payload(payload, json_output=args.json, formatter=_format_countdown_lite_build)
+    return 0
+
+
+def _handle_countdown_heldout_build_data(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> int:
+    try:
+        payload = write_countdown_heldout_dataset(args.repo_root)
     except CountdownLiteError as exc:
         parser.exit(2, f"error: {exc}\n")
     _emit_payload(payload, json_output=args.json, formatter=_format_countdown_lite_build)
@@ -314,7 +348,7 @@ def _handle_export_dense_bundle(parser: argparse.ArgumentParser, args: argparse.
                 max_new_tokens=args.max_new_tokens,
             )
         )
-    except ExportError as exc:
+    except ValueError as exc:
         parser.exit(2, f"error: {exc}\n")
     _emit_payload(payload, json_output=args.json, formatter=_format_sft_payload)
     return 0
