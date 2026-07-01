@@ -1,0 +1,2 @@
+class TrainerError(ValueError):
+    pass
