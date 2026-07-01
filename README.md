@@ -48,6 +48,7 @@ Use `uv run ...` for Python commands. Default local commands do not download rem
 
 - `docs/rlvr-countdown-lite.md` describes the RLVR task, baseline, and result.
 - `docs/rlvr-countdown-lite-grpo.md` summarizes the completed Countdown-Lite GRPO run.
+- `docs/rlvr-countdown-heldout-transfer.md` scores the RL and pre-RL checkpoints on held-out Countdown sets.
 - Generated export bundles are written under gitignored `exports/`.
 - Generated run reports are written under gitignored `artifacts/`.
 
@@ -63,6 +64,7 @@ src/esme_posttrain/
   dpo/                preference-tuning stage
   rl/                 verifier-reward RL stage
   launch/             shared launch validation
+  training/           shared training runtime (collate, metrics, checkpointing)
   export/             dense bundle export
 ```
 

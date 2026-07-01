@@ -8,6 +8,13 @@ Esme-214M-Base -> Esme-214M-Instruct -> Esme-214M-Chat -> Esme-214M-RL
 
 `Esme-214M-RL` is the Countdown-Lite GRPO variant of `Esme-214M-Chat`.
 
+## Method
+
+- Objective: group-normalized REINFORCE-with-baseline plus a KL penalty
+  against the frozen `Esme-214M-Chat` reference.
+- The trainer takes one gradient step per rollout batch, so a PPO-style
+  importance ratio would be identically 1 and no clipping term exists.
+
 ## Artifact
 
 - Produces: `Esme-214M-RL`
