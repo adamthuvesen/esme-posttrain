@@ -2,13 +2,6 @@
 
 Esme is a 214M-parameter language model trained from scratch. `esme-posttrain` adapts an `Esme-214M-Base` checkpoint from `esme-pretrain` into instruction-following, preference-tuned, and verifier-trained model artifacts.
 
-## Why 214M?
-
-Esme-214M is intentionally small. That makes the full LLM lifecycle easier to
-build, keeps iteration fast and costs low, and makes failures easier to
-diagnose, while still going through real training, evaluation, export,
-post-training, and inference.
-
 The standard post-training path has three stages:
 
 ```text
@@ -29,6 +22,13 @@ RLVR uses GRPO on the current Countdown-Lite verifier task.
 3. **RLVR** starts from `Esme-214M-Chat` and produces `Esme-214M-RL`. It improves a task with verifier-backed rewards. Countdown-Lite GRPO is complete, with pass@1 at 16.67% and valid-expression rate at 35.73%.
 
 The current RLVR target is Countdown-Lite: generate a short arithmetic expression that uses each supplied number exactly once and reaches the target. The reward is verifier-backed. Style rewards are intentionally out of scope.
+
+## Why 214M?
+
+Esme-214M is intentionally small. That makes the full LLM lifecycle easier to
+build, keeps iteration fast and costs low, and makes failures easier to
+diagnose, while still going through real training, evaluation, export,
+post-training, and inference.
 
 ## What Is Here
 
