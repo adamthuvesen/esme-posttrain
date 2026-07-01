@@ -76,6 +76,12 @@ class BaselineSample:
 _TOKEN_PATTERN = re.compile(r"\s*(\d+|[()+\-*])")
 
 
+def render_chat_prompt(prompt: str) -> str:
+    # Must match the single-turn chat rendering the model was trained on
+    # (sft/data.py) and the template exported for inference (export/dense_bundle.py).
+    return f"user\n{prompt}\nassistant\n"
+
+
 def build_countdown_lite_tasks() -> tuple[CountdownTask, ...]:
     specs = (
         ("train", "easy", 90),
@@ -219,10 +225,14 @@ def extract_candidate_expression(text: str) -> str | None:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     candidates = [line.removeprefix("Expression:").strip() for line in lines]
     candidates.append(text)
-    for candidate in candidates:
-        cleaned = candidate.strip().strip("`").strip()
-        if re.fullmatch(r"[0-9\s()+\-*]+", cleaned) or "/" in cleaned:
+    cleaned_candidates = [candidate.strip().strip("`").strip() for candidate in candidates]
+    for cleaned in cleaned_candidates:
+        # A whole-line expression wins over fragments salvaged from chatty lines.
+        # Division is included so a whole-line division attempt reaches the parser
+        # and is graded invalid instead of being shadowed by a salvaged fragment.
+        if re.fullmatch(r"[0-9\s()+\-*/]+", cleaned):
             return cleaned
+    for cleaned in cleaned_candidates:
         match = re.search(r"[\d(][0-9\s()+\-*]*", cleaned)
         if match:
             return match.group(0).strip()
@@ -282,7 +292,13 @@ def _difficulty_for(numbers: tuple[int, ...], target: int, solution: str) -> str
 
 
 def _stable_score(difficulty: str, numbers: tuple[int, ...], target: int, solution: str) -> int:
-    text = f"{DEFAULT_SEED}:{difficulty}:{numbers}:{target}:{solution}"
+    return stable_task_score(DEFAULT_SEED, difficulty, numbers, target, solution)
+
+
+def stable_task_score(
+    seed: int, difficulty: str, numbers: tuple[int, ...], target: int, solution: str
+) -> int:
+    text = f"{seed}:{difficulty}:{numbers}:{target}:{solution}"
     score = 0
     for char in text:
         score = (score * 131 + ord(char)) % 1_000_003

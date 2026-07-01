@@ -26,7 +26,7 @@ from esme_posttrain.launch.config_guards import (
 from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
 )
-from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows
+from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows, render_chat_prompt
 
 RUN_ID = "esme_214m_rlvr_countdown_lite_grpo"
 RUN_CARD = "run_cards/esme-214m-rl.md"
@@ -645,7 +645,6 @@ def _validate_rl_manifest(manifest_path: Path, manifest: dict[str, Any]) -> Data
     if not isinstance(data_files, list) or not data_files:
         raise LaunchError("dataset manifest.data_files must not be empty")
     split_counts: dict[str, int] = {}
-    total = 0
     for index, raw_data_file in enumerate(data_files):
         data_file = object_field(raw_data_file, f"dataset manifest.data_files[{index}]")
         if data_file.get("format") != "jsonl":
@@ -658,10 +657,7 @@ def _validate_rl_manifest(manifest_path: Path, manifest: dict[str, Any]) -> Data
             raise LaunchError(f"dataset manifest.data_files[{index}].path escapes data root")
         if not data_path.is_file():
             raise LaunchError(f"missing dataset manifest.data_files[{index}].path: {data_path}")
-        rows = load_countdown_lite_rows(manifest_path, split=None)
-        break
-    else:  # pragma: no cover - data_files emptiness is checked above.
-        rows = ()
+    rows = load_countdown_lite_rows(manifest_path, split=None)
     for row in rows:
         reward_name = row.get("reward_name")
         if reward_name not in reward_names:
@@ -740,7 +736,6 @@ def _validate_grpo(payload: dict[str, Any]) -> dict[str, Any]:
             "group_size",
             "max_new_tokens",
             "temperature",
-            "clip_epsilon",
             "kl_beta",
             "learning_rate",
             "weight_decay",
@@ -755,7 +750,7 @@ def _validate_grpo(payload: dict[str, Any]) -> dict[str, Any]:
         raise LaunchError(f"grpo.method must be {METHOD}")
     for key in ("max_steps", "prompts_per_step", "group_size", "max_new_tokens", "seed"):
         positive_int(payload[key], f"grpo.{key}")
-    for key in ("temperature", "clip_epsilon", "learning_rate", "grad_clip"):
+    for key in ("temperature", "learning_rate", "grad_clip"):
         value = payload[key]
         if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
             raise LaunchError(f"grpo.{key} must be positive")
@@ -1069,16 +1064,12 @@ def _estimate_train_tokens(
     if not rows:
         raise LaunchError(f"no Countdown-Lite rows found for split: {train_split}")
     prompt_lengths = [
-        len(tokenizer.encode(_render_chat_prompt(str(row["prompt"])), add_special_tokens=False).ids)
+        len(tokenizer.encode(render_chat_prompt(str(row["prompt"])), add_special_tokens=False).ids)
         for row in rows
     ]
     max_prompt_tokens = max(prompt_lengths)
     rollout_sequences = prompts_per_step * group_size * max_steps
     return rollout_sequences * (max_prompt_tokens + max_new_tokens)
-
-
-def _render_chat_prompt(prompt: str) -> str:
-    return f"user\n{prompt}\nassistant\n"
 
 
 def _launch_command(config_path: Path, runtime: dict[str, Any]) -> str:

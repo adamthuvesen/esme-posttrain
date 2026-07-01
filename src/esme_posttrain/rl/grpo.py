@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -15,10 +14,13 @@ from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import BUNDLE_FORMAT, file_sha256
 from esme_posttrain.modeling import DenseBackbone, soft_cap_logits
-from esme_posttrain.rl.countdown_lite import verify_countdown_lite_expression
+from esme_posttrain.rl.countdown_lite import (
+    render_chat_prompt,
+    verify_countdown_lite_expression,
+)
 from esme_posttrain.run_artifacts import write_json
-from esme_posttrain.sft.data import IGNORE_INDEX
 from esme_posttrain.training.checkpointing import save_training_checkpoint
+from esme_posttrain.training.collate import IGNORE_INDEX
 from esme_posttrain.training.metrics import append_metric
 from esme_posttrain.training.runtime import (
     lr_lambda,
@@ -42,7 +44,6 @@ class CountdownGRPOTrainerConfig:
     group_size: int
     max_new_tokens: int
     temperature: float
-    clip_epsilon: float
     kl_beta: float
     learning_rate: float
     weight_decay: float
@@ -81,8 +82,6 @@ class CountdownGRPOTrainerConfig:
                 raise CountdownGRPOTrainerError(f"{field_name} must be positive")
         if self.temperature <= 0:
             raise CountdownGRPOTrainerError("temperature must be positive")
-        if self.clip_epsilon <= 0:
-            raise CountdownGRPOTrainerError("clip_epsilon must be positive")
         if self.kl_beta < 0:
             raise CountdownGRPOTrainerError("kl_beta must be non-negative")
         if self.weight_decay < 0:
@@ -236,9 +235,7 @@ def run_countdown_lite_grpo(
     write_json(output_dir / "data-report.json", _data_report(train_rows, config))
     tokenizer.save(str(output_dir / "tokenizer.json"))
 
-    shuffled_rows = list(train_rows)
-    generator = torch.Generator(device=device)
-    generator.manual_seed(config.seed)
+    cycled_rows = list(train_rows)
 
     rollout_tokens = 0
     total_rollouts = 0
@@ -252,7 +249,7 @@ def run_countdown_lite_grpo(
     for step in range(1, config.max_steps + 1):
         last_step = step
         step_rows = _cyclic_rows(
-            shuffled_rows,
+            cycled_rows,
             start=(step - 1) * config.prompts_per_step,
             count=config.prompts_per_step,
         )
@@ -278,19 +275,17 @@ def run_countdown_lite_grpo(
             rollouts, device=device, pad_token_id=config.pad_token_id
         )
         with torch.no_grad():
-            old_logp = _sequence_logprob(policy, input_ids, labels)
             reference_logp = _sequence_logprob(reference, input_ids, labels)
         advantages = _group_advantages(rollouts).to(device)
 
         policy.train()
         optimizer.zero_grad(set_to_none=True)
         with precision_context(config.precision, device):
+            # One gradient step per rollout batch, so this is plain
+            # REINFORCE-with-baseline plus a KL penalty against the reference;
+            # a PPO-style ratio would be identically 1 here.
             policy_logp = _sequence_logprob(policy, input_ids, labels)
-            ratio = torch.exp(policy_logp - old_logp)
-            clipped_ratio = torch.clamp(
-                ratio, min=1.0 - config.clip_epsilon, max=1.0 + config.clip_epsilon
-            )
-            objective = torch.minimum(ratio * advantages, clipped_ratio * advantages)
+            objective = advantages * policy_logp
             log_ratio = reference_logp - policy_logp
             kl_penalty = torch.exp(log_ratio) - log_ratio - 1.0
             loss = -objective.mean() + config.kl_beta * kl_penalty.mean()
@@ -307,7 +302,6 @@ def run_countdown_lite_grpo(
             learning_rate=float(scheduler.get_last_lr()[0]),
             rollout_tokens=rollout_tokens,
             advantages=advantages.detach().cpu(),
-            old_logp=old_logp.detach().cpu(),
             policy_logp=policy_logp.detach().cpu(),
             reference_logp=reference_logp.detach().cpu(),
         )
@@ -421,7 +415,7 @@ def _sample_rollouts(
         for group_index, row in enumerate(rows):
             prompt_ids = tuple(
                 tokenizer.encode(
-                    _render_chat_prompt(str(row["prompt"])), add_special_tokens=False
+                    render_chat_prompt(str(row["prompt"])), add_special_tokens=False
                 ).ids
             )
             if not prompt_ids:
@@ -534,7 +528,6 @@ def _step_metrics(
     learning_rate: float,
     rollout_tokens: int,
     advantages: torch.Tensor,
-    old_logp: torch.Tensor,
     policy_logp: torch.Tensor,
     reference_logp: torch.Tensor,
 ) -> dict[str, Any]:
@@ -552,7 +545,6 @@ def _step_metrics(
         "train/exact_solve_rate": exact / len(rollouts),
         "train/advantage_mean": float(advantages.mean()),
         "train/advantage_abs_mean": float(advantages.abs().mean()),
-        "train/old_logp_mean": float(old_logp.mean()),
         "train/policy_logp_mean": float(policy_logp.mean()),
         "train/reference_logp_mean": float(reference_logp.mean()),
         "train/learning_rate": learning_rate,
@@ -572,10 +564,6 @@ def _cyclic_rows(
     rows: list[dict[str, Any]], *, start: int, count: int
 ) -> tuple[dict[str, Any], ...]:
     return tuple(rows[(start + offset) % len(rows)] for offset in range(count))
-
-
-def _render_chat_prompt(prompt: str) -> str:
-    return f"user\n{prompt}\nassistant\n"
 
 
 def _truncate_at_eos_inclusive(token_ids: list[int], eos_id: int | None) -> list[int]:
@@ -614,7 +602,6 @@ def _config_payload(config: CountdownGRPOTrainerConfig) -> dict[str, Any]:
         "group_size": config.group_size,
         "max_new_tokens": config.max_new_tokens,
         "temperature": config.temperature,
-        "clip_epsilon": config.clip_epsilon,
         "kl_beta": config.kl_beta,
         "learning_rate": config.learning_rate,
         "weight_decay": config.weight_decay,
@@ -769,9 +756,3 @@ def _write_manifest(
 def _eos_token_ids(tokenizer: Tokenizer) -> list[int]:
     eos_id = tokenizer.token_to_id("<eos>")
     return [int(eos_id)] if eos_id is not None else []
-
-
-def remove_existing_output_dir(path: Path) -> None:
-    """Remove ignored run output from a previous local attempt."""
-    if path.exists():
-        shutil.rmtree(path)

@@ -16,10 +16,18 @@ from esme_posttrain.bundle import load_dense_backbone_bundle
 from esme_posttrain.rl.countdown_lite import (
     BaselineSample,
     load_countdown_lite_rows,
+    render_chat_prompt,
     verify_countdown_lite_expression,
 )
 
 BaselineProgressCallback = Callable[[str, dict[str, Any]], None]
+
+PASS_AT_KS = (1, 8, 32)
+
+
+def emitted_pass_at_keys(samples_per_task: int) -> tuple[str, ...]:
+    """pass@k labels this run can honestly report: only k <= samples_per_task."""
+    return tuple(f"pass@{k}" for k in PASS_AT_KS if k <= samples_per_task)
 
 
 @dataclass(frozen=True)
@@ -119,7 +127,7 @@ def run_countdown_lite_baseline(request: CountdownBaselineRequest) -> dict[str, 
             samples_completed=samples_completed,
             task_id=task_id,
         )
-        prompt = _render_chat_prompt(str(row["prompt"]))
+        prompt = render_chat_prompt(str(row["prompt"]))
         prompt_ids = tokenizer.encode(prompt, add_special_tokens=False).ids
         if not prompt_ids:
             raise ValueError(f"task {row['task_id']} produced an empty prompt")
@@ -406,10 +414,6 @@ class _BaselineProgress:
         return self._request.time_source() - self._started
 
 
-def _render_chat_prompt(prompt: str) -> str:
-    return f"user\n{prompt}\nassistant\n"
-
-
 def _decode_batch(
     *,
     model: Any,
@@ -467,8 +471,10 @@ def _as_int_tuple(value: object) -> tuple[int, ...]:
 
 def _task_result(row: dict[str, Any], samples: list[BaselineSample]) -> dict[str, object]:
     pass_at = {}
-    for k in (1, 8, 32):
-        prefix = samples[: min(k, len(samples))]
+    for k in PASS_AT_KS:
+        if k > len(samples):
+            continue
+        prefix = samples[:k]
         pass_at[f"pass@{k}"] = any(sample.is_exact_solve for sample in prefix)
     return {
         "task_id": row["task_id"],
@@ -502,6 +508,7 @@ def _summarize(
     sample_count = len(all_results) * request.samples_per_task
     valid_count = sum(int(result["valid_samples"]) for result in all_results)
     exact_count = sum(int(result["exact_samples"]) for result in all_results)
+    pass_at_keys = emitted_pass_at_keys(request.samples_per_task)
     summary = {
         "split": request.split,
         "task_count": len(rows),
@@ -510,13 +517,15 @@ def _summarize(
         "seed": request.seed,
         "bundle_path": str(request.bundle_path.expanduser().resolve()),
         "manifest_path": str(request.manifest_path.expanduser().resolve()),
-        "pass@1": _pass_rate(all_results, "pass@1"),
-        "pass@8": _pass_rate(all_results, "pass@8"),
-        "pass@32": _pass_rate(all_results, "pass@32"),
+        **{key: _pass_rate(all_results, key) for key in pass_at_keys},
         "valid_expression_rate": valid_count / sample_count,
         "exact_solve_rate": exact_count / sample_count,
-        "difficulty_breakdown": _difficulty_breakdown(all_results, request.samples_per_task),
-        "decision": _decision(all_results, valid_count, exact_count),
+        "difficulty_breakdown": _difficulty_breakdown(
+            all_results, request.samples_per_task, pass_at_keys
+        ),
+        "decision": _decision(
+            all_results, valid_count, exact_count, samples_per_task=request.samples_per_task
+        ),
         "tasks": all_results,
     }
     return summary
@@ -527,7 +536,9 @@ def _pass_rate(results: list[dict[str, object]], key: str) -> float:
 
 
 def _difficulty_breakdown(
-    results: list[dict[str, object]], samples_per_task: int
+    results: list[dict[str, object]],
+    samples_per_task: int,
+    pass_at_keys: tuple[str, ...],
 ) -> dict[str, dict[str, object]]:
     grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
     for result in results:
@@ -538,9 +549,7 @@ def _difficulty_breakdown(
         sample_count = len(bucket) * samples_per_task
         breakdown[difficulty] = {
             "tasks": len(bucket),
-            "pass@1": _pass_rate(bucket, "pass@1"),
-            "pass@8": _pass_rate(bucket, "pass@8"),
-            "pass@32": _pass_rate(bucket, "pass@32"),
+            **{key: _pass_rate(bucket, key) for key in pass_at_keys},
             "valid_expression_rate": (
                 sum(int(result["valid_samples"]) for result in bucket) / sample_count
             ),
@@ -550,10 +559,17 @@ def _difficulty_breakdown(
     return breakdown
 
 
-def _decision(results: list[dict[str, object]], valid_count: int, exact_count: int) -> str:
+def _decision(
+    results: list[dict[str, object]],
+    valid_count: int,
+    exact_count: int,
+    *,
+    samples_per_task: int,
+) -> str:
     easy_results = [result for result in results if result["difficulty"] == "easy"]
-    easy_pass32 = _pass_rate(easy_results, "pass@32") if easy_results else 0.0
-    if exact_count > 0 and easy_pass32 > 0:
+    top_pass_key = emitted_pass_at_keys(samples_per_task)[-1]
+    easy_pass_top = _pass_rate(easy_results, top_pass_key) if easy_results else 0.0
+    if exact_count > 0 and easy_pass_top > 0:
         return "GRPO-ready"
     if valid_count > 0:
         return "needs SFT/hint cold-start"
@@ -561,6 +577,7 @@ def _decision(results: list[dict[str, object]], valid_count: int, exact_count: i
 
 
 def _markdown_report(report: dict[str, object]) -> str:
+    pass_at_keys = emitted_pass_at_keys(int(report["samples_per_task"]))
     lines = [
         "# RLVR Countdown-Lite Baseline",
         "",
@@ -569,27 +586,27 @@ def _markdown_report(report: dict[str, object]) -> str:
         f"- Split: `{report['split']}`",
         f"- Tasks: `{report['task_count']}`",
         f"- Samples per task: `{report['samples_per_task']}`",
-        f"- pass@1: `{_percent(float(report['pass@1']))}`",
-        f"- pass@8: `{_percent(float(report['pass@8']))}`",
-        f"- pass@32: `{_percent(float(report['pass@32']))}`",
+        *(f"- {key}: `{_percent(float(report[key]))}`" for key in pass_at_keys),
         f"- valid-expression rate: `{_percent(float(report['valid_expression_rate']))}`",
         f"- exact-solve rate: `{_percent(float(report['exact_solve_rate']))}`",
         f"- Decision: `{report['decision']}`",
         "",
         "## Difficulty Breakdown",
         "",
-        "| Difficulty | Tasks | pass@1 | pass@8 | pass@32 | Valid expressions | Exact solves |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Difficulty | Tasks | "
+        + " | ".join(pass_at_keys)
+        + " | Valid expressions | Exact solves |",
+        "| --- | ---: | " + " | ".join("---:" for _key in pass_at_keys) + " | ---: | ---: |",
     ]
     breakdown = report["difficulty_breakdown"]
     if not isinstance(breakdown, dict):
         raise ValueError("difficulty_breakdown must be a dict")
     for difficulty, raw_bucket in sorted(breakdown.items()):
         bucket = dict(raw_bucket)
+        pass_cells = " | ".join(_percent(float(bucket[key])) for key in pass_at_keys)
         lines.append(
             "| "
-            f"{difficulty} | {bucket['tasks']} | {_percent(float(bucket['pass@1']))} | "
-            f"{_percent(float(bucket['pass@8']))} | {_percent(float(bucket['pass@32']))} | "
+            f"{difficulty} | {bucket['tasks']} | {pass_cells} | "
             f"{_percent(float(bucket['valid_expression_rate']))} | "
             f"{_percent(float(bucket['exact_solve_rate']))} |"
         )

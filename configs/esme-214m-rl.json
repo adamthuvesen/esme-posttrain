@@ -40,7 +40,6 @@
     "group_size": 8,
     "max_new_tokens": 6,
     "temperature": 0.8,
-    "clip_epsilon": 0.2,
     "kl_beta": 0.02,
     "learning_rate": 0.000002,
     "weight_decay": 0.0,

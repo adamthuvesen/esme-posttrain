@@ -38,6 +38,21 @@ def test_exact_verifier_rejects_invalid_expressions(candidate: str, reason: str)
     assert reason in result.reason
 
 
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        "The numbers are 2 and 3 and 4\n(2 + 3) * 4",
+        "either/or, hmm\n(2 + 3) * 4",
+        "Expression: (2 + 3) * 4",
+    ],
+)
+def test_exact_verifier_prefers_expression_line_over_preamble(candidate: str) -> None:
+    result = verify_countdown_lite_expression(candidate, numbers=(2, 3, 4), target=20)
+
+    assert result.is_exact_solve is True
+    assert result.expression == "(2 + 3) * 4"
+
+
 def test_countdown_lite_tasks_are_deterministic_and_bucketed() -> None:
     tasks = build_countdown_lite_tasks()
 
@@ -74,8 +89,24 @@ def test_countdown_lite_decision_requires_exact_signal() -> None:
     valid_but_no_exact = [{"difficulty": "easy", "pass@32": False}]
     exact_easy_signal = [{"difficulty": "easy", "pass@32": True}]
 
-    assert _decision(no_signal, valid_count=0, exact_count=0) == "blocked-with-evidence"
     assert (
-        _decision(valid_but_no_exact, valid_count=2, exact_count=0) == "needs SFT/hint cold-start"
+        _decision(no_signal, valid_count=0, exact_count=0, samples_per_task=32)
+        == "blocked-with-evidence"
     )
-    assert _decision(exact_easy_signal, valid_count=2, exact_count=1) == "GRPO-ready"
+    assert (
+        _decision(valid_but_no_exact, valid_count=2, exact_count=0, samples_per_task=32)
+        == "needs SFT/hint cold-start"
+    )
+    assert (
+        _decision(exact_easy_signal, valid_count=2, exact_count=1, samples_per_task=32)
+        == "GRPO-ready"
+    )
+
+
+def test_countdown_lite_decision_uses_largest_honest_pass_at_k() -> None:
+    one_sample_signal = [{"difficulty": "easy", "pass@1": True}]
+
+    assert (
+        _decision(one_sample_signal, valid_count=1, exact_count=1, samples_per_task=1)
+        == "GRPO-ready"
+    )

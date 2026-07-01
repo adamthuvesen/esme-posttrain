@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import replace
@@ -17,6 +18,7 @@ from esme_posttrain.rl.launch import (
     full_launch_blockers,
     load_rlvr_config,
     pipeline_smoke_grpo_settings,
+    validate_rl_task_manifest,
     validate_rlvr_payload,
 )
 
@@ -402,6 +404,25 @@ def test_rl_style_terms_are_not_reward_terms(
     assert "uses eval-observation terms" in capsys.readouterr().err
 
 
+def test_rl_manifest_validates_every_data_file(tmp_path: Path) -> None:
+    manifest = _load_json(REPO_ROOT / "fixtures" / "manifests" / "rl_tasks_tiny.json")
+    datasets_dir = tmp_path / "datasets"
+    datasets_dir.mkdir()
+    shutil.copy(
+        REPO_ROOT / "fixtures" / "datasets" / "rl_tasks_tiny.jsonl",
+        datasets_dir / "rl_tasks_tiny.jsonl",
+    )
+    _as_list(manifest["data_files"]).append(
+        {"path": "../datasets/missing.jsonl", "format": "jsonl", "records": 1}
+    )
+    manifests_dir = tmp_path / "manifests"
+    manifests_dir.mkdir()
+    manifest_path = _write_json(manifests_dir / "rl_tasks.json", manifest)
+
+    with pytest.raises(LaunchError, match=r"missing dataset manifest\.data_files\[1\]\.path"):
+        validate_rl_task_manifest(manifest_path)
+
+
 def test_output_dir_must_stay_under_runs(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -445,6 +466,14 @@ def test_config_requires_stage_rlvr_wandb_tag() -> None:
     _as_object(config["monitoring"])["wandb_tags"] = ["countdown-lite"]
 
     with pytest.raises(LaunchError, match="wandb_tags must include stage=rlvr"):
+        validate_rlvr_payload(config, RL_FIXTURE_CONFIG)
+
+
+def test_config_rejects_removed_clip_epsilon_key() -> None:
+    config = _load_absolute_fixture_config()
+    _as_object(config["grpo"])["clip_epsilon"] = 0.2
+
+    with pytest.raises(LaunchError, match="grpo has unsupported keys: clip_epsilon"):
         validate_rlvr_payload(config, RL_FIXTURE_CONFIG)
 
 

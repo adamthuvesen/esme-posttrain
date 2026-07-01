@@ -6,7 +6,12 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from esme_posttrain.rl.launch import FULL_EVAL_PROFILE, RLVRLaunchConfig, build_eval_profile
+from esme_posttrain.rl.launch import (
+    FULL_EVAL_PROFILE,
+    FULL_RUN_SPEND_CAP_USD,
+    RLVRLaunchConfig,
+    build_eval_profile,
+)
 
 
 def write_grpo_report_artifacts(
@@ -24,12 +29,7 @@ def write_grpo_report_artifacts(
         modal_call_id=modal_call_id,
         launch_command=launch_command,
     )
-    config.report_path.parent.mkdir(parents=True, exist_ok=True)
-    config.report_path.write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    config.doc_path.parent.mkdir(parents=True, exist_ok=True)
-    config.doc_path.write_text(_markdown_report(report), encoding="utf-8")
+    write_grpo_report(config, report)
     return report
 
 
@@ -139,7 +139,7 @@ def build_grpo_report(
             ),
         },
         "spend": {
-            "cap_usd": 25.0,
+            "cap_usd": FULL_RUN_SPEND_CAP_USD,
             "projected_cost_usd": config.estimated_full_cost_usd,
             "actual_or_estimated_cost_usd": _actual_cost(run_payload),
             "runtime_spend_stop_usd": config.runtime["full_run_runtime_spend_stop_usd"],
@@ -201,11 +201,6 @@ def _baseline_from_acceptance(config: RLVRLaunchConfig) -> dict[str, Any]:
         "exact_solve_rate": acceptance["baseline_exact_solve_rate"],
         "task_count": eval_profile["tasks"],
         "samples_per_task": eval_profile["samples_per_task"],
-        "difficulty_breakdown": {
-            "easy": {"pass@32": 0.2},
-            "medium": {"pass@32": 0.0},
-            "hard": {"pass@32": 0.0},
-        },
     }
 
 
@@ -293,7 +288,12 @@ def _validate_modal_evidence(modal_evidence: dict[str, Any]) -> None:
 def _ready_for_hq_inspection(result: str, run_payload: dict[str, Any]) -> bool:
     if "ready_for_hq_inspection" in run_payload:
         return bool(run_payload["ready_for_hq_inspection"])
-    if result in {"RLVR-improved", "no-improvement", "pipeline_smoke_passed"}:
+    if result in {
+        "RLVR-improved",
+        "no-improvement",
+        "not-acceptance-evidence",
+        "pipeline_smoke_passed",
+    }:
         return True
     return bool(run_payload.get("blocker") and run_payload.get("cost"))
 
@@ -301,6 +301,8 @@ def _ready_for_hq_inspection(result: str, run_payload: dict[str, Any]) -> bool:
 def _recommendation(result: str, before: Any, after: Any) -> str:
     if result == "pipeline_smoke_passed":
         return "review smoke evidence, then decide full acceptance"
+    if result == "not-acceptance-evidence":
+        return "rerun the full acceptance eval profile before claiming improvement"
     if result == "RLVR-improved":
         return "continue curriculum"
     if result == "no-improvement":

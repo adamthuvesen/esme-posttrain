@@ -17,12 +17,14 @@ import torch
 from esme_posttrain.bundle import load_dense_backbone_bundle
 from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows
 from esme_posttrain.rl.countdown_lite_baseline import (
+    PASS_AT_KS,
     CountdownBaselineRequest,
     run_countdown_lite_baseline,
 )
 from esme_posttrain.rl.grpo import CountdownGRPOTrainerConfig, run_countdown_lite_grpo
 from esme_posttrain.rl.launch import (
     EXPECTED_ARTIFACTS,
+    FULL_EVAL_PROFILE,
     PIPELINE_SMOKE_PROFILE,
     RLVRLaunchConfig,
     build_eval_profile,
@@ -238,7 +240,6 @@ def run_countdown_lite_grpo_job(
                 group_size=int(grpo_settings["group_size"]),
                 max_new_tokens=int(grpo_settings["max_new_tokens"]),
                 temperature=float(grpo_settings["temperature"]),
-                clip_epsilon=float(grpo_settings["clip_epsilon"]),
                 kl_beta=float(grpo_settings["kl_beta"]),
                 learning_rate=float(grpo_settings["learning_rate"]),
                 weight_decay=float(grpo_settings["weight_decay"]),
@@ -327,7 +328,7 @@ def run_countdown_lite_grpo_job(
             "projected_cost_usd": config.estimated_full_cost_usd,
             "grpo_result": "pipeline_smoke_passed"
             if pipeline_smoke
-            else _result_label(before, after),
+            else _result_label(before, after, eval_profile=str(eval_settings["profile"])),
             "trainer": result.to_dict(),
             "before": _selected_eval_metrics(before, eval_profile=eval_settings["profile"]),
             "after": _selected_eval_metrics(after, eval_profile=eval_settings["profile"]),
@@ -464,9 +465,11 @@ def _log_eval_summary(
             "event": "eval",
             "phase": label,
             "eval/step": step,
-            f"{prefix}/pass@1": report["pass@1"],
-            f"{prefix}/pass@8": report["pass@8"],
-            f"{prefix}/pass@32": report["pass@32"],
+            **{
+                f"{prefix}/{key}": report[key]
+                for key in (f"pass@{k}" for k in PASS_AT_KS)
+                if key in report
+            },
             f"{prefix}/valid_expression_rate": report["valid_expression_rate"],
             f"{prefix}/exact_solve_rate": report["exact_solve_rate"],
             f"{prefix}/tasks": report["task_count"],
@@ -572,9 +575,7 @@ def _select_device(*, require_cuda: bool) -> torch.device:
 def _selected_eval_metrics(report: dict[str, Any], *, eval_profile: str) -> dict[str, Any]:
     return {
         "eval_profile": eval_profile,
-        "pass@1": report["pass@1"],
-        "pass@8": report["pass@8"],
-        "pass@32": report["pass@32"],
+        **{key: report[key] for key in (f"pass@{k}" for k in PASS_AT_KS) if key in report},
         "valid_expression_rate": report["valid_expression_rate"],
         "exact_solve_rate": report["exact_solve_rate"],
         "task_count": report["task_count"],
@@ -604,14 +605,27 @@ def _model_id(manifest: dict[str, Any] | None, *, fallback: str) -> str:
     return fallback
 
 
-def _result_label(before: dict[str, Any], after: dict[str, Any]) -> str:
+def _result_label(before: dict[str, Any], after: dict[str, Any], *, eval_profile: str) -> str:
+    shared_pass_key = _largest_shared_pass_at_key(before, after)
+    if eval_profile != FULL_EVAL_PROFILE or shared_pass_key is None:
+        # A reduced eval profile (or missing pass@k evidence) cannot back an
+        # "RLVR-improved" acceptance claim.
+        return "not-acceptance-evidence"
     if float(after["valid_expression_rate"]) > float(before["valid_expression_rate"]):
         return "RLVR-improved"
     if float(after["exact_solve_rate"]) > float(before["exact_solve_rate"]):
         return "RLVR-improved"
-    if float(after["pass@32"]) > float(before["pass@32"]):
+    if float(after[shared_pass_key]) > float(before[shared_pass_key]):
         return "RLVR-improved"
     return "no-improvement"
+
+
+def _largest_shared_pass_at_key(before: dict[str, Any], after: dict[str, Any]) -> str | None:
+    for k in sorted(PASS_AT_KS, reverse=True):
+        key = f"pass@{k}"
+        if key in before and key in after:
+            return key
+    return None
 
 
 def _assert_required_artifacts(output_dir: Path) -> None:

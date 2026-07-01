@@ -35,7 +35,9 @@ def test_countdown_lite_grpo_fixture_job_writes_required_artifacts(tmp_path: Pat
     )
 
     assert payload["status"] == "modal_full_countdown_lite_grpo_complete"
-    assert payload["grpo_result"] in {"RLVR-improved", "no-improvement"}
+    # The fixture eval profile is full_eval_1x1, so the run cannot claim an
+    # acceptance verdict either way.
+    assert payload["grpo_result"] == "not-acceptance-evidence"
     assert payload["gsm8k_lite"]["status"] == "not_run"
     assert payload["wandb_run"] is None
     assert set(payload["required_artifacts_present"]) == set(EXPECTED_ARTIFACTS)
@@ -162,6 +164,37 @@ def test_countdown_lite_baseline_resumes_from_partial_without_duplicates(
     assert partial_payload["sample_end"] == 1
     assert first["pass@1"] == resumed["pass@1"]
     assert resumed["partial_path"] == str(partial_path)
+
+
+def test_one_sample_baseline_reports_only_pass_at_1(tmp_path: Path) -> None:
+    config = load_rlvr_config(RL_FIXTURE_CONFIG)
+
+    report = run_countdown_lite_baseline(
+        CountdownBaselineRequest(
+            manifest_path=config.dataset_manifest_path,
+            bundle_path=config.input_bundle_path,
+            output_dir=tmp_path / "one-sample-baseline",
+            samples_per_task=1,
+            max_tasks=1,
+            max_new_tokens=2,
+        )
+    )
+
+    assert "pass@1" in report
+    assert "pass@8" not in report
+    assert "pass@32" not in report
+    for task_result in report["tasks"]:
+        assert "pass@1" in task_result
+        assert "pass@8" not in task_result
+        assert "pass@32" not in task_result
+    for bucket in report["difficulty_breakdown"].values():
+        assert "pass@1" in bucket
+        assert "pass@8" not in bucket
+        assert "pass@32" not in bucket
+    markdown = Path(report["markdown_path"]).read_text(encoding="utf-8")
+    assert "pass@1" in markdown
+    assert "pass@8" not in markdown
+    assert "pass@32" not in markdown
 
 
 def test_countdown_lite_grpo_fixture_logs_wandb_offline(
