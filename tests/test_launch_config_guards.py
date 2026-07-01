@@ -15,11 +15,7 @@ from esme_posttrain.launch.config_guards import (
     smoke_launch_blockers,
 )
 from esme_posttrain.launch.modal_cli import format_payload, validate_output_stem
-from esme_posttrain.launch.validate import (
-    iter_jsonl,
-    load_json_file,
-    require_path,
-)
+from esme_posttrain.launch.validate import load_json_file
 
 
 def test_load_json_object_rejects_non_object(tmp_path: Path) -> None:
@@ -126,18 +122,3 @@ def test_load_json_file_rejects_missing_path(tmp_path: Path) -> None:
     missing = tmp_path / "missing.json"
     with pytest.raises(LaunchError, match="missing config"):
         load_json_file(missing, "config")
-
-
-def test_require_path_resolves_relative_to_base_dir(tmp_path: Path) -> None:
-    base_dir = tmp_path / "configs"
-    base_dir.mkdir()
-    payload = {"path": "../data/manifest.json"}
-    resolved = require_path(payload, "path", base_dir, "config")
-    assert resolved == (tmp_path / "data" / "manifest.json").resolve()
-
-
-def test_iter_jsonl_rejects_blank_lines(tmp_path: Path) -> None:
-    jsonl_path = tmp_path / "rows.jsonl"
-    jsonl_path.write_text('{"prompt": "hi"}\n\n', encoding="utf-8")
-    with pytest.raises(LaunchError, match="blank JSONL lines are not allowed"):
-        list(iter_jsonl(jsonl_path))

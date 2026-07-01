@@ -5,9 +5,10 @@ from typing import Protocol, TypeVar
 
 import torch
 
-from esme_posttrain.sft.data import IGNORE_INDEX
 from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.runtime import resolve_torch_device
+
+IGNORE_INDEX = -100
 
 
 class CollatableSequence(Protocol):

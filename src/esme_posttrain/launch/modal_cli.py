@@ -88,3 +88,21 @@ def command_with_output_stem(
     if output_stem == default_stem:
         return command
     return f"{env_var}='{output_stem}' {command}"
+
+
+def with_full_output_stem(
+    payload: dict[str, Any],
+    *,
+    full_launch_command: str,
+    volume_output_dir: str,
+) -> dict[str, Any]:
+    updated = {
+        **payload,
+        "full_launch_command": full_launch_command,
+        "volume_output_dir": volume_output_dir,
+    }
+    preflight = dict(updated.get("preflight", {}))
+    preflight["exact_launch_command"] = full_launch_command
+    preflight["volume_output_dir"] = volume_output_dir
+    updated["preflight"] = preflight
+    return updated

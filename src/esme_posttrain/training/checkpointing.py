@@ -103,10 +103,12 @@ def latest_checkpoint_path(output_dir: Path) -> Path | None:
     if final.is_file():
         try:
             loaded = load_training_checkpoint(final)
-        except CheckpointError:
-            loaded = None
-        if loaded is not None:
-            candidates.append((loaded.step, final))
+        except CheckpointError as error:
+            raise CheckpointError(
+                f"final checkpoint is unreadable; refusing to silently resume "
+                f"from an older step: {final}: {error}"
+            ) from error
+        candidates.append((loaded.step, final))
     if not candidates:
         return None
     return max(candidates, key=lambda item: item[0])[1]

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from esme_posttrain.launch.errors import LaunchError
+from esme_posttrain.launch.validate import load_json_file
 
 LAUNCH_APPROVAL_FLAG = "--approved"
 MODAL_CLIENT_VERSION = "1.5.1"
@@ -23,9 +24,6 @@ def load_json_object(config_path: Path) -> tuple[Path, dict[str, Any]]:
         raise LaunchError(f"config path does not exist: {resolved_path}")
     if not resolved_path.is_file():
         raise LaunchError(f"config path must be a file: {resolved_path}")
-
-    from esme_posttrain.launch.validate import load_json_file
-
     return resolved_path, dict(load_json_file(resolved_path, "config"))
 
 
@@ -45,13 +43,13 @@ def smoke_launch_blockers(
     *,
     runtime: dict[str, Any],
     estimated_smoke_cost_usd: float,
-    smoke_cap_usd: float = SMOKE_SPEND_CAP_USD,
 ) -> list[str]:
+    cap_label = f"the approved ${SMOKE_SPEND_CAP_USD:.0f} smoke cap"
     blockers: list[str] = []
-    if float(runtime["smoke_max_cost_usd"]) > smoke_cap_usd:
-        blockers.append("runtime.smoke_max_cost_usd exceeds the approved $2 smoke cap")
-    if float(runtime["runtime_spend_stop_usd"]) > smoke_cap_usd:
-        blockers.append("runtime.runtime_spend_stop_usd exceeds the approved $2 smoke cap")
+    if float(runtime["smoke_max_cost_usd"]) > SMOKE_SPEND_CAP_USD:
+        blockers.append(f"runtime.smoke_max_cost_usd exceeds {cap_label}")
+    if float(runtime["runtime_spend_stop_usd"]) > SMOKE_SPEND_CAP_USD:
+        blockers.append(f"runtime.runtime_spend_stop_usd exceeds {cap_label}")
     if estimated_smoke_cost_usd > float(runtime["smoke_max_cost_usd"]):
         blockers.append("projected Modal smoke cost exceeds runtime.smoke_max_cost_usd")
     if int(runtime["timeout_hours"]) > 24:
