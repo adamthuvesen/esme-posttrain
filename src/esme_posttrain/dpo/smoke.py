@@ -133,15 +133,17 @@ def run_dpo_cpu_fixture(
             eval_interval=5,
             checkpoint_interval=10,
             log_interval=5,
-            sample_new_tokens=6,
             wandb=WandbConfig(
                 enabled=wandb_enabled,
                 project=str(config.payload["monitoring"]["wandb_project"]),
-                run_name=f"{config.run_id}-modal-smoke" if wandb_enabled else None,
+                run_name=f"{config.run_id}-local-cpu-fixture" if wandb_enabled else None,
                 tags=tuple(config.payload["monitoring"]["wandb_tags"]) + ("smoke", "fixture"),
                 group=config.run_id,
                 job_type="smoke",
-                notes="Bounded Modal smoke uses the tiny DPO fixture, not full UltraFeedback.",
+                notes=(
+                    "No-spend local CPU fixture on tiny preference pairs; the Modal "
+                    "smoke runs the real DPO path on UltraFeedback instead."
+                ),
                 extra_config={
                     "model": config.artifact_name,
                     "stage": "dpo",

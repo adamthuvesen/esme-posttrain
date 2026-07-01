@@ -62,7 +62,7 @@ def export_dense_bundle(request: ExportRequest) -> dict[str, Any]:
         "format_version": 1,
         "format": BUNDLE_FORMAT,
         "key_format": BUNDLE_FORMAT,
-        "state_dict_key": "model_state",
+        "state_dict_key": "state_dict",
         "model_config": checkpoint.config.to_dict(),
         "state_dict": checkpoint.model.state_dict(),
     }
@@ -243,11 +243,10 @@ def _readme(*, request: ExportRequest, checkpoint_step: int, eos_token_ids: list
 
 
 def _eos_token_ids(tokenizer: Tokenizer) -> list[int]:
-    ids = [tokenizer.token_to_id("<eos>")]
-    values = sorted({int(token_id) for token_id in ids if token_id is not None})
-    if not values:
+    eos_id = tokenizer.token_to_id("<eos>")
+    if eos_id is None:
         raise ExportError("tokenizer is missing required <eos> token")
-    return values
+    return [int(eos_id)]
 
 
 def _copy_file_atomically(source: Path, target: Path) -> None:

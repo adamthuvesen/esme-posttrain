@@ -37,6 +37,7 @@ from esme_posttrain.dpo.full import (
     DPOFullRunError,
     _assert_accepted_dpo_result,
     _assert_data_safe,
+    _assert_prompt_masking,
 )
 from esme_posttrain.dpo.launch import (
     DPO_FULL_RUN_SPEND_CAP_USD,
@@ -470,6 +471,42 @@ def test_chat_eval_blocks_gpu_mismatch() -> None:
     assert any("DPO_MODAL_GPU must match runtime.selected_gpu" in b for b in blockers)
 
 
+def test_chat_eval_command_and_blockers_use_the_applied_timeout() -> None:
+    config = load_dpo_config(CONFIG_PATH)
+    preflight = build_chat_eval_preflight(config, modal_gpu="A100", timeout_hours=0.25)
+    # The fractional timeout must survive into the emitted command verbatim.
+    assert "DPO_TIMEOUT_HOURS=0.25" in preflight["chat_eval_command"]
+    assert preflight["runtime"]["timeout_hours"] == 0.25
+    assert preflight["launch_blockers"] == []
+    # A 1h timeout ceiling exceeds the $1 cap and must block instead of running.
+    blockers = chat_eval_blockers(config, modal_gpu="A100", timeout_hours=1.0)
+    assert any("spend cap" in b for b in blockers)
+
+
+def test_modal_chat_dpo_parses_fractional_timeout_hours(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
+
+    from scripts import modal_chat_dpo
+
+    monkeypatch.delenv("DPO_TIMEOUT_HOURS", raising=False)
+    try:
+        reloaded = importlib.reload(modal_chat_dpo)
+        assert reloaded.DPO_TIMEOUT_HOURS == 1.0
+        # Chat eval keeps the documented 0.25h ceiling when the env is unset.
+        assert reloaded.DPO_CHAT_EVAL_TIMEOUT_HOURS == 0.25
+        monkeypatch.setenv("DPO_TIMEOUT_HOURS", "0.25")
+        reloaded = importlib.reload(modal_chat_dpo)
+        assert reloaded.DPO_TIMEOUT_HOURS == 0.25
+        assert reloaded.DPO_CHAT_EVAL_TIMEOUT_HOURS == 0.25
+        # Modal wants whole seconds; 0.25h must become 900s, never 0.
+        assert int(reloaded.DPO_TIMEOUT_HOURS * 3600) == 900
+    finally:
+        monkeypatch.delenv("DPO_TIMEOUT_HOURS", raising=False)
+        importlib.reload(modal_chat_dpo)
+
+
 # --- CPU fixture: margin up, logp tracked, checkpoint round-trip ---------------
 
 
@@ -547,6 +584,34 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
     )
     with pytest.raises(DPOFullRunError, match="log-prob collapsed"):
         _assert_accepted_dpo_result(collapsed)
+
+
+def test_dpo_full_prompt_masking_check_raises_on_leaked_prompt() -> None:
+    from dataclasses import replace
+
+    tokenizer = tiny_chat_tokenizer()
+    pair = tokenize_preference_pair(
+        tokenizer,
+        PreferencePair(
+            prompt_turns=(ChatTurn("user", "say red"),),
+            chosen="red",
+            rejected="blue",
+            source="f",
+            row_id="1",
+        ),
+        max_length=48,
+        max_prompt_length=24,
+    )
+    assert _assert_prompt_masking((pair,)) is True
+
+    # Unmask the prompt span of the chosen completion: the check must raise, not
+    # just record False in the data report.
+    leaked = replace(pair, chosen=replace(pair.chosen, labels=pair.chosen.input_ids))
+    with pytest.raises(DPOFullRunError, match="prompt span leaked"):
+        _assert_prompt_masking((leaked,))
+
+    with pytest.raises(DPOFullRunError, match="no selected preference pairs"):
+        _assert_prompt_masking(())
 
 
 def test_dpo_full_rejects_eval_shortfalls_and_eval_cap_overruns() -> None:

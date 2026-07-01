@@ -48,7 +48,6 @@ def run_full_dpo(
     sft_tokenizer_path: Path,
     allow_remote_download: bool,
     require_cuda: bool,
-    wandb_enabled: bool,
     smoke: bool,
     started: float | None = None,
     commit: str = "unknown",
@@ -108,6 +107,7 @@ def run_full_dpo(
         allow_remote_download=allow_remote_download,
     )
     _assert_data_safe(train_report.to_dict(), eval_report.to_dict(), pair_caps)
+    prompt_masking_asserted = _assert_prompt_masking(train_report.pairs)
 
     write_json(
         output_dir / "config.json",
@@ -129,7 +129,7 @@ def run_full_dpo(
             "eval": eval_report.to_dict(),
             "preference_source": config.preference_source.__dict__,
             "eval_source": config.eval_source.__dict__,
-            "prompt_masking_asserted": _prompt_masking_asserted(train_report.pairs),
+            "prompt_masking_asserted": prompt_masking_asserted,
             "caps": pair_caps,
         },
     )
@@ -176,7 +176,6 @@ def run_full_dpo(
             log_interval=int(monitoring["log_interval"]),
             eval_interval=int(monitoring["eval_interval"]),
             checkpoint_interval=int(monitoring["checkpoint_interval"]),
-            sample_new_tokens=int(monitoring["sample_new_tokens"]),
             device=device.type,
             wandb=_wandb_config(config, smoke=smoke),
         ),
@@ -344,14 +343,18 @@ def _assert_accepted_dpo_result(result: Any) -> None:
         raise DPOFullRunError("chosen response log-prob collapsed versus the SFT reference")
 
 
-def _prompt_masking_asserted(pairs: tuple[Any, ...]) -> bool:
+def _assert_prompt_masking(pairs: tuple[Any, ...]) -> bool:
+    if not pairs:
+        raise DPOFullRunError("no selected preference pairs to assert prompt masking on")
     for pair in pairs:
         for completion in (pair.chosen, pair.rejected):
             if not all(label == -100 for label in completion.labels[: completion.prompt_tokens]):
-                return False
+                raise DPOFullRunError(f"{pair.row_id}: prompt span leaked into a completion loss")
             if completion.response_supervised_tokens <= 0:
-                return False
-    return bool(pairs)
+                raise DPOFullRunError(
+                    f"{pair.row_id}: completion has no supervised response tokens"
+                )
+    return True
 
 
 def _assert_required_artifacts(output_dir: Path) -> None:

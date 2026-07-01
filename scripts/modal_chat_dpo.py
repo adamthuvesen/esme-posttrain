@@ -21,6 +21,7 @@ from typing import Any
 
 from esme_posttrain.dpo.chat_eval_run import (
     CHAT_EVAL_OUTPUT_STEM,
+    CHAT_EVAL_TIMEOUT_HOURS,
     DPO_BEST_CHECKPOINT_REL,
     build_chat_eval_preflight,
     chat_eval_blockers,
@@ -54,11 +55,19 @@ from esme_posttrain.launch.modal_cli import (
     local_git_dirty,
     modal_call_id,
     validate_output_stem,
+    with_full_output_stem,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DPO_MODAL_GPU = os.environ.get("DPO_MODAL_GPU", "A100")
-DPO_TIMEOUT_HOURS = int(float(os.environ.get("DPO_TIMEOUT_HOURS", "1")))
+# Fractional hours must survive (the emitted chat-eval command sets 0.25); Modal
+# wants whole seconds, so hours convert via int(hours * 3600) at the functions.
+DPO_TIMEOUT_HOURS = float(os.environ.get("DPO_TIMEOUT_HOURS", "1"))
+# Chat eval is generation-only; without an explicit DPO_TIMEOUT_HOURS it keeps the
+# documented 0.25h ceiling that holds the worst case under the $1 spend cap.
+DPO_CHAT_EVAL_TIMEOUT_HOURS = float(
+    os.environ.get("DPO_TIMEOUT_HOURS", str(CHAT_EVAL_TIMEOUT_HOURS))
+)
 DPO_SWEEP_TIMEOUT_HOURS = int(float(os.environ.get("DPO_SWEEP_TIMEOUT_HOURS", SWEEP_TIMEOUT_HOURS)))
 VOLUME_MOUNT = Path("/posttrain")
 SFT_VOLUME_MOUNT = Path("/sft-foundation")
@@ -98,11 +107,13 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
     @app.function(
         image=image,
         gpu=DPO_MODAL_GPU,
-        timeout=DPO_TIMEOUT_HOURS * 60 * 60,
+        timeout=int(DPO_TIMEOUT_HOURS * 3600),
         volumes={str(VOLUME_MOUNT): posttrain_volume, str(SFT_VOLUME_MOUNT): sft_volume},
         secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
     )
-    def run_modal_smoke(config_payload: dict[str, Any], commit: str, dirty: bool) -> dict[str, Any]:
+    def run_modal_smoke(
+        config_payload: dict[str, Any], commit: str, dirty: bool, modal_gpu: str
+    ) -> dict[str, Any]:
         started = time.perf_counter()
         try:
             return _run_modal_dpo_body(
@@ -111,6 +122,7 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
                 dirty=dirty,
                 started=started,
                 smoke=True,
+                modal_gpu=modal_gpu,
                 output_stem=MODAL_SMOKE_OUTPUT_STEM,
                 fresh=True,
             )
@@ -120,12 +132,12 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
     @app.function(
         image=image,
         gpu=DPO_MODAL_GPU,
-        timeout=DPO_TIMEOUT_HOURS * 60 * 60,
+        timeout=int(DPO_TIMEOUT_HOURS * 3600),
         volumes={str(VOLUME_MOUNT): posttrain_volume, str(SFT_VOLUME_MOUNT): sft_volume},
         secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
     )
     def run_modal_full_dpo(
-        config_payload: dict[str, Any], commit: str, dirty: bool, output_stem: str
+        config_payload: dict[str, Any], commit: str, dirty: bool, modal_gpu: str, output_stem: str
     ) -> dict[str, Any]:
         started = time.perf_counter()
         try:
@@ -135,6 +147,7 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
                 dirty=dirty,
                 started=started,
                 smoke=False,
+                modal_gpu=modal_gpu,
                 output_stem=output_stem,
                 fresh=False,
             )
@@ -167,11 +180,15 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
     @app.function(
         image=image,
         gpu=DPO_MODAL_GPU,
-        timeout=DPO_TIMEOUT_HOURS * 60 * 60,
+        timeout=int(DPO_CHAT_EVAL_TIMEOUT_HOURS * 3600),
         volumes={str(VOLUME_MOUNT): posttrain_volume, str(SFT_VOLUME_MOUNT): sft_volume},
     )
     def run_modal_chat_eval(
-        config_payload: dict[str, Any], commit: str, dirty: bool, modal_gpu: str, timeout_hours: int
+        config_payload: dict[str, Any],
+        commit: str,
+        dirty: bool,
+        modal_gpu: str,
+        timeout_hours: float,
     ) -> dict[str, Any]:
         started = time.perf_counter()
         try:
@@ -286,7 +303,9 @@ def launch(argv: list[str] | None = None) -> int:
                 config, timeout_hours=DPO_SWEEP_TIMEOUT_HOURS, modal_gpu=DPO_MODAL_GPU
             )
         elif args.chat_eval:
-            payload = build_chat_eval_preflight(config, modal_gpu=DPO_MODAL_GPU)
+            payload = build_chat_eval_preflight(
+                config, modal_gpu=DPO_MODAL_GPU, timeout_hours=DPO_CHAT_EVAL_TIMEOUT_HOURS
+            )
         else:
             payload = build_dpo_dry_run(
                 config,
@@ -294,7 +313,11 @@ def launch(argv: list[str] | None = None) -> int:
                 full_run_modal_gpu=DPO_MODAL_GPU if args.full_run else None,
             )
             if args.full_run:
-                payload = _with_full_output_stem(payload, config, full_output_stem)
+                payload = with_full_output_stem(
+                    payload,
+                    full_launch_command=_full_launch_command(config, full_output_stem),
+                    volume_output_dir=str(VOLUME_MOUNT / full_output_stem),
+                )
         print(_format_payload(payload, json_output=args.json))
         return 0
     if args.local_cpu_smoke:
@@ -329,7 +352,7 @@ def launch(argv: list[str] | None = None) -> int:
         return 2
     try:
         function_call = run_modal_smoke.spawn(
-            config.payload, local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT)
+            config.payload, local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT), DPO_MODAL_GPU
         )
         call_id = modal_call_id(function_call)
         result = function_call.get()
@@ -342,7 +365,9 @@ def launch(argv: list[str] | None = None) -> int:
 
 
 def _launch_chat_eval(config: Any, *, approved: bool, json_output: bool) -> int:
-    preflight = build_chat_eval_preflight(config, modal_gpu=DPO_MODAL_GPU)
+    preflight = build_chat_eval_preflight(
+        config, modal_gpu=DPO_MODAL_GPU, timeout_hours=DPO_CHAT_EVAL_TIMEOUT_HOURS
+    )
     if not approved:
         payload = {
             **preflight,
@@ -351,7 +376,9 @@ def _launch_chat_eval(config: Any, *, approved: bool, json_output: bool) -> int:
         }
         print(_format_payload(payload, json_output=json_output))
         return 2
-    blockers = chat_eval_blockers(config, modal_gpu=DPO_MODAL_GPU)
+    blockers = chat_eval_blockers(
+        config, modal_gpu=DPO_MODAL_GPU, timeout_hours=DPO_CHAT_EVAL_TIMEOUT_HOURS
+    )
     if blockers:
         payload = {**preflight, "status": "chat_eval_refused", "launch_blockers": blockers}
         print(_format_payload(payload, json_output=json_output))
@@ -365,7 +392,7 @@ def _launch_chat_eval(config: Any, *, approved: bool, json_output: bool) -> int:
             local_git_commit(REPO_ROOT),
             local_git_dirty(REPO_ROOT),
             DPO_MODAL_GPU,
-            DPO_TIMEOUT_HOURS,
+            DPO_CHAT_EVAL_TIMEOUT_HOURS,
         )
         call_id = modal_call_id(function_call)
         result = function_call.get()
@@ -447,7 +474,11 @@ def _launch_full_run(config: Any, *, approved: bool, json_output: bool, output_s
         return 2
     try:
         function_call = run_modal_full_dpo.spawn(
-            config.payload, local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT), output_stem
+            config.payload,
+            local_git_commit(REPO_ROOT),
+            local_git_dirty(REPO_ROOT),
+            DPO_MODAL_GPU,
+            output_stem,
         )
     except Exception as error:
         print(f"DPO full run failed before Modal spawn: {error}", file=sys.stderr)
@@ -476,12 +507,13 @@ def _run_modal_dpo_body(
     dirty: bool,
     started: float,
     smoke: bool,
+    modal_gpu: str,
     output_stem: str,
     fresh: bool,
 ) -> dict[str, Any]:
     config = validate_dpo_payload(config_payload, Path("configs/esme-214m-chat-dpo.json"))
     if not smoke:
-        blockers = full_launch_blockers(config, approved=True, modal_gpu=DPO_MODAL_GPU)
+        blockers = full_launch_blockers(config, approved=True, modal_gpu=modal_gpu)
         if blockers:
             raise RuntimeError("full DPO refused inside Modal: " + "; ".join(blockers))
     output_dir = (
@@ -495,7 +527,6 @@ def _run_modal_dpo_body(
         sft_tokenizer_path=SFT_VOLUME_MOUNT / sft_reference["tokenizer_path"],
         allow_remote_download=True,
         require_cuda=True,
-        wandb_enabled=True,
         smoke=smoke,
         started=started,
         commit=commit,
@@ -580,12 +611,11 @@ def _run_modal_chat_eval_body(
     commit: str,
     dirty: bool,
     modal_gpu: str,
-    timeout_hours: int,
+    timeout_hours: float,
     started: float,
 ) -> dict[str, Any]:
-    del timeout_hours  # the Modal function timeout; chat-eval cost ceiling is fixed.
     config = validate_dpo_payload(config_payload, Path("configs/esme-214m-chat-dpo.json"))
-    blockers = chat_eval_blockers(config, modal_gpu=modal_gpu)
+    blockers = chat_eval_blockers(config, modal_gpu=modal_gpu, timeout_hours=timeout_hours)
     if blockers:
         raise RuntimeError("chat eval refused inside Modal: " + "; ".join(blockers))
     sft_reference = config.payload["sft_reference"]
@@ -614,22 +644,6 @@ def _full_launch_command(config: Any, output_stem: str) -> str:
         default_stem=DEFAULT_MODAL_FULL_OUTPUT_STEM,
         env_var="DPO_MODAL_FULL_OUTPUT_STEM",
     )
-
-
-def _with_full_output_stem(
-    payload: dict[str, Any], config: Any, output_stem: str
-) -> dict[str, Any]:
-    full_launch_command = _full_launch_command(config, output_stem)
-    updated = {
-        **payload,
-        "full_launch_command": full_launch_command,
-        "volume_output_dir": str(VOLUME_MOUNT / output_stem),
-    }
-    preflight = dict(updated.get("preflight", {}))
-    preflight["exact_launch_command"] = full_launch_command
-    preflight["volume_output_dir"] = str(VOLUME_MOUNT / output_stem)
-    updated["preflight"] = preflight
-    return updated
 
 
 def _format_payload(payload: dict[str, Any], *, json_output: bool) -> str:

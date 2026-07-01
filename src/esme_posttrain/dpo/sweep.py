@@ -424,7 +424,6 @@ def _run_sweep_arm(
             log_interval=arm.log_interval,
             eval_interval=arm.eval_interval,
             checkpoint_interval=arm.checkpoint_interval,
-            sample_new_tokens=min(40, int(monitoring_config["sample_new_tokens"])),
             device=device.type,
             wandb=WandbConfig(
                 enabled=wandb_enabled,

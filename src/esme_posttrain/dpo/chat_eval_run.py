@@ -103,7 +103,7 @@ def chat_eval_blockers(
     return blockers
 
 
-def chat_eval_command(config_path: Path, *, gpu: str, timeout_hours: int) -> str:
+def chat_eval_command(config_path: Path, *, gpu: str, timeout_hours: float) -> str:
     return (
         f"DPO_MODAL_GPU='{gpu}' DPO_TIMEOUT_HOURS={timeout_hours} "
         f"uv run --with modal=={MODAL_CLIENT_VERSION} modal run "

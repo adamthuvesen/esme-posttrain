@@ -268,14 +268,14 @@ def test_build_preference_set_keeps_clean_rows_with_no_drops(tmp_path: Path) -> 
     assert result.counts.drop_reasons == {}
 
 
-def test_build_preference_set_raises_above_drop_floor(tmp_path: Path) -> None:
-    # 10% empty-response rows far exceeds the 2% sanity floor -> raise (bug signal).
+def test_build_preference_set_raises_above_drop_ceiling(tmp_path: Path) -> None:
+    # 10% empty-response rows far exceeds the 2% sanity ceiling -> raise (bug signal).
     path = tmp_path / "uf.jsonl"
     rows = [_uf_row("say red", "red", "blue") for _ in range(18)]
     rows += [_uf_row("say green", "", "blue") for _ in range(2)]
     path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
     assert MAX_VALIDATION_DROP_FRACTION == 0.02
-    with pytest.raises(DataError, match="above the 2% floor"):
+    with pytest.raises(DataError, match="above the 2% ceiling"):
         build_preference_set(
             _ultrafeedback_source(path),
             tiny_chat_tokenizer(),
@@ -284,6 +284,28 @@ def test_build_preference_set_raises_above_drop_floor(tmp_path: Path) -> None:
             max_length=48,
             max_prompt_length=24,
         )
+
+
+def test_survivors_count_only_rows_that_tokenize(tmp_path: Path) -> None:
+    # A row that parses but fails tokenization (here: over max_length) must not
+    # count as a survivor, so it is never double-counted in the drop-rate
+    # denominator (survivors + dropped_validation).
+    path = tmp_path / "uf.jsonl"
+    rows = [_uf_row("say red", "red", "blue") for _ in range(3)]
+    rows.append(_uf_row("say green", "red blue green one two " * 20, "blue"))
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    result = build_preference_set(
+        _ultrafeedback_source(path),
+        tiny_chat_tokenizer(),
+        max_pairs=100,
+        max_tokens=10**9,
+        max_length=48,
+        max_prompt_length=24,
+    )
+    assert len(result.pairs) == 3
+    assert result.counts.survivors == 3
+    assert result.counts.rejected_too_long_tokens == 1
+    assert result.counts.dropped_validation == 0
 
 
 def _clean_preference_jsonl(path: Path, count: int) -> None:

@@ -27,14 +27,14 @@ from esme_posttrain.sft.data import (
     DataError,
     DatasetSource,
     _clean_text,
-    _iter_rows,
+    iter_rows,
 )
 
 # UltraFeedback-binarized has a handful of rows with an empty/whitespace chosen or
 # rejected response; the strict per-pair validator rejects them, so the loader
 # drops and counts them rather than aborting the whole run. But a *high* drop rate
 # means a templating/parsing bug, not a few bad source rows -- so if the fraction
-# of survivors lost to per-row validation exceeds this floor, raise loudly.
+# of candidate pairs lost to per-row validation exceeds this ceiling, raise loudly.
 MAX_VALIDATION_DROP_FRACTION = 0.02
 
 
@@ -437,7 +437,7 @@ def _iter_tokenized_preference_pairs(
     max_prompt_length: int,
     allow_remote_download: bool,
 ) -> Iterator[TokenizedPreferencePair]:
-    for row_id, row in _iter_rows(source, allow_remote_download=allow_remote_download):
+    for row_id, row in iter_rows(source, allow_remote_download=allow_remote_download):
         counts.rows_seen += 1
         # Parse-time per-row DataError (empty/whitespace chosen or rejected, prompt
         # ending on assistant) must drop the row, not abort the whole build.
@@ -457,9 +457,8 @@ def _iter_tokenized_preference_pairs(
         ):
             counts.rejected_too_long_chars += 1
             continue
-        counts.survivors += 1
         try:
-            yield tokenize_preference_pair(
+            tokenized = tokenize_preference_pair(
                 tokenizer,
                 parsed,
                 max_length=max_length,
@@ -480,6 +479,10 @@ def _iter_tokenized_preference_pairs(
             else:
                 counts.record_drop(_drop_reason(error))
             continue
+        # A row is a survivor only once it tokenizes cleanly, so a tokenize-time
+        # drop is counted exactly once in the drop-rate denominator.
+        counts.survivors += 1
+        yield tokenized
 
 
 def _is_length_error(error: DataError) -> bool:
@@ -505,9 +508,10 @@ def _drop_reason(error: DataError) -> str:
 def _assert_validation_drop_floor(source: DatasetSource, counts: PreferenceSurvivorCounts) -> None:
     """Drops are normal for a few bad source rows; a high rate means a bug.
 
-    The denominator is rows that parsed into a candidate pair (survivors plus the
-    parse-time validation drops) -- structural `None` rejections (mismatched or
-    malformed rows) are a separate, expected class and excluded.
+    The denominator is candidate pairs that reached per-row validation (clean
+    survivors plus the validation drops) -- structural `None` rejections
+    (mismatched or malformed rows) and length rejects are separate, expected
+    classes and excluded.
     """
     considered = counts.survivors + counts.dropped_validation
     if considered <= 0 or counts.dropped_validation == 0:
@@ -517,7 +521,7 @@ def _assert_validation_drop_floor(source: DatasetSource, counts: PreferenceSurvi
         raise DataError(
             f"{source.name}: per-row validation dropped {counts.dropped_validation}/"
             f"{considered} candidate pairs ({drop_fraction:.1%}), above the "
-            f"{MAX_VALIDATION_DROP_FRACTION:.0%} floor -- likely a templating/parsing bug, "
+            f"{MAX_VALIDATION_DROP_FRACTION:.0%} ceiling -- likely a templating/parsing bug, "
             f"not bad source rows; drop reasons: {dict(sorted(counts.drop_reasons.items()))}"
         )
 

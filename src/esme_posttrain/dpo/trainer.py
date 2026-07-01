@@ -36,9 +36,8 @@ from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import file_sha256
 from esme_posttrain.modeling import DenseBackbone, soft_cap_logits
-from esme_posttrain.sft.data import IGNORE_INDEX
 from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
-from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch, cyclic_batch
 from esme_posttrain.training.metrics import append_metric
 from esme_posttrain.training.runtime import (
     lr_lambda,
@@ -112,7 +111,6 @@ class DPOTrainerConfig:
     log_interval: int = 1
     eval_interval: int = 0
     checkpoint_interval: int = 0
-    sample_new_tokens: int = 16
     device: str = "cpu"
     wandb: WandbConfig = field(default_factory=WandbConfig)
 
@@ -326,7 +324,7 @@ def run_dpo_training(
         step_pairs = 0
         for accumulation_index in range(config.gradient_accumulation_steps):
             batch_index = (step - 1) * config.gradient_accumulation_steps + accumulation_index
-            batch = _cyclic_batch(
+            batch = cyclic_batch(
                 train_pairs, batch_index=batch_index, batch_size=config.micro_batch_size
             )
             loss, margin, correct = _forward_batch(
@@ -609,11 +607,6 @@ class _DPOCompletionCollateRow:
     labels: tuple[int, ...]
     source: str = "dpo"
     row_id: str = "pair"
-
-
-def _cyclic_batch(pairs: tuple[Any, ...], *, batch_index: int, batch_size: int) -> tuple[Any, ...]:
-    start = batch_index * batch_size
-    return tuple(pairs[(start + offset) % len(pairs)] for offset in range(batch_size))
 
 
 def _dpo_eval_payload(*, step: int, metrics: DPOEvalMetrics) -> dict[str, Any]:
