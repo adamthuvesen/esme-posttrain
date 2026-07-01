@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     LaunchError,
     build_modal_launch_command,
@@ -14,7 +14,7 @@ from esme_posttrain.launch.common import (
     load_json_object,
     smoke_launch_blockers,
 )
-from esme_posttrain.launch.modal_helpers import format_payload, validate_output_stem
+from esme_posttrain.launch.modal_cli import format_payload, validate_output_stem
 from esme_posttrain.launch.validate import (
     iter_jsonl,
     load_json_file,

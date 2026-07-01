@@ -18,7 +18,7 @@ from typing import Any
 import torch
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
     estimate_cost_usd,
@@ -37,8 +37,8 @@ from esme_posttrain.sft.multiturn_data import (
     build_multi_turn_mix,
 )
 from esme_posttrain.sft.sweep_shared import (
-    SweepArm,
-    SweepError,
+    SFTSweepArm,
+    SFTSweepError,
 )
 from esme_posttrain.sft.sweep_shared import (
     arm_failure_payload as _arm_failure_payload,
@@ -65,7 +65,7 @@ from esme_posttrain.sft.sweep_shared import (
     write_eval_suite_manifests as _write_eval_suite_manifests,
 )
 from esme_posttrain.sft.trainer import EvalSplit, SFTTrainerConfig, run_sft_training
-from esme_posttrain.sft.wandb_init import WandbConfig
+from esme_posttrain.training.wandb_init import WandbConfig
 
 SWEEP_OUTPUT_STEM = "esme-multiturn-sft-interval-sweep"
 SWEEP_GROUP = "esme_214m_sft_multiturn_interval_sweep"
@@ -86,8 +86,8 @@ DEFAULT_MODAL_SWEEP_ROOT = Path("/posttrain") / SWEEP_OUTPUT_STEM
 # Anchored around the config's small-model 1e-4; SmolLM2-class models tolerate a
 # higher LR than the 2e-5 large-model default. Effective batch 16 = the recipe's
 # microbatch 2 x grad-accum 8, kept identical so the sweep matches the full run.
-SWEEP_ARMS: tuple[SweepArm, ...] = (
-    SweepArm(
+SWEEP_ARMS: tuple[SFTSweepArm, ...] = (
+    SFTSweepArm(
         name="lr5e-5-mb2-ga8-eb16",
         learning_rate=5e-5,
         micro_batch_size=2,
@@ -96,7 +96,7 @@ SWEEP_ARMS: tuple[SweepArm, ...] = (
         warmup_steps=12,
         checkpoint_interval=60,
     ),
-    SweepArm(
+    SFTSweepArm(
         name="lr1e-4-mb2-ga8-eb16",
         learning_rate=1e-4,
         micro_batch_size=2,
@@ -105,7 +105,7 @@ SWEEP_ARMS: tuple[SweepArm, ...] = (
         warmup_steps=12,
         checkpoint_interval=60,
     ),
-    SweepArm(
+    SFTSweepArm(
         name="lr2e-4-mb2-ga8-eb16",
         learning_rate=2e-4,
         micro_batch_size=2,
@@ -114,7 +114,7 @@ SWEEP_ARMS: tuple[SweepArm, ...] = (
         warmup_steps=12,
         checkpoint_interval=60,
     ),
-    SweepArm(
+    SFTSweepArm(
         name="lr3e-4-mb2-ga8-eb16",
         learning_rate=3e-4,
         micro_batch_size=2,
@@ -124,17 +124,6 @@ SWEEP_ARMS: tuple[SweepArm, ...] = (
         checkpoint_interval=60,
     ),
 )
-
-
-class SweepSpendGuard(RuntimeSpendTracker):
-    def check(self, step: int) -> None:
-        cost = self.estimated_cost_usd()
-        if cost > self.stop_usd:
-            self.write_cost(step=step, status="runtime_cap_exceeded")
-            raise SweepError(
-                f"multi-turn interval sweep runtime spend estimate ${cost:.4f} "
-                f"exceeded ${self.stop_usd:.2f}"
-            )
 
 
 def build_multi_turn_sweep_preflight(
@@ -292,15 +281,15 @@ def run_multi_turn_interval_eval_sweep(
 ) -> dict[str, Any]:
     output_root = output_root.expanduser().resolve()
     if output_root.name != SWEEP_OUTPUT_STEM:
-        raise SweepError(f"sweep output root must end with {SWEEP_OUTPUT_STEM}")
+        raise SFTSweepError(f"sweep output root must end with {SWEEP_OUTPUT_STEM}")
     if "-excellence" in str(output_root):
-        raise SweepError("sweep output root must not use an excellence public name")
+        raise SFTSweepError("sweep output root must not use an excellence public name")
     output_root.mkdir(parents=True, exist_ok=True)
 
     started = started or time.perf_counter()
     device = _select_sweep_device(require_cuda=require_cuda)
     profile = config.selected_gpu_profile
-    sweep_guard = SweepSpendGuard(
+    sweep_spend = RuntimeSpendTracker(
         started=started,
         usd_per_hour=float(profile["usd_per_hour"]),
         stop_usd=SWEEP_SPEND_CAP_USD,
@@ -394,13 +383,13 @@ def run_multi_turn_interval_eval_sweep(
                     train_report=train_report.to_dict(),
                     eval_report=eval_report.to_dict(),
                     device=device,
-                    sweep_guard=sweep_guard,
+                    sweep_spend=sweep_spend,
                     wandb_enabled=wandb_enabled,
                     commit=commit,
                     dirty=dirty,
                 )
             )
-        except SweepError as error:
+        except SFTSweepError as error:
             arm_payloads.append(
                 _arm_failure_payload(
                     arm,
@@ -441,7 +430,7 @@ def run_multi_turn_interval_eval_sweep(
         improving, key=lambda arm: arm["best_eval"]["eval/matched/response_loss"], default=None
     )
     status = "interval_eval_sweep_passed" if best_arm is not None else "interval_eval_sweep_failed"
-    cost = sweep_guard.write_cost(
+    cost = sweep_spend.write_cost(
         step=max((int(arm.get("steps_completed", 0)) for arm in arm_payloads), default=0),
         status=status,
     )
@@ -481,7 +470,7 @@ def run_multi_turn_interval_eval_sweep(
 
 def _run_sweep_arm(
     config: MultiTurnLaunchConfig,
-    arm: SweepArm,
+    arm: SFTSweepArm,
     *,
     arm_id: str,
     output_dir: Path,
@@ -492,7 +481,7 @@ def _run_sweep_arm(
     train_report: dict[str, Any],
     eval_report: dict[str, Any],
     device: torch.device,
-    sweep_guard: SweepSpendGuard,
+    sweep_spend: RuntimeSpendTracker,
     wandb_enabled: bool,
     commit: str,
     dirty: bool,
@@ -522,7 +511,7 @@ def _run_sweep_arm(
     _write_eval_suite_manifests(output_dir, matched_eval_reports, eval_examples)
     write_environment(output_dir / "environment.txt", device=device)
 
-    arm_started_cost = sweep_guard.estimated_cost_usd()
+    arm_started_cost = sweep_spend.estimated_cost_usd()
     result = run_sft_training(
         loaded.model,
         loaded.tokenizer,
@@ -596,7 +585,11 @@ def _run_sweep_arm(
         ),
         eval_splits=_eval_splits(config, matched_eval_reports, eval_examples),
         base_bundle_manifest=loaded.bundle.manifest,
-        step_callback=sweep_guard.check,
+        step_callback=lambda step: sweep_spend.check_cap(
+            step,
+            label="multi-turn interval sweep",
+            error_type=SFTSweepError,
+        ),
     )
     write_json(
         output_dir / "data-report.json",
@@ -633,7 +626,7 @@ def _run_sweep_arm(
         },
     )
 
-    cost = sweep_guard.write_cost(step=result.steps_completed, status="arm_complete")
+    cost = sweep_spend.write_cost(step=result.steps_completed, status="arm_complete")
     estimated_arm_cost = max(0.0, cost["estimated_cost_usd"] - arm_started_cost)
     eval_metrics = _interval_eval_metrics(result.metrics_path)
     train_sanity = _train_sanity(result.metrics_path)

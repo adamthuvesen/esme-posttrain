@@ -8,6 +8,7 @@ import json
 import shutil
 import time
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -32,23 +33,13 @@ from esme_posttrain.run_artifacts import (
     refresh_manifest_files,
     write_environment,
 )
-from esme_posttrain.sft.wandb_init import WandbConfig, start_wandb
+from esme_posttrain.training.wandb_init import WandbConfig, start_wandb
 
 _WANDB_LIFECYCLE_INDEX_BY_RUN: dict[int, int] = {}
 
 
 class CountdownGRPOFullRunError(RuntimeError):
     pass
-
-
-class SpendGuard(RuntimeSpendTracker):
-    def check(self, step: int) -> None:
-        cost = self.estimated_cost_usd()
-        if cost > self.stop_usd:
-            self.write_cost(step=step, status="runtime_cap_exceeded")
-            raise CountdownGRPOFullRunError(
-                f"GRPO runtime spend estimate ${cost:.4f} exceeded ${self.stop_usd:.2f}"
-            )
 
 
 def run_countdown_lite_grpo_job(
@@ -93,12 +84,17 @@ def run_countdown_lite_grpo_job(
         device = _select_device(require_cuda=require_cuda)
         _emit_milestone("cuda_selected", milestone_callback, device=device.type)
         profile = config.selected_gpu_profile
-        spend_guard = SpendGuard(
+        spend_tracker = RuntimeSpendTracker(
             started=started or time.perf_counter(),
             usd_per_hour=float(profile["usd_per_hour"]) if paid_compute else 0.0,
             stop_usd=float(config.runtime["full_run_runtime_spend_stop_usd"]),
             output_dir=output_dir,
             paid_compute=paid_compute,
+        )
+        check_spend = partial(
+            spend_tracker.check_cap,
+            label="GRPO",
+            error_type=CountdownGRPOFullRunError,
         )
 
         bundle_path = (input_bundle_path or config.input_bundle_path).expanduser().resolve()
@@ -183,10 +179,10 @@ def run_countdown_lite_grpo_job(
         )
         _log_eval_summary(wandb_run, "before", before, step=0)
         _emit_milestone("before_eval_complete", milestone_callback, wandb_run=wandb_run)
-        spend_guard.check(0)
+        check_spend(0)
 
         if before_eval_only:
-            cost = spend_guard.write_cost(step=0, status="before_eval_probe_complete")
+            cost = spend_tracker.write_cost(step=0, status="before_eval_probe_complete")
             write_environment(output_dir / "environment.txt", device=device)
             _emit_milestone("return_serialization", milestone_callback, wandb_run=wandb_run)
             return {
@@ -267,7 +263,7 @@ def run_countdown_lite_grpo_job(
                 reference_artifact_name=str(config.payload["starts_from"]),
                 source_manifest=loaded.bundle.manifest,
             ),
-            step_callback=spend_guard.check,
+            step_callback=check_spend,
             wandb_run=_RLVRWandbTrainLogger(wandb_run) if wandb_run is not None else None,
         )
         _emit_milestone(
@@ -276,7 +272,7 @@ def run_countdown_lite_grpo_job(
             wandb_run=wandb_run,
             steps_completed=result.steps_completed,
         )
-        spend_guard.check(result.steps_completed)
+        check_spend(result.steps_completed)
 
         _emit_milestone(
             "after_eval_start",
@@ -305,7 +301,7 @@ def run_countdown_lite_grpo_job(
         )
         _log_eval_summary(wandb_run, "after", after, step=result.steps_completed)
         _emit_milestone("after_eval_complete", milestone_callback, wandb_run=wandb_run)
-        cost = spend_guard.write_cost(step=result.steps_completed, status="complete")
+        cost = spend_tracker.write_cost(step=result.steps_completed, status="complete")
         if float(cost["estimated_cost_usd"]) > float(config.runtime["full_run_max_cost_usd"]):
             raise CountdownGRPOFullRunError("GRPO run exceeded runtime.full_run_max_cost_usd")
 

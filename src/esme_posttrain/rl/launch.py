@@ -9,7 +9,7 @@ from typing import Any
 from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import BundleError, validate_base_bundle
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
@@ -23,7 +23,7 @@ from esme_posttrain.launch.common import (
     str_field,
     validate_modal_runtime,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
 )
 from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows

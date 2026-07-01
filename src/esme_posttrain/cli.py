@@ -10,7 +10,7 @@ from esme_posttrain import __version__
 from esme_posttrain.dpo.launch import build_dpo_dry_run, load_dpo_config
 from esme_posttrain.dpo.smoke import run_dpo_cpu_fixture
 from esme_posttrain.export.dense_bundle import ExportError, ExportRequest, export_dense_bundle
-from esme_posttrain.launch.common import LaunchError
+from esme_posttrain.launch.config_guards import LaunchError
 from esme_posttrain.rl.countdown_lite import CountdownLiteError, write_countdown_lite_dataset
 from esme_posttrain.rl.countdown_lite_baseline import (
     CountdownBaselineRequest,

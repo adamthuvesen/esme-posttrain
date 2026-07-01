@@ -18,9 +18,9 @@
 | --- | ---: | ---: |
 | pass@1 | 3.33% | 16.67% |
 | pass@8 | 3.33% | 16.67% |
-| pass@32 | 16.67% | 20.00% |
-| valid-expression rate | 3.23% | 35.73% |
-| exact-solve rate | 1.25% | 15.83% |
+| pass@32 | 6.67% | 20.00% |
+| valid-expression rate | 2.71% | 35.73% |
+| exact-solve rate | 0.42% | 15.83% |
 
 ## Inputs
 

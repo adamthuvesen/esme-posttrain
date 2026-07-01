@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from esme_posttrain.sft.errors import TrainerError
+from esme_posttrain.training.errors import TrainerError
 
 
 def set_reproducible_seed(seed: int) -> None:

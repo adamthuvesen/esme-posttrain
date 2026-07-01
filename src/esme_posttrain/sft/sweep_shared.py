@@ -12,12 +12,12 @@ import torch
 from esme_posttrain.run_artifacts import write_json, write_selected_row_manifest
 
 
-class SweepError(RuntimeError):
+class SFTSweepError(RuntimeError):
     pass
 
 
 @dataclass(frozen=True)
-class SweepArm:
+class SFTSweepArm:
     name: str
     learning_rate: float
     micro_batch_size: int
@@ -57,7 +57,7 @@ def select_sweep_device(*, require_cuda: bool) -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     if require_cuda:
-        raise SweepError(
+        raise SFTSweepError(
             "Modal interval sweep requires CUDA, but torch.cuda.is_available() is false"
         )
     return torch.device("cpu")
@@ -71,11 +71,11 @@ def interval_eval_metrics(metrics_path: Path) -> list[dict[str, Any]]:
     ]
     eval_rows = [row for row in rows if row.get("event") == "eval"]
     if not eval_rows:
-        raise SweepError(f"{metrics_path} has no eval metrics")
+        raise SFTSweepError(f"{metrics_path} has no eval metrics")
     for row in eval_rows:
         value = row.get("eval/matched/response_loss")
         if not isinstance(value, int | float) or not math.isfinite(value):
-            raise SweepError(f"{metrics_path} has non-finite eval/matched/response_loss")
+            raise SFTSweepError(f"{metrics_path} has non-finite eval/matched/response_loss")
     return eval_rows
 
 
@@ -103,7 +103,7 @@ def step0_eval(eval_metrics: list[dict[str, Any]]) -> dict[str, Any]:
     for row in eval_metrics:
         if int(row["step"]) == 0:
             return row
-    raise SweepError("sweep metrics are missing step-0 eval")
+    raise SFTSweepError("sweep metrics are missing step-0 eval")
 
 
 def assert_sweep_data_safe(
@@ -116,22 +116,22 @@ def assert_sweep_data_safe(
     eval_token_cap: int,
 ) -> None:
     if int(train_report["selected_samples"]) > train_sample_cap:
-        raise SweepError("sweep train sample cap exceeded")
+        raise SFTSweepError("sweep train sample cap exceeded")
     if int(train_report["selected_tokens"]) > train_token_cap:
-        raise SweepError("sweep train token cap exceeded")
+        raise SFTSweepError("sweep train token cap exceeded")
     if int(eval_report["selected_samples"]) > eval_sample_cap:
-        raise SweepError("sweep eval sample cap exceeded")
+        raise SFTSweepError("sweep eval sample cap exceeded")
     if int(eval_report["selected_tokens"]) > eval_token_cap:
-        raise SweepError("sweep eval token cap exceeded")
+        raise SFTSweepError("sweep eval token cap exceeded")
     if train_report["shortfalls"]:
-        raise SweepError("training data shortfall: " + "; ".join(train_report["shortfalls"]))
+        raise SFTSweepError("training data shortfall: " + "; ".join(train_report["shortfalls"]))
     if eval_report["shortfalls"] and int(eval_report["selected_samples"]) == 0:
-        raise SweepError("eval data shortfall: " + "; ".join(eval_report["shortfalls"]))
+        raise SFTSweepError("eval data shortfall: " + "; ".join(eval_report["shortfalls"]))
     if "no_robots" in set(train_report["counts_by_source"]):
-        raise SweepError("HuggingFaceH4/no_robots must never be used for training")
+        raise SFTSweepError("HuggingFaceH4/no_robots must never be used for training")
 
 
-def fresh_launch_id(output_root: Path, arms: tuple[SweepArm, ...]) -> str:
+def fresh_launch_id(output_root: Path, arms: tuple[SFTSweepArm, ...]) -> str:
     base = time.strftime("sweep-%Y%m%dT%H%M%SZ", time.gmtime())
     for suffix in ("", *[f"-{index}" for index in range(1, 100)]):
         candidate = f"{base}{suffix}"
@@ -140,11 +140,11 @@ def fresh_launch_id(output_root: Path, arms: tuple[SweepArm, ...]) -> str:
         ]
         if all(not path.exists() for path in paths):
             return candidate
-    raise SweepError(f"could not find an isolated sweep launch id under {output_root}")
+    raise SFTSweepError(f"could not find an isolated sweep launch id under {output_root}")
 
 
 def arm_failure_payload(
-    arm: SweepArm,
+    arm: SFTSweepArm,
     *,
     arm_id: str,
     output_dir: Path,

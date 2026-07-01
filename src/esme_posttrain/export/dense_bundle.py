@@ -10,7 +10,7 @@ import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import BUNDLE_FORMAT, file_sha256, load_dense_backbone_bundle
-from esme_posttrain.sft.checkpointing import load_training_checkpoint
+from esme_posttrain.training.checkpointing import load_training_checkpoint
 
 CHAT_TEMPLATE_ID = "esme_newline_v1"
 DEFAULT_CHAT_TEMPLATE = {
@@ -50,7 +50,7 @@ def export_dense_bundle(request: ExportRequest) -> dict[str, Any]:
     _require_artifact_files(artifact_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    _copy(artifact_dir / "tokenizer.json", output_dir / "tokenizer.json")
+    _copy_file_atomically(artifact_dir / "tokenizer.json", output_dir / "tokenizer.json")
 
     checkpoint = load_training_checkpoint(artifact_dir / "best-checkpoint.pt", map_location="cpu")
     (output_dir / "config.json").write_text(
@@ -66,7 +66,7 @@ def export_dense_bundle(request: ExportRequest) -> dict[str, Any]:
         "model_config": checkpoint.config.to_dict(),
         "state_dict": checkpoint.model.state_dict(),
     }
-    _torch_save(weights_payload, output_dir / "weights.pt")
+    _save_torch_payload_atomically(weights_payload, output_dir / "weights.pt")
 
     tokenizer = Tokenizer.from_file(str(output_dir / "tokenizer.json"))
     eos_token_ids = _eos_token_ids(tokenizer)
@@ -250,16 +250,16 @@ def _eos_token_ids(tokenizer: Tokenizer) -> list[int]:
     return values
 
 
-def _copy(source: Path, target: Path) -> None:
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    shutil.copy2(source, tmp)
-    tmp.replace(target)
+def _copy_file_atomically(source: Path, target: Path) -> None:
+    tmp_path = target.with_suffix(target.suffix + ".tmp")
+    shutil.copy2(source, tmp_path)
+    tmp_path.replace(target)
 
 
-def _torch_save(payload: dict[str, Any], path: Path) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    torch.save(payload, tmp)
-    tmp.replace(path)
+def _save_torch_payload_atomically(payload: dict[str, Any], path: Path) -> None:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    torch.save(payload, tmp_path)
+    tmp_path.replace(path)
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:

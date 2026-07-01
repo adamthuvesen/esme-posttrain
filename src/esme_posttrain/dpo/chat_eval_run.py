@@ -24,7 +24,7 @@ from esme_posttrain.dpo.chat_eval import (
     write_chat_eval_markdown,
 )
 from esme_posttrain.dpo.launch import DPOLaunchConfig
-from esme_posttrain.launch.common import LAUNCH_APPROVAL_FLAG, MODAL_CLIENT_VERSION
+from esme_posttrain.launch.config_guards import LAUNCH_APPROVAL_FLAG, MODAL_CLIENT_VERSION
 
 CHAT_EVAL_SPEND_CAP_USD = 1.0
 CHAT_EVAL_OUTPUT_STEM = "esme-214m-chat-dpo-full"

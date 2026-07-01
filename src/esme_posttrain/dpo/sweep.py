@@ -26,13 +26,13 @@ from esme_posttrain.dpo.trainer import (
     DPOTrainerConfig,
     run_dpo_training,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
     estimate_cost_usd,
 )
 from esme_posttrain.run_artifacts import RuntimeSpendTracker, write_environment, write_json
-from esme_posttrain.sft.wandb_init import WandbConfig
+from esme_posttrain.training.wandb_init import WandbConfig
 
 SWEEP_OUTPUT_STEM = "esme-chat-dpo-beta-sweep"
 SWEEP_GROUP = "esme_214m_chat_dpo_beta_sweep"
@@ -101,16 +101,6 @@ def beta_arms(*, betas: tuple[float, ...] = EXPECTED_SWEEP_BETAS) -> tuple[BetaA
 
 
 SWEEP_ARMS: tuple[BetaArm, ...] = beta_arms()
-
-
-class DPOSweepSpendGuard(RuntimeSpendTracker):
-    def check(self, step: int) -> None:
-        cost = self.estimated_cost_usd()
-        if cost > self.stop_usd:
-            self.write_cost(step=step, status="runtime_cap_exceeded")
-            raise DPOSweepError(
-                f"DPO beta sweep runtime spend estimate ${cost:.4f} exceeded ${self.stop_usd:.2f}"
-            )
 
 
 def build_dpo_sweep_preflight(
@@ -301,7 +291,7 @@ def run_dpo_beta_sweep(
         raise DPOSweepError(f"sweep output root must end with {SWEEP_OUTPUT_STEM}")
     output_root.mkdir(parents=True, exist_ok=True)
     started = started or time.perf_counter()
-    guard = DPOSweepSpendGuard(
+    spend_tracker = RuntimeSpendTracker(
         started=started,
         usd_per_hour=usd_per_hour,
         stop_usd=SWEEP_SPEND_CAP_USD,
@@ -330,7 +320,7 @@ def run_dpo_beta_sweep(
                     train_pairs=train_pairs,
                     eval_pairs=eval_pairs,
                     device=device,
-                    guard=guard,
+                    spend_tracker=spend_tracker,
                     wandb_enabled=wandb_enabled,
                     commit=commit,
                     dirty=dirty,
@@ -352,7 +342,7 @@ def run_dpo_beta_sweep(
 
     best_arm = select_best_arm(arm_payloads)
     status = "beta_sweep_passed" if best_arm is not None else "beta_sweep_failed"
-    cost = guard.write_cost(
+    cost = spend_tracker.write_cost(
         step=max((int(arm.get("steps_completed", 0)) for arm in arm_payloads), default=0),
         status=status,
     )
@@ -400,7 +390,7 @@ def _run_sweep_arm(
     train_pairs: tuple[Any, ...],
     eval_pairs: tuple[Any, ...],
     device: torch.device,
-    guard: DPOSweepSpendGuard,
+    spend_tracker: RuntimeSpendTracker,
     wandb_enabled: bool,
     commit: str,
     dirty: bool,
@@ -408,7 +398,7 @@ def _run_sweep_arm(
     optimizer_config = config.optimizer
     monitoring_config = config.payload["monitoring"]
     write_environment(output_dir / "environment.txt", device=device)
-    arm_started_cost = guard.estimated_cost_usd()
+    arm_started_cost = spend_tracker.estimated_cost_usd()
     result = run_dpo_training(
         policy,
         reference,
@@ -455,9 +445,13 @@ def _run_sweep_arm(
             ),
         ),
         reference_bundle_manifest={"mode": "modal_dpo_beta_sweep", "arm_id": arm_id},
-        step_callback=guard.check,
+        step_callback=lambda step: spend_tracker.check_cap(
+            step,
+            label="DPO beta sweep",
+            error_type=DPOSweepError,
+        ),
     )
-    cost = guard.write_cost(step=result.steps_completed, status="arm_complete")
+    cost = spend_tracker.write_cost(step=result.steps_completed, status="arm_complete")
     estimated_arm_cost = max(0.0, cost["estimated_cost_usd"] - arm_started_cost)
     payload = {
         "status": "complete",

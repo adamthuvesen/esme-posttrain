@@ -41,9 +41,15 @@ from esme_posttrain.dpo.sweep import (
     dpo_sweep_blockers,
     run_dpo_beta_sweep,
 )
-from esme_posttrain.launch.common import IMAGE_PACKAGE_PINS, LAUNCH_APPROVAL_FLAG, LaunchError
-from esme_posttrain.launch.modal_helpers import (
+from esme_posttrain.launch.config_guards import (
+    IMAGE_PACKAGE_PINS,
+    LAUNCH_APPROVAL_FLAG,
+    LaunchError,
+)
+from esme_posttrain.launch.modal_cli import (
+    command_with_output_stem,
     format_payload,
+    fresh_output_dir,
     local_git_commit,
     local_git_dirty,
     modal_call_id,
@@ -323,9 +329,9 @@ def launch(argv: list[str] | None = None) -> int:
         return 2
     try:
         function_call = run_modal_smoke.spawn(
-            config.payload, _local_git_commit(), _local_git_dirty()
+            config.payload, local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT)
         )
-        call_id = _modal_call_id(function_call)
+        call_id = modal_call_id(function_call)
         result = function_call.get()
         result.update({"modal_app": MODAL_APP_NAME, "modal_call_id": call_id})
     except Exception as error:
@@ -356,12 +362,12 @@ def _launch_chat_eval(config: Any, *, approved: bool, json_output: bool) -> int:
     try:
         function_call = run_modal_chat_eval.spawn(
             config.payload,
-            _local_git_commit(),
-            _local_git_dirty(),
+            local_git_commit(REPO_ROOT),
+            local_git_dirty(REPO_ROOT),
             DPO_MODAL_GPU,
             DPO_TIMEOUT_HOURS,
         )
-        call_id = _modal_call_id(function_call)
+        call_id = modal_call_id(function_call)
         result = function_call.get()
         result.update(
             {
@@ -402,12 +408,12 @@ def _launch_beta_sweep(config: Any, *, approved: bool, json_output: bool) -> int
     try:
         function_call = run_modal_beta_sweep.spawn(
             config.payload,
-            _local_git_commit(),
-            _local_git_dirty(),
+            local_git_commit(REPO_ROOT),
+            local_git_dirty(REPO_ROOT),
             DPO_MODAL_GPU,
             DPO_SWEEP_TIMEOUT_HOURS,
         )
-        call_id = _modal_call_id(function_call)
+        call_id = modal_call_id(function_call)
         result = function_call.get()
         result.update(
             {
@@ -441,12 +447,12 @@ def _launch_full_run(config: Any, *, approved: bool, json_output: bool, output_s
         return 2
     try:
         function_call = run_modal_full_dpo.spawn(
-            config.payload, _local_git_commit(), _local_git_dirty(), output_stem
+            config.payload, local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT), output_stem
         )
     except Exception as error:
         print(f"DPO full run failed before Modal spawn: {error}", file=sys.stderr)
         return 2
-    call_id = _modal_call_id(function_call)
+    call_id = modal_call_id(function_call)
     payload = {
         "status": "modal_full_dpo_launched",
         "will_start_modal_job": True,
@@ -479,7 +485,7 @@ def _run_modal_dpo_body(
         if blockers:
             raise RuntimeError("full DPO refused inside Modal: " + "; ".join(blockers))
     output_dir = (
-        _fresh_output_dir(VOLUME_MOUNT, output_stem) if fresh else VOLUME_MOUNT / output_stem
+        fresh_output_dir(VOLUME_MOUNT, output_stem) if fresh else VOLUME_MOUNT / output_stem
     )
     sft_reference = config.payload["sft_reference"]
     return run_full_dpo(
@@ -510,7 +516,7 @@ def _run_modal_beta_sweep_body(
     from tokenizers import Tokenizer
 
     from esme_posttrain.dpo.data import build_preference_set
-    from esme_posttrain.sft.checkpointing import load_training_checkpoint
+    from esme_posttrain.training.checkpointing import load_training_checkpoint
 
     config = validate_dpo_payload(config_payload, Path("configs/esme-214m-chat-dpo.json"))
     blockers = dpo_sweep_blockers(config, timeout_hours=timeout_hours, modal_gpu=modal_gpu)
@@ -597,23 +603,17 @@ def _run_modal_chat_eval_body(
     )
 
 
-def _fresh_output_dir(root: Path, stem: str) -> Path:
-    base = root / stem
-    for suffix in ("", *[f"-{index}" for index in range(1, 100)]):
-        candidate = Path(f"{base}{suffix}")
-        if not candidate.exists() or not any(candidate.iterdir()):
-            return candidate
-    raise RuntimeError(f"could not find an empty Modal smoke output directory under {root}")
-
-
 def _validated_output_stem(value: str) -> str:
     return validate_output_stem(value, env_var="DPO_MODAL_FULL_OUTPUT_STEM")
 
 
 def _full_launch_command(config: Any, output_stem: str) -> str:
-    if output_stem == DEFAULT_MODAL_FULL_OUTPUT_STEM:
-        return config.full_launch_command
-    return f"DPO_MODAL_FULL_OUTPUT_STEM='{output_stem}' {config.full_launch_command}"
+    return command_with_output_stem(
+        config.full_launch_command,
+        output_stem=output_stem,
+        default_stem=DEFAULT_MODAL_FULL_OUTPUT_STEM,
+        env_var="DPO_MODAL_FULL_OUTPUT_STEM",
+    )
 
 
 def _with_full_output_stem(
@@ -649,18 +649,6 @@ def _format_payload(payload: dict[str, Any], *, json_output: bool) -> str:
             "full_launch_command",
         ),
     )
-
-
-def _modal_call_id(function_call: Any) -> str:
-    return modal_call_id(function_call)
-
-
-def _local_git_commit() -> str:
-    return local_git_commit(REPO_ROOT)
-
-
-def _local_git_dirty() -> bool:
-    return local_git_dirty(REPO_ROOT)
 
 
 if __name__ == "__main__":

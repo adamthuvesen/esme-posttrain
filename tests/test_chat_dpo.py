@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -27,9 +28,15 @@ from esme_posttrain.dpo.decoding_precheck import (
     GREEDY,
     NUCLEUS_REP_PENALTY,
     DecodingConfig,
+    _nucleus_keep_mask,
     generate_with_decoding,
     ngram_repetition_rate,
     run_decoding_precheck,
+)
+from esme_posttrain.dpo.full import (
+    DPOFullRunError,
+    _assert_accepted_dpo_result,
+    _assert_data_safe,
 )
 from esme_posttrain.dpo.launch import (
     DPO_FULL_RUN_SPEND_CAP_USD,
@@ -59,11 +66,11 @@ from esme_posttrain.dpo.trainer import (
     sequence_logprob,
 )
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.checkpointing import load_training_checkpoint, save_training_checkpoint
 from esme_posttrain.sft.data import IGNORE_INDEX, ChatTurn
 from esme_posttrain.sft.launch_instruct import LaunchError
 from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
-from esme_posttrain.sft.trainer import collate_batch
+from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
+from esme_posttrain.training.collate import collate_batch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-chat-dpo.json"
@@ -99,10 +106,10 @@ def test_dpo_gradient_pushes_margin_positive() -> None:
         max_length=48,
         max_prompt_length=24,
     )
-    from esme_posttrain.dpo.trainer import _as_collatable
+    from esme_posttrain.dpo.trainer import _completion_as_collate_row
 
-    chosen_ids, chosen_labels = collate_batch((_as_collatable(pair.chosen),))
-    rejected_ids, rejected_labels = collate_batch((_as_collatable(pair.rejected),))
+    chosen_ids, chosen_labels = collate_batch((_completion_as_collate_row(pair.chosen),))
+    rejected_ids, rejected_labels = collate_batch((_completion_as_collate_row(pair.rejected),))
     pc = sequence_logprob(policy, chosen_ids, chosen_labels, length_normalized=False)
     pr = sequence_logprob(policy, rejected_ids, rejected_labels, length_normalized=False)
     rc = sequence_logprob(reference, chosen_ids, chosen_labels, length_normalized=False)
@@ -161,9 +168,9 @@ def test_length_normalized_logp_divides_by_token_count() -> None:
         max_length=48,
         max_prompt_length=24,
     )
-    from esme_posttrain.dpo.trainer import _as_collatable
+    from esme_posttrain.dpo.trainer import _completion_as_collate_row
 
-    ids, labels = collate_batch((_as_collatable(pair.chosen),))
+    ids, labels = collate_batch((_completion_as_collate_row(pair.chosen),))
     summed = sequence_logprob(model, ids, labels, length_normalized=False)
     mean = sequence_logprob(model, ids, labels, length_normalized=True)
     supervised = int((labels[:, 1:] != IGNORE_INDEX).sum().item())
@@ -304,6 +311,7 @@ def test_dpo_logs_chosen_rejected_logps_every_eval(tmp_path: Path) -> None:
         assert "eval/rejected_logp" in row
         assert "eval/preference_accuracy" in row
         assert "eval/margin" in row
+    assert "wandb_run_url" in result.to_dict()
 
 
 # --- decoding pre-check -------------------------------------------------------
@@ -356,6 +364,12 @@ def test_decoding_precheck_summarizes_both_decoders() -> None:
     for summary in payload["per_decoding_summary"].values():
         assert "mean_response_length" in summary
         assert "mean_repetition_rate_3gram" in summary
+
+
+def test_nucleus_sampling_keeps_threshold_crossing_token() -> None:
+    keep = _nucleus_keep_mask(torch.tensor([0.6, 0.3, 0.1]), top_p=0.7)
+
+    assert keep.tolist() == [True, True, False]
 
 
 # --- SFT-vs-DPO chat eval -----------------------------------------------------
@@ -496,15 +510,71 @@ def test_cpu_fixture_checkpoint_reload_reproduces_logits(tmp_path: Path) -> None
         max_length=48,
         max_prompt_length=24,
     )
-    from esme_posttrain.dpo.trainer import _as_collatable
+    from esme_posttrain.dpo.trainer import _completion_as_collate_row
 
-    ids, _ = collate_batch((_as_collatable(pair.chosen),))
+    ids, _ = collate_batch((_completion_as_collate_row(pair.chosen),))
     model = loaded.model
     model.eval()
     with torch.no_grad():
         first = model(ids[:, :-1])
         second = model(ids[:, :-1])
     assert torch.equal(first, second)
+
+
+def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> None:
+    accepted = SimpleNamespace(
+        base_eval=SimpleNamespace(preference_accuracy=0.5),
+        selected_eval=SimpleNamespace(preference_accuracy=0.75),
+        margin_increased=True,
+        chosen_logp_collapsed=False,
+    )
+    _assert_accepted_dpo_result(accepted)
+
+    lower_accuracy = SimpleNamespace(
+        base_eval=SimpleNamespace(preference_accuracy=0.6),
+        selected_eval=SimpleNamespace(preference_accuracy=0.5),
+        margin_increased=True,
+        chosen_logp_collapsed=False,
+    )
+    with pytest.raises(DPOFullRunError, match="preference accuracy"):
+        _assert_accepted_dpo_result(lower_accuracy)
+
+    collapsed = SimpleNamespace(
+        base_eval=SimpleNamespace(preference_accuracy=0.5),
+        selected_eval=SimpleNamespace(preference_accuracy=0.75),
+        margin_increased=True,
+        chosen_logp_collapsed=True,
+    )
+    with pytest.raises(DPOFullRunError, match="log-prob collapsed"):
+        _assert_accepted_dpo_result(collapsed)
+
+
+def test_dpo_full_rejects_eval_shortfalls_and_eval_cap_overruns() -> None:
+    train_report = {
+        "selected_pairs": 10,
+        "selected_tokens": 100,
+        "shortfalls": [],
+    }
+    caps = {
+        "train_pairs": 10,
+        "train_tokens": 100,
+        "eval_pairs": 10,
+        "eval_tokens": 100,
+    }
+
+    with pytest.raises(DPOFullRunError, match="eval data shortfall"):
+        _assert_data_safe(
+            train_report,
+            {"selected_pairs": 5, "selected_tokens": 50, "shortfalls": ["selected 5/10"]},
+            caps,
+        )
+
+    with pytest.raises(DPOFullRunError, match="eval token cap exceeded"):
+        _assert_data_safe(
+            train_report,
+            {"selected_pairs": 10, "selected_tokens": 101, "shortfalls": []},
+            caps,
+        )
 
 
 # --- config + dry-run + guards ------------------------------------------------

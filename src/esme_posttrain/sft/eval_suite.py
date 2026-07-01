@@ -6,11 +6,11 @@ from typing import Any
 import torch
 
 from esme_posttrain.modeling import DenseBackbone, language_model_loss, perplexity
-from esme_posttrain.sft.collate import collate_batch
 from esme_posttrain.sft.data import IGNORE_INDEX, TokenizedExample
-from esme_posttrain.sft.errors import TrainerError
-from esme_posttrain.sft.metrics import eval_suite_metric_payload
-from esme_posttrain.sft.runtime import precision_context
+from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.training.errors import TrainerError
+from esme_posttrain.training.metrics import eval_suite_metric_payload
+from esme_posttrain.training.runtime import precision_context
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,15 @@ class EvalMetrics:
             "supervised_tokens": self.supervised_tokens,
             "examples": self.examples,
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> EvalMetrics:
+        return cls(
+            response_loss=float(payload["response_loss"]),
+            perplexity=float(payload["perplexity"]),
+            supervised_tokens=int(payload["supervised_tokens"]),
+            examples=int(payload["examples"]),
+        )
 
 
 @dataclass(frozen=True)
@@ -84,6 +93,30 @@ class EvalSuiteResult:
             "selector_weights": self.selector_weights,
             "splits": {name: metrics.to_dict() for name, metrics in self.split_metrics.items()},
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> EvalSuiteResult:
+        raw_splits = payload["splits"]
+        raw_weights = payload["selector_weights"]
+        if not isinstance(raw_splits, dict):
+            raise TrainerError("selected_eval_suite.splits must be an object")
+        if not isinstance(raw_weights, dict):
+            raise TrainerError("selected_eval_suite.selector_weights must be an object")
+        return cls(
+            selector_metric_name=str(payload["selector_metric"]),
+            selector_response_loss=float(payload["selector_response_loss"]),
+            split_metrics={
+                str(name): EvalMetrics.from_dict(_dict_field(metrics, f"splits.{name}"))
+                for name, metrics in raw_splits.items()
+            },
+            selector_weights={str(name): float(weight) for name, weight in raw_weights.items()},
+        )
+
+
+def _dict_field(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise TrainerError(f"selected_eval_suite.{label} must be an object")
+    return value
 
 
 def evaluate_response_loss(

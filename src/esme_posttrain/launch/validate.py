@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TypeAlias, cast
 
-from esme_posttrain.launch.common import LaunchError
+from esme_posttrain.launch.errors import LaunchError
 
 JsonValue: TypeAlias = None | bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"]
 JsonObject: TypeAlias = dict[str, JsonValue]

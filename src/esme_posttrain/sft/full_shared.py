@@ -6,7 +6,7 @@ from typing import Any
 import torch
 
 
-class FullRunError(RuntimeError):
+class SFTFullRunError(RuntimeError):
     pass
 
 
@@ -14,23 +14,23 @@ def assert_full_run_data_safe(
     budgets: dict[str, Any], train_report: dict[str, Any], eval_report: dict[str, Any]
 ) -> None:
     if int(train_report["selected_samples"]) > int(budgets["max_train_samples"]):
-        raise FullRunError("train sample cap exceeded")
+        raise SFTFullRunError("train sample cap exceeded")
     if int(train_report["selected_tokens"]) > int(budgets["max_train_tokens"]):
-        raise FullRunError("train token cap exceeded")
+        raise SFTFullRunError("train token cap exceeded")
     if int(eval_report["selected_tokens"]) > int(budgets["max_eval_tokens"]):
-        raise FullRunError("eval token cap exceeded")
+        raise SFTFullRunError("eval token cap exceeded")
     if train_report["shortfalls"]:
-        raise FullRunError("training data shortfall: " + "; ".join(train_report["shortfalls"]))
+        raise SFTFullRunError("training data shortfall: " + "; ".join(train_report["shortfalls"]))
     if eval_report["shortfalls"]:
-        raise FullRunError("eval data shortfall: " + "; ".join(eval_report["shortfalls"]))
+        raise SFTFullRunError("eval data shortfall: " + "; ".join(eval_report["shortfalls"]))
     if "no_robots" in set(train_report["counts_by_source"]):
-        raise FullRunError("HuggingFaceH4/no_robots must never be used for training")
+        raise SFTFullRunError("HuggingFaceH4/no_robots must never be used for training")
 
 
 def assert_required_artifacts(output_dir: Path, expected_artifacts: tuple[str, ...]) -> None:
     missing = [name for name in expected_artifacts if not (output_dir / name).is_file()]
     if missing:
-        raise FullRunError("missing required full-run artifacts: " + ", ".join(missing))
+        raise SFTFullRunError("missing required full-run artifacts: " + ", ".join(missing))
 
 
 def steps_for_target_tokens(
@@ -42,9 +42,9 @@ def steps_for_target_tokens(
     max_steps: int,
 ) -> int:
     if target_train_tokens <= 0:
-        raise FullRunError("budgets.target_train_tokens must be positive")
+        raise SFTFullRunError("budgets.target_train_tokens must be positive")
     if not examples:
-        raise FullRunError("cannot compute train steps without selected examples")
+        raise SFTFullRunError("cannot compute train steps without selected examples")
     trained_tokens = 0
     for step in range(1, max_steps + 1):
         trained_tokens += tokens_for_step(
@@ -98,5 +98,7 @@ def select_full_run_device(*, require_cuda: bool) -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     if require_cuda:
-        raise FullRunError("Modal full SFT requires CUDA, but torch.cuda.is_available() is false")
+        raise SFTFullRunError(
+            "Modal full SFT requires CUDA, but torch.cuda.is_available() is false"
+        )
     return torch.device("cpu")

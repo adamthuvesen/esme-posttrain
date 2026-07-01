@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
@@ -27,22 +27,22 @@ from esme_posttrain.launch.common import (
     validate_modal_runtime,
     validate_output_artifacts,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
 )
-from esme_posttrain.launch.common import (
-    object_field as _object,
+from esme_posttrain.launch.config_guards import (
+    object_field as _require_object_field,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     positive_int as _positive_int,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     require_keys as _require_keys,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     smoke_launch_blockers as _common_smoke_launch_blockers,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     str_field as _str,
 )
 from esme_posttrain.launch.models import RuntimeBlock
@@ -187,27 +187,31 @@ def validate_dpo_payload(payload: dict[str, Any], config_path: Path) -> DPOLaunc
     if payload["stage"] != "dpo":
         raise LaunchError("stage must be dpo")
 
-    sft_reference_path = _validate_sft_reference(_object(payload["sft_reference"], "sft_reference"))
-    preference_source, eval_source = _validate_datasets(_object(payload["datasets"], "datasets"))
-    budgets = _validate_budgets(_object(payload["budgets"], "budgets"))
-    _validate_optimizer(_object(payload["optimizer"], "optimizer"))
-    _validate_dpo(_object(payload["dpo"], "dpo"))
-    _validate_sequence(_object(payload["sequence"], "sequence"))
+    sft_reference_path = _validate_sft_reference(
+        _require_object_field(payload["sft_reference"], "sft_reference")
+    )
+    preference_source, eval_source = _validate_datasets(
+        _require_object_field(payload["datasets"], "datasets")
+    )
+    budgets = _validate_budgets(_require_object_field(payload["budgets"], "budgets"))
+    _validate_optimizer(_require_object_field(payload["optimizer"], "optimizer"))
+    _validate_dpo(_require_object_field(payload["dpo"], "dpo"))
+    _validate_sequence(_require_object_field(payload["sequence"], "sequence"))
     runtime = validate_modal_runtime(
-        _object(payload["runtime"], "runtime"),
+        _require_object_field(payload["runtime"], "runtime"),
         full_run_spend_cap_usd=DPO_FULL_RUN_SPEND_CAP_USD,
         full_run_cap_label=f"{DPO_FULL_RUN_SPEND_CAP_USD:.0f}",
         modal_volume=MODAL_VOLUME,
         require_smoke_profile_metrics=False,
     )
-    _validate_monitoring(_object(payload["monitoring"], "monitoring"))
+    _validate_monitoring(_require_object_field(payload["monitoring"], "monitoring"))
     output_dir = validate_output_artifacts(
-        _object(payload["artifacts"], "artifacts"),
+        _require_object_field(payload["artifacts"], "artifacts"),
         expected_files=EXPECTED_ARTIFACTS,
         manifest_label="DPO evidence manifest",
     )
-    _validate_learning_gate(_object(payload["learning_gate"], "learning_gate"))
-    _validate_acceptance(_object(payload["acceptance"], "acceptance"))
+    _validate_learning_gate(_require_object_field(payload["learning_gate"], "learning_gate"))
+    _validate_acceptance(_require_object_field(payload["acceptance"], "acceptance"))
     _validate_abort_rules(payload["abort_rules"])
 
     runtime_block = RuntimeBlock.from_validated_payload(runtime)
@@ -367,16 +371,16 @@ def _validate_datasets(payload: dict[str, Any]) -> tuple[DatasetSource, DatasetS
     if payload["non_commercial_training_approved"] is not False:
         raise LaunchError("datasets.non_commercial_training_approved must stay false")
     train = _validate_preference_source(
-        _object(payload["preference_train"], "datasets.preference_train"),
+        _require_object_field(payload["preference_train"], "datasets.preference_train"),
         expected=EXPECTED_PREFERENCE_DATASET,
         role="train",
     )
     eval_source = _validate_preference_source(
-        _object(payload["preference_eval"], "datasets.preference_eval"),
+        _require_object_field(payload["preference_eval"], "datasets.preference_eval"),
         expected=EXPECTED_EVAL_DATASET,
         role="eval",
     )
-    _validate_filtering(_object(payload["filtering"], "datasets.filtering"))
+    _validate_filtering(_require_object_field(payload["filtering"], "datasets.filtering"))
     return train, eval_source
 
 

@@ -32,8 +32,8 @@ from esme_posttrain.dpo.decoding_precheck import (
     run_decoding_precheck,
 )
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.checkpointing import load_training_checkpoint
 from esme_posttrain.sft.multiturn_judge import FIXED_MULTI_TURN_PROMPTS
+from esme_posttrain.training.checkpointing import load_training_checkpoint
 
 # Simple conversational prompts a 214M chat model can fairly attempt, rendered with
 # the repo chat template. Deliberately easy/open -- the point is chat feel and

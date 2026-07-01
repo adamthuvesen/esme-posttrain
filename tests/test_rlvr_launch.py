@@ -11,7 +11,7 @@ import pytest
 from scripts import modal_rlvr_grpo
 
 from esme_posttrain.cli import main
-from esme_posttrain.launch.common import LaunchError
+from esme_posttrain.launch.config_guards import LaunchError
 from esme_posttrain.rl.launch import (
     build_rlvr_dry_run,
     full_launch_blockers,

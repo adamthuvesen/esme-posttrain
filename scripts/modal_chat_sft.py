@@ -18,9 +18,15 @@ import time
 from pathlib import Path
 from typing import Any
 
-from esme_posttrain.launch.common import IMAGE_PACKAGE_PINS, LAUNCH_APPROVAL_FLAG, LaunchError
-from esme_posttrain.launch.modal_helpers import (
+from esme_posttrain.launch.config_guards import (
+    IMAGE_PACKAGE_PINS,
+    LAUNCH_APPROVAL_FLAG,
+    LaunchError,
+)
+from esme_posttrain.launch.modal_cli import (
+    command_with_output_stem,
     format_payload,
+    fresh_output_dir,
     local_git_commit,
     local_git_dirty,
     modal_call_id,
@@ -346,9 +352,9 @@ def launch(argv: list[str] | None = None) -> int:
         return 2
     try:
         function_call = run_modal_smoke.spawn(
-            config.payload, _local_git_commit(), _local_git_dirty()
+            config.payload, local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT)
         )
-        call_id = _modal_call_id(function_call)
+        call_id = modal_call_id(function_call)
         result = function_call.get()
         result.update({"modal_app": MODAL_APP_NAME, "modal_call_id": call_id})
     except Exception as error:
@@ -383,12 +389,12 @@ def _launch_throughput_probe(config: Any, *, approved: bool, json_output: bool) 
     try:
         function_call = run_modal_throughput_probe.spawn(
             config.payload,
-            _local_git_commit(),
-            _local_git_dirty(),
+            local_git_commit(REPO_ROOT),
+            local_git_dirty(REPO_ROOT),
             SFT_MODAL_GPU,
             SFT_PROBE_TIMEOUT_HOURS,
         )
-        call_id = _modal_call_id(function_call)
+        call_id = modal_call_id(function_call)
         result = function_call.get()
         result.update(
             {
@@ -432,12 +438,12 @@ def _launch_modal_sweep(config: Any, *, approved: bool, json_output: bool) -> in
     try:
         function_call = run_modal_sweep.spawn(
             config.payload,
-            _local_git_commit(),
-            _local_git_dirty(),
+            local_git_commit(REPO_ROOT),
+            local_git_dirty(REPO_ROOT),
             SFT_MODAL_GPU,
             SFT_SWEEP_TIMEOUT_HOURS,
         )
-        call_id = _modal_call_id(function_call)
+        call_id = modal_call_id(function_call)
         result = function_call.get()
         result.update(
             {
@@ -475,8 +481,8 @@ def _launch_full_run(
     try:
         function_call = run_modal_full_sft.spawn(
             config.payload,
-            _local_git_commit(),
-            _local_git_dirty(),
+            local_git_commit(REPO_ROOT),
+            local_git_dirty(REPO_ROOT),
             resume,
             SFT_MODAL_GPU,
             output_stem,
@@ -484,7 +490,7 @@ def _launch_full_run(
     except Exception as error:
         print(f"multi-turn SFT full run failed before Modal spawn: {error}", file=sys.stderr)
         return 2
-    call_id = _modal_call_id(function_call)
+    call_id = modal_call_id(function_call)
     payload = {
         "status": "modal_full_sft_launched",
         "will_start_modal_job": True,
@@ -511,7 +517,7 @@ def _run_modal_smoke_body(
         Path("configs/esme-214m-sft-multiturn.json"),
         require_base_bundle_exists=False,
     )
-    output_dir = _fresh_output_dir(VOLUME_MOUNT, MODAL_SMOKE_OUTPUT_STEM)
+    output_dir = fresh_output_dir(VOLUME_MOUNT, MODAL_SMOKE_OUTPUT_STEM)
     payload = run_multi_turn_cpu_fixture(config, output_dir=output_dir, wandb_enabled=True)
     elapsed = time.perf_counter() - started
     selected_profile = config.selected_gpu_profile
@@ -638,23 +644,17 @@ def _run_modal_full_sft_body(
     )
 
 
-def _fresh_output_dir(root: Path, stem: str) -> Path:
-    base = root / stem
-    for suffix in ("", *[f"-{index}" for index in range(1, 100)]):
-        candidate = Path(f"{base}{suffix}")
-        if not candidate.exists() or not any(candidate.iterdir()):
-            return candidate
-    raise RuntimeError(f"could not find an empty Modal smoke output directory under {root}")
-
-
 def _validated_full_output_stem(value: str) -> str:
     return validate_output_stem(value, env_var="SFT_MODAL_FULL_OUTPUT_STEM")
 
 
 def _full_launch_command(config: Any, output_stem: str) -> str:
-    if output_stem == DEFAULT_MODAL_FULL_OUTPUT_STEM:
-        return config.full_launch_command
-    return f"SFT_MODAL_FULL_OUTPUT_STEM='{output_stem}' {config.full_launch_command}"
+    return command_with_output_stem(
+        config.full_launch_command,
+        output_stem=output_stem,
+        default_stem=DEFAULT_MODAL_FULL_OUTPUT_STEM,
+        env_var="SFT_MODAL_FULL_OUTPUT_STEM",
+    )
 
 
 def _with_full_output_stem(
@@ -688,18 +688,6 @@ def _format_payload(payload: dict[str, Any], *, json_output: bool) -> str:
             "full_launch_command",
         ),
     )
-
-
-def _modal_call_id(function_call: Any) -> str:
-    return modal_call_id(function_call)
-
-
-def _local_git_commit() -> str:
-    return local_git_commit(REPO_ROOT)
-
-
-def _local_git_dirty() -> bool:
-    return local_git_dirty(REPO_ROOT)
 
 
 if __name__ == "__main__":

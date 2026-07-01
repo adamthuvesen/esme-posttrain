@@ -25,29 +25,29 @@ from __future__ import annotations
 
 import json
 import platform
-import shutil
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import file_sha256
 from esme_posttrain.modeling import DenseBackbone, soft_cap_logits
-from esme_posttrain.sft.checkpointing import load_training_checkpoint, save_training_checkpoint
-from esme_posttrain.sft.collate import collate_batch
 from esme_posttrain.sft.data import IGNORE_INDEX
-from esme_posttrain.sft.metrics import append_metric
-from esme_posttrain.sft.runtime import (
+from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
+from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.training.metrics import append_metric
+from esme_posttrain.training.runtime import (
     lr_lambda,
     precision_context,
     resolve_torch_device,
     set_reproducible_seed,
     validate_precision,
 )
-from esme_posttrain.sft.wandb_init import (
+from esme_posttrain.training.wandb_init import (
     WandbConfig,
     start_wandb,
 )
@@ -88,8 +88,7 @@ class DPOTrainerError(ValueError):
     pass
 
 
-class StepCallback(Protocol):
-    def __call__(self, step: int) -> None: ...
+StepCallback = Callable[[int], None]
 
 
 @dataclass(frozen=True)
@@ -206,6 +205,7 @@ class DPOTrainResult:
             "chosen_logp_collapsed": self.chosen_logp_collapsed,
             "base_chosen_logp": self.base_chosen_logp,
             "selected_chosen_logp": self.selected_chosen_logp,
+            "wandb_run_url": self.wandb_run_url,
         }
 
 
@@ -424,9 +424,14 @@ def run_dpo_training(
             selected_metric="eval/preference_accuracy",
         )
 
+    save_training_checkpoint(
+        checkpoint_path,
+        model=policy,
+        step=last_completed_step,
+        metrics={"event": "final"},
+    )
     loaded_best = load_training_checkpoint(best_checkpoint_path, map_location=device)
     policy.load_state_dict(loaded_best.model.state_dict())
-    shutil.copy2(best_checkpoint_path, checkpoint_path)
     _write_tokenizer(tokenizer, output_dir / "tokenizer.json")
 
     chosen_logp_collapsed = is_chosen_logp_collapsed(
@@ -476,12 +481,12 @@ def _forward_batch(
     device: torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor, int]:
     chosen_ids, chosen_labels = collate_batch(
-        tuple(_as_collatable(pair.chosen) for pair in batch),
+        tuple(_completion_as_collate_row(pair.chosen) for pair in batch),
         device=device,
         pad_to_multiple_of=config.pad_to_multiple_of,
     )
     rejected_ids, rejected_labels = collate_batch(
-        tuple(_as_collatable(pair.rejected) for pair in batch),
+        tuple(_completion_as_collate_row(pair.rejected) for pair in batch),
         device=device,
         pad_to_multiple_of=config.pad_to_multiple_of,
     )
@@ -540,12 +545,12 @@ def evaluate_preferences(
         for start in range(0, len(eval_pairs), batch_size):
             batch = eval_pairs[start : start + batch_size]
             chosen_ids, chosen_labels = collate_batch(
-                tuple(_as_collatable(pair.chosen) for pair in batch),
+                tuple(_completion_as_collate_row(pair.chosen) for pair in batch),
                 device=device,
                 pad_to_multiple_of=pad_to_multiple_of,
             )
             rejected_ids, rejected_labels = collate_batch(
-                tuple(_as_collatable(pair.rejected) for pair in batch),
+                tuple(_completion_as_collate_row(pair.rejected) for pair in batch),
                 device=device,
                 pad_to_multiple_of=pad_to_multiple_of,
             )
@@ -586,20 +591,20 @@ def evaluate_preferences(
     )
 
 
-def _as_collatable(completion: Any) -> Any:
+def _completion_as_collate_row(completion: Any) -> Any:
     """Adapt a TokenizedCompletion to the (input_ids, labels) shape collate_batch wants.
 
     ``collate_batch`` reads ``.input_ids``, ``.labels``, ``.source``, ``.row_id``;
     TokenizedCompletion has the first two, so wrap it with the diagnostic fields.
     """
-    return _CollatableCompletion(
+    return _DPOCompletionCollateRow(
         input_ids=completion.input_ids,
         labels=completion.labels,
     )
 
 
 @dataclass(frozen=True)
-class _CollatableCompletion:
+class _DPOCompletionCollateRow:
     input_ids: tuple[int, ...]
     labels: tuple[int, ...]
     source: str = "dpo"
@@ -727,9 +732,9 @@ class _DPOWandbAdapter:
 
 
 def _write_tokenizer(tokenizer: Tokenizer, path: Path) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tokenizer.save(str(tmp))
-    tmp.replace(path)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tokenizer.save(str(tmp_path))
+    tmp_path.replace(path)
 
 
 def _write_manifest(

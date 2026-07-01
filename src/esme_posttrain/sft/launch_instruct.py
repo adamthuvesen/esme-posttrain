@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
@@ -21,27 +21,35 @@ from esme_posttrain.launch.common import (
     validate_sft_loss,
     validate_unpacked_sequence,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
 )
-from esme_posttrain.launch.common import (
-    object_field as _object,
+from esme_posttrain.launch.config_guards import (
+    object_field as _require_object_field,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     positive_int as _positive_int,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     require_keys as _require_keys,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     smoke_launch_blockers as _common_smoke_launch_blockers,
 )
-from esme_posttrain.launch.common import (
+from esme_posttrain.launch.config_guards import (
     str_field as _str,
 )
 from esme_posttrain.launch.models import RuntimeBlock
 from esme_posttrain.sft.data import DatasetSource
-from esme_posttrain.sft.launch_shared import validate_eval_source as _validate_eval_source
+from esme_posttrain.sft.launch_shared import (
+    validate_eval_source as _validate_eval_source,
+)
+from esme_posttrain.sft.launch_shared import (
+    validate_sft_budgets as _validate_sft_budgets,
+)
+from esme_posttrain.sft.launch_shared import (
+    validate_sft_monitoring as _validate_sft_monitoring,
+)
 
 EXPECTED_TRAIN_DATASETS: dict[str, dict[str, Any]] = {
     "smol-smoltalk": {
@@ -179,30 +187,32 @@ def validate_sft_payload(
         raise LaunchError("starts_from must be Esme-214M-Base")
 
     base_bundle_path = validate_base_bundle_config(
-        _object(payload["base_bundle"], "base_bundle"),
+        _require_object_field(payload["base_bundle"], "base_bundle"),
         require_exists=require_base_bundle_exists,
     )
-    train_sources, eval_source = _validate_datasets(_object(payload["datasets"], "datasets"))
-    budgets = _validate_budgets(_object(payload["budgets"], "budgets"))
-    optimizer = validate_adamw_optimizer(_object(payload["optimizer"], "optimizer"))
-    validate_sft_loss(_object(payload["loss"], "loss"))
-    validate_full_tuning(_object(payload["tuning"], "tuning"))
-    validate_unpacked_sequence(_object(payload["sequence"], "sequence"))
+    train_sources, eval_source = _validate_datasets(
+        _require_object_field(payload["datasets"], "datasets")
+    )
+    budgets = _validate_budgets(_require_object_field(payload["budgets"], "budgets"))
+    optimizer = validate_adamw_optimizer(_require_object_field(payload["optimizer"], "optimizer"))
+    validate_sft_loss(_require_object_field(payload["loss"], "loss"))
+    validate_full_tuning(_require_object_field(payload["tuning"], "tuning"))
+    validate_unpacked_sequence(_require_object_field(payload["sequence"], "sequence"))
     runtime = validate_modal_runtime(
-        _object(payload["runtime"], "runtime"),
+        _require_object_field(payload["runtime"], "runtime"),
         full_run_spend_cap_usd=FULL_RUN_SPEND_CAP_USD,
         full_run_cap_label="25",
         modal_volume="esme-posttrain-esme-instruct-sft-pilot",
         require_smoke_profile_metrics=True,
     )
-    _validate_monitoring(_object(payload["monitoring"], "monitoring"))
+    _validate_monitoring(_require_object_field(payload["monitoring"], "monitoring"))
     output_dir = validate_output_artifacts(
-        _object(payload["artifacts"], "artifacts"),
+        _require_object_field(payload["artifacts"], "artifacts"),
         expected_files=EXPECTED_ARTIFACTS,
         manifest_label="SFT evidence manifest",
     )
-    _validate_learning_gate(_object(payload["learning_gate"], "learning_gate"))
-    _validate_acceptance(_object(payload["acceptance"], "acceptance"))
+    _validate_learning_gate(_require_object_field(payload["learning_gate"], "learning_gate"))
+    _validate_acceptance(_require_object_field(payload["acceptance"], "acceptance"))
     _validate_abort_rules(payload["abort_rules"])
 
     train_steps = int(optimizer["max_steps"])
@@ -341,7 +351,8 @@ def _validate_datasets(
     if not isinstance(raw_mix, list) or len(raw_mix) != 2:
         raise LaunchError("datasets.train_mix must contain exactly two sources")
     train_sources = tuple(
-        _validate_train_source(_object(item, "datasets.train_mix[]")) for item in raw_mix
+        _validate_train_source(_require_object_field(item, "datasets.train_mix[]"))
+        for item in raw_mix
     )
     if {source.name for source in train_sources} != set(EXPECTED_TRAIN_DATASETS):
         raise LaunchError("datasets.train_mix must be smol-smoltalk and tulu-3-personas")
@@ -349,7 +360,8 @@ def _validate_datasets(
     if ratios != {"smol-smoltalk": 0.8, "tulu-3-personas": 0.2}:
         raise LaunchError("datasets.train_mix must be exactly 80% smol-smoltalk and 20% tulu")
     eval_source = _validate_eval_source(
-        _object(payload["eval_holdout"], "datasets.eval_holdout"), EXPECTED_EVAL_DATASET
+        _require_object_field(payload["eval_holdout"], "datasets.eval_holdout"),
+        EXPECTED_EVAL_DATASET,
     )
     return (train_sources[0], train_sources[1]), eval_source
 
@@ -378,7 +390,7 @@ def _validate_train_source(payload: dict[str, Any]) -> DatasetSource:
             raise LaunchError(f"dataset {name}.{key} must be {expected[key]}")
     if payload["role"] != "train":
         raise LaunchError(f"dataset {name}.role must be train")
-    filters = _object(payload["filters"], f"dataset {name}.filters")
+    filters = _require_object_field(payload["filters"], f"dataset {name}.filters")
     max_prompt_chars = _positive_int(
         filters.get("max_prompt_chars"),
         f"dataset {name}.filters.max_prompt_chars",
@@ -400,82 +412,15 @@ def _validate_train_source(payload: dict[str, Any]) -> DatasetSource:
 
 
 def _validate_budgets(payload: dict[str, Any]) -> dict[str, Any]:
-    _require_keys(
+    return _validate_sft_budgets(
         payload,
-        {
-            "max_train_samples",
-            "max_train_tokens",
-            "target_train_tokens",
-            "max_eval_samples",
-            "max_eval_tokens",
-            "matched_eval_samples_per_source",
-            "matched_eval_tokens_per_source",
-            "max_sequence_tokens",
-            "smoke_train_samples",
-            "smoke_train_tokens",
-            "smoke_eval_samples",
-        },
-        "budgets",
+        max_train_samples_cap=MAX_APPROVED_TRAIN_SAMPLES,
+        max_train_tokens_cap=MAX_APPROVED_TRAIN_TOKENS,
     )
-    max_train_samples = _positive_int(payload["max_train_samples"], "budgets.max_train_samples")
-    max_train_tokens = _positive_int(payload["max_train_tokens"], "budgets.max_train_tokens")
-    target_train_tokens = _positive_int(
-        payload["target_train_tokens"], "budgets.target_train_tokens"
-    )
-    if max_train_samples > MAX_APPROVED_TRAIN_SAMPLES:
-        raise LaunchError(f"budgets.max_train_samples must be <= {MAX_APPROVED_TRAIN_SAMPLES}")
-    if max_train_tokens > MAX_APPROVED_TRAIN_TOKENS:
-        raise LaunchError(f"budgets.max_train_tokens must be <= {MAX_APPROVED_TRAIN_TOKENS}")
-    if target_train_tokens > max_train_tokens:
-        raise LaunchError("budgets.target_train_tokens must be <= budgets.max_train_tokens")
-    for key in (
-        "max_eval_samples",
-        "max_eval_tokens",
-        "matched_eval_samples_per_source",
-        "matched_eval_tokens_per_source",
-        "max_sequence_tokens",
-        "smoke_train_samples",
-        "smoke_train_tokens",
-        "smoke_eval_samples",
-    ):
-        _positive_int(payload[key], f"budgets.{key}")
-    if payload["smoke_train_samples"] > max_train_samples:
-        raise LaunchError("budgets.smoke_train_samples must be <= budgets.max_train_samples")
-    if payload["smoke_train_tokens"] > max_train_tokens:
-        raise LaunchError("budgets.smoke_train_tokens must be <= budgets.max_train_tokens")
-    return payload
 
 
 def _validate_monitoring(payload: dict[str, Any]) -> None:
-    _require_keys(
-        payload,
-        {
-            "log_interval",
-            "eval_interval",
-            "checkpoint_interval",
-            "retain_last_checkpoints",
-            "early_stopping_patience",
-            "no_robots_catastrophic_regression_multiplier",
-            "sample_new_tokens",
-            "wandb_project",
-            "wandb_required_for_modal",
-        },
-        "monitoring",
-    )
-    _positive_int(payload["log_interval"], "monitoring.log_interval")
-    _positive_int(payload["eval_interval"], "monitoring.eval_interval")
-    _positive_int(payload["checkpoint_interval"], "monitoring.checkpoint_interval")
-    _positive_int(payload["retain_last_checkpoints"], "monitoring.retain_last_checkpoints")
-    _positive_int(payload["early_stopping_patience"], "monitoring.early_stopping_patience")
-    if (
-        not isinstance(payload["no_robots_catastrophic_regression_multiplier"], int | float)
-        or payload["no_robots_catastrophic_regression_multiplier"] <= 1.0
-    ):
-        raise LaunchError("monitoring.no_robots_catastrophic_regression_multiplier must be > 1")
-    _positive_int(payload["sample_new_tokens"], "monitoring.sample_new_tokens")
-    _str(payload["wandb_project"], "monitoring.wandb_project")
-    if payload["wandb_required_for_modal"] is not True:
-        raise LaunchError("monitoring.wandb_required_for_modal must be true")
+    _validate_sft_monitoring(payload)
 
 
 def _validate_learning_gate(payload: dict[str, Any]) -> None:

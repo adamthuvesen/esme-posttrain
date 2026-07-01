@@ -15,9 +15,15 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from esme_posttrain.launch.common import IMAGE_PACKAGE_PINS, LAUNCH_APPROVAL_FLAG, LaunchError
-from esme_posttrain.launch.modal_helpers import (
+from esme_posttrain.launch.config_guards import (
+    IMAGE_PACKAGE_PINS,
+    LAUNCH_APPROVAL_FLAG,
+    LaunchError,
+)
+from esme_posttrain.launch.modal_cli import (
+    command_with_output_stem,
     format_payload,
+    fresh_output_dir,
     local_git_commit,
     local_git_dirty,
     modal_call_id,
@@ -105,7 +111,7 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
             if blockers:
                 _emit_remote_milestone("launch_blocked_inside_modal", blockers=blockers)
                 raise RuntimeError("GRPO refused inside Modal: " + "; ".join(blockers))
-            output_dir = _fresh_output_dir(VOLUME_MOUNT, output_stem)
+            output_dir = fresh_output_dir(VOLUME_MOUNT, output_stem)
             status_path = _remote_status_path(output_dir)
             _record_remote_milestone(
                 status_path,
@@ -590,15 +596,6 @@ def _write_remote_milestone(path: Path, stage: str, **fields: Any) -> None:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
-def _fresh_output_dir(root: Path, stem: str) -> Path:
-    base = root / stem
-    for suffix in ("", *[f"-{index}" for index in range(1, 100)]):
-        candidate = Path(f"{base}{suffix}")
-        if not candidate.exists() or not any(candidate.iterdir()):
-            return candidate
-    raise RuntimeError(f"could not find an empty Modal output directory under {root}")
-
-
 def _validated_output_stem(value: str) -> str:
     return validate_output_stem(value, env_var="RLVR_MODAL_OUTPUT_STEM")
 
@@ -629,9 +626,12 @@ def _launch_command(
 
 
 def _full_launch_command(command: str, output_stem: str) -> str:
-    if output_stem == DEFAULT_MODAL_OUTPUT_STEM:
-        return command
-    return f"RLVR_MODAL_OUTPUT_STEM='{output_stem}' {command}"
+    return command_with_output_stem(
+        command,
+        output_stem=output_stem,
+        default_stem=DEFAULT_MODAL_OUTPUT_STEM,
+        env_var="RLVR_MODAL_OUTPUT_STEM",
+    )
 
 
 def _with_output_stem(

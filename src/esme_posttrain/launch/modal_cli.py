@@ -67,3 +67,24 @@ def validate_output_stem(
         if forbidden in stem:
             raise ValueError(f"{env_var} must not contain {forbidden}")
     return stem
+
+
+def fresh_output_dir(root: Path, stem: str, *, label: str = "Modal output") -> Path:
+    base = root / stem
+    for suffix in ("", *[f"-{index}" for index in range(1, 100)]):
+        candidate = Path(f"{base}{suffix}")
+        if not candidate.exists() or not any(candidate.iterdir()):
+            return candidate
+    raise RuntimeError(f"could not find an empty {label} directory under {root}")
+
+
+def command_with_output_stem(
+    command: str,
+    *,
+    output_stem: str,
+    default_stem: str,
+    env_var: str,
+) -> str:
+    if output_stem == default_stem:
+        return command
+    return f"{env_var}='{output_stem}' {command}"

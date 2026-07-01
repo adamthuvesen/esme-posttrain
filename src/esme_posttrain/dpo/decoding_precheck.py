@@ -113,13 +113,18 @@ def _nucleus_sample(
 ) -> int:
     probs = F.softmax(logits.float() / config.temperature, dim=-1)
     sorted_probs, sorted_idx = torch.sort(probs, descending=True)
-    cumulative = torch.cumsum(sorted_probs, dim=-1)
-    keep = cumulative <= config.top_p
-    keep[0] = True  # always keep the top token
+    keep = _nucleus_keep_mask(sorted_probs, config.top_p)
     filtered = torch.where(keep, sorted_probs, torch.zeros_like(sorted_probs))
     filtered = filtered / filtered.sum()
     choice = int(torch.multinomial(filtered.cpu(), num_samples=1, generator=generator).item())
     return int(sorted_idx[choice].item())
+
+
+def _nucleus_keep_mask(sorted_probs: torch.Tensor, top_p: float) -> torch.Tensor:
+    cumulative = torch.cumsum(sorted_probs, dim=-1)
+    keep = (cumulative - sorted_probs) < top_p
+    keep[0] = True
+    return keep
 
 
 def ngram_repetition_rate(token_ids: Sequence[int], n: int = 3) -> float:

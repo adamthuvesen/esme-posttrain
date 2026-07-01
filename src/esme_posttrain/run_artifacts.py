@@ -20,7 +20,10 @@ from esme_posttrain.bundle import file_sha256
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n",
+        encoding="utf-8",
+    )
 
 
 def write_environment(path: Path, *, device: torch.device) -> None:
@@ -56,7 +59,7 @@ def refresh_manifest_files(output_dir: Path, expected_artifacts: tuple[str, ...]
         path = output_dir / name
         if path.is_file():
             files[name] = {"path": name, "sha256": file_sha256(path)}
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    write_json(manifest_path, manifest)
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,20 @@ class RuntimeSpendTracker:
             status=status,
             paid_compute=self.paid_compute,
         )
+
+    def check_cap(
+        self,
+        step: int,
+        *,
+        label: str,
+        error_type: type[Exception] = RuntimeError,
+    ) -> None:
+        cost = self.estimated_cost_usd()
+        if cost > self.stop_usd:
+            self.write_cost(step=step, status="runtime_cap_exceeded")
+            raise error_type(
+                f"{label} runtime spend estimate ${cost:.4f} exceeded ${self.stop_usd:.2f}"
+            )
 
 
 def write_runtime_cost(

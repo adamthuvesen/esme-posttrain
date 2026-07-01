@@ -1,35 +1,17 @@
 from __future__ import annotations
 
 import json
-import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import file_sha256
 from esme_posttrain.modeling import BackboneConfig, DenseBackbone, language_model_loss
-from esme_posttrain.sft.checkpointing import (
-    LoadedTrainingCheckpoint,
-    checkpoint_dir,
-    latest_checkpoint_path,
-    load_training_checkpoint,
-    retain_last_checkpoints,
-    save_training_checkpoint,
-)
-from esme_posttrain.sft.collate import (
-    collate_batch,
-)
-from esme_posttrain.sft.collate import (
-    cyclic_batch as _cyclic_batch,
-)
-from esme_posttrain.sft.collate import (
-    token_correct as _token_correct,
-)
 from esme_posttrain.sft.data import IGNORE_INDEX, TokenizedExample
-from esme_posttrain.sft.errors import TrainerError
 from esme_posttrain.sft.eval_suite import (
     EvalMetrics,
     EvalSplit,
@@ -46,20 +28,6 @@ from esme_posttrain.sft.eval_suite import (
 from esme_posttrain.sft.eval_suite import (
     split_response_loss as _split_response_loss,
 )
-from esme_posttrain.sft.metrics import append_metric, train_metric_payload
-from esme_posttrain.sft.runtime import (
-    lr_lambda as _lr_lambda,
-)
-from esme_posttrain.sft.runtime import (
-    precision_context as _precision_context,
-)
-from esme_posttrain.sft.runtime import (
-    resolve_torch_device,
-    set_reproducible_seed,
-)
-from esme_posttrain.sft.runtime import (
-    validate_precision as _validate_precision,
-)
 from esme_posttrain.sft.sampling import (
     generate_samples as _generate_samples,
 )
@@ -69,14 +37,44 @@ from esme_posttrain.sft.sampling import (
 from esme_posttrain.sft.sampling import (
     sample_prompt_examples as _sample_prompt_examples,
 )
-from esme_posttrain.sft.wandb_init import WandbConfig
-from esme_posttrain.sft.wandb_init import start_wandb as _start_wandb
+from esme_posttrain.training.checkpointing import (
+    LoadedTrainingCheckpoint,
+    checkpoint_dir,
+    latest_checkpoint_path,
+    load_training_checkpoint,
+    retain_last_checkpoints,
+    save_training_checkpoint,
+)
+from esme_posttrain.training.collate import (
+    collate_batch as _collate_batch,
+)
+from esme_posttrain.training.collate import (
+    cyclic_batch as _cyclic_batch,
+)
+from esme_posttrain.training.collate import (
+    token_correct as _token_correct,
+)
+from esme_posttrain.training.errors import TrainerError
+from esme_posttrain.training.metrics import append_metric, train_metric_payload
+from esme_posttrain.training.runtime import (
+    lr_lambda as _lr_lambda,
+)
+from esme_posttrain.training.runtime import (
+    precision_context as _precision_context,
+)
+from esme_posttrain.training.runtime import (
+    resolve_torch_device as _resolve_torch_device,
+)
+from esme_posttrain.training.runtime import (
+    set_reproducible_seed as _set_reproducible_seed,
+)
+from esme_posttrain.training.runtime import (
+    validate_precision as _validate_precision,
+)
+from esme_posttrain.training.wandb_init import WandbConfig
+from esme_posttrain.training.wandb_init import start_wandb as _start_wandb
 
-SFT_CHECKPOINT_FORMAT = 2
-
-
-class StepCallback(Protocol):
-    def __call__(self, step: int) -> None: ...
+StepCallback = Callable[[int], None]
 
 
 @dataclass(frozen=True)
@@ -250,7 +248,7 @@ def run_sft_training(
     if not eval_examples:
         raise TrainerError("eval_examples must not be empty")
     eval_suite = _normalize_eval_splits(eval_examples, eval_splits)
-    set_reproducible_seed(config.seed)
+    _set_reproducible_seed(config.seed)
     output_dir = config.output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = output_dir / "metrics.jsonl"
@@ -260,7 +258,7 @@ def run_sft_training(
     best_checkpoint_metadata_path = output_dir / "best-checkpoint.json"
     manifest_path = output_dir / "manifest.json"
 
-    device = resolve_torch_device(config.device)
+    device = _resolve_torch_device(config.device)
     _validate_precision(config.precision, device)
     model.to(device)
 
@@ -286,6 +284,9 @@ def run_sft_training(
             totals = resumed.metrics.get("totals", {})
             trained_tokens = int(totals.get("trained_tokens", 0))
             supervised_tokens = int(totals.get("supervised_tokens", 0))
+            restored_best = _load_best_checkpoint_state(
+                best_checkpoint_path, best_checkpoint_metadata_path
+            )
 
     wandb_run = _start_wandb(config, base_bundle_manifest)
     append_metric(
@@ -298,10 +299,16 @@ def run_sft_training(
     last_components: dict[str, float] = {}
     current_step = start_step
     last_completed_step = start_step
-    best_selector_value = float("inf")
-    selected_step = start_step
-    selected_eval_suite = base_eval_suite
-    evals_without_improvement = 0
+    if resumed_from_checkpoint is not None:
+        best_selector_value = restored_best.selected_metric_value
+        selected_step = restored_best.selected_step
+        selected_eval_suite = restored_best.selected_eval_suite
+        evals_without_improvement = restored_best.evals_without_improvement
+    else:
+        best_selector_value = float("inf")
+        selected_step = start_step
+        selected_eval_suite = base_eval_suite
+        evals_without_improvement = 0
     last_eval_suite = base_eval_suite
     last_eval_step = start_step if start_step == 0 else -1
     early_stopped = False
@@ -324,7 +331,7 @@ def run_sft_training(
                     batch_index=batch_index,
                     batch_size=config.micro_batch_size,
                 )
-                input_ids, labels = collate_batch(
+                input_ids, labels = _collate_batch(
                     batch, device=device, pad_to_multiple_of=config.pad_to_multiple_of
                 )
                 with _precision_context(config.precision, device):
@@ -538,9 +545,22 @@ def run_sft_training(
         selected_eval_suite = last_eval_suite
         best_selector_value = last_eval_suite.selector_response_loss
 
+    save_sft_checkpoint(
+        checkpoint_path,
+        model=model,
+        step=last_completed_step,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        metrics={
+            "event": "final",
+            "totals": {
+                "trained_tokens": trained_tokens,
+                "supervised_tokens": supervised_tokens,
+            },
+        },
+    )
     loaded_best = load_training_checkpoint(best_checkpoint_path, map_location=device)
     model.load_state_dict(loaded_best.model.state_dict())
-    shutil.copy2(best_checkpoint_path, checkpoint_path)
     instruct_eval = selected_eval_suite.selector_eval
     _write_samples(
         samples_path,
@@ -705,6 +725,7 @@ def _best_checkpoint_metadata(
         "selected_metric": selected_metric,
         "selected_step": step,
         "selected_metric_value": eval_suite.selector_response_loss,
+        "selected_eval_suite": eval_suite.to_dict(),
         "component_eval_losses": {
             name: metrics.response_loss for name, metrics in eval_suite.split_metrics.items()
         },
@@ -734,6 +755,41 @@ def load_sft_checkpoint(
         step=loaded.step,
         metrics=loaded.metrics,
     )
+
+
+@dataclass(frozen=True)
+class _BestCheckpointState:
+    selected_metric_value: float
+    selected_step: int
+    selected_eval_suite: EvalSuiteResult
+    evals_without_improvement: int
+
+
+def _load_best_checkpoint_state(checkpoint_path: Path, metadata_path: Path) -> _BestCheckpointState:
+    if not checkpoint_path.is_file():
+        raise TrainerError(f"resume requires existing best checkpoint: {checkpoint_path}")
+    if not metadata_path.is_file():
+        raise TrainerError(f"resume requires existing best checkpoint metadata: {metadata_path}")
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise TypeError("metadata payload must be an object")
+        patience_state = payload["patience_state"]
+        if not isinstance(patience_state, dict):
+            raise TypeError("patience_state must be an object")
+        selected_eval_suite = payload["selected_eval_suite"]
+        if not isinstance(selected_eval_suite, dict):
+            raise TypeError("selected_eval_suite must be an object")
+        return _BestCheckpointState(
+            selected_metric_value=float(payload["selected_metric_value"]),
+            selected_step=int(payload["selected_step"]),
+            selected_eval_suite=EvalSuiteResult.from_dict(selected_eval_suite),
+            evals_without_improvement=int(patience_state["evals_without_improvement"]),
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise TrainerError(
+            f"best checkpoint metadata is malformed and cannot seed resume state: {metadata_path}"
+        ) from error
 
 
 def _resume_latest_checkpoint(
@@ -874,9 +930,9 @@ def _write_samples(
 
 
 def _write_tokenizer(tokenizer: Tokenizer, path: Path) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tokenizer.save(str(tmp))
-    tmp.replace(path)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tokenizer.save(str(tmp_path))
+    tmp_path.replace(path)
 
 
 def _write_manifest(

@@ -4,6 +4,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.cache/
+hf_cache/
 dist/
 build/
 *.egg-info/
@@ -11,9 +13,15 @@ runs/
 artifacts/
 exports/
 checkpoints/
+payloads/
+generated_payloads/
 data/raw/
 data/processed/
 wandb/
+.modal/
+modal-logs/
+modal_logs/
+*.log
 *.pt
 *.pth
 *.bin

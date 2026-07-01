@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Protocol, TypeVar
+
 import torch
 
-from esme_posttrain.sft.data import IGNORE_INDEX, TokenizedExample
-from esme_posttrain.sft.errors import TrainerError
-from esme_posttrain.sft.runtime import resolve_torch_device
+from esme_posttrain.sft.data import IGNORE_INDEX
+from esme_posttrain.training.errors import TrainerError
+from esme_posttrain.training.runtime import resolve_torch_device
+
+
+class CollatableSequence(Protocol):
+    input_ids: Sequence[int]
+    labels: Sequence[int]
+    source: str
+    row_id: str
+
+
+CollatableT = TypeVar("CollatableT", bound=CollatableSequence)
 
 
 def token_correct(logits: torch.Tensor, targets: torch.Tensor) -> int:
@@ -16,7 +29,7 @@ def token_correct(logits: torch.Tensor, targets: torch.Tensor) -> int:
 
 
 def collate_batch(
-    batch: tuple[TokenizedExample, ...],
+    batch: tuple[CollatableSequence, ...],
     *,
     device: torch.device | str | None = None,
     pad_to_multiple_of: int | None = None,
@@ -46,7 +59,7 @@ def collate_batch(
 
 
 def cyclic_batch(
-    examples: tuple[TokenizedExample, ...], *, batch_index: int, batch_size: int
-) -> tuple[TokenizedExample, ...]:
+    examples: tuple[CollatableT, ...], *, batch_index: int, batch_size: int
+) -> tuple[CollatableT, ...]:
     start = batch_index * batch_size
     return tuple(examples[(start + offset) % len(examples)] for offset in range(batch_size))

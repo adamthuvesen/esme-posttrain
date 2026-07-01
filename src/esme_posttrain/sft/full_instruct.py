@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,6 @@ from esme_posttrain.run_artifacts import (
     write_json,
     write_selected_row_manifest,
 )
-from esme_posttrain.sft.checkpointing import latest_checkpoint_path
 from esme_posttrain.sft.data import (
     build_eval_set,
     build_matched_eval_sets,
@@ -21,7 +21,7 @@ from esme_posttrain.sft.data import (
     sequence_efficiency_report,
 )
 from esme_posttrain.sft.full_shared import (
-    FullRunError,
+    SFTFullRunError,
 )
 from esme_posttrain.sft.full_shared import (
     assert_full_run_data_safe as _assert_full_run_data_safe,
@@ -40,16 +40,7 @@ from esme_posttrain.sft.full_shared import (
 )
 from esme_posttrain.sft.launch_instruct import EXPECTED_ARTIFACTS, SFTLaunchConfig
 from esme_posttrain.sft.trainer import EvalSplit, SFTTrainerConfig, WandbConfig, run_sft_training
-
-
-class SpendGuard(RuntimeSpendTracker):
-    def check(self, step: int) -> None:
-        cost = self.estimated_cost_usd()
-        if cost > self.stop_usd:
-            self.write_cost(step=step, status="runtime_cap_exceeded")
-            raise FullRunError(
-                f"full SFT runtime spend estimate ${cost:.4f} exceeded ${self.stop_usd:.2f}"
-            )
+from esme_posttrain.training.checkpointing import latest_checkpoint_path
 
 
 def run_full_instruct_sft(
@@ -67,22 +58,27 @@ def run_full_instruct_sft(
 ) -> dict[str, Any]:
     output_dir = output_dir.expanduser().resolve()
     if output_dir.exists() and any(output_dir.iterdir()) and not resume_from_latest:
-        raise FullRunError(f"full-run output_dir must be empty or absent: {output_dir}")
+        raise SFTFullRunError(f"full-run output_dir must be empty or absent: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
     resume_checkpoint = latest_checkpoint_path(output_dir) if resume_from_latest else None
     if resume_from_latest and resume_checkpoint is None:
-        raise FullRunError(f"--resume requested but no checkpoint exists in {output_dir}")
+        raise SFTFullRunError(f"--resume requested but no checkpoint exists in {output_dir}")
 
     profile = config.selected_gpu_profile
-    spend_guard = SpendGuard(
+    spend_tracker = RuntimeSpendTracker(
         started=started or time.perf_counter(),
         usd_per_hour=float(profile["usd_per_hour"]),
         stop_usd=float(config.runtime["full_run_runtime_spend_stop_usd"]),
         output_dir=output_dir,
     )
+    check_spend = partial(
+        spend_tracker.check_cap,
+        label="full SFT",
+        error_type=SFTFullRunError,
+    )
     device = _select_full_run_device(require_cuda=require_cuda)
     if config.estimated_full_cost_usd > float(config.runtime["full_run_max_cost_usd"]):
-        raise FullRunError("projected full-run cost exceeds runtime.full_run_max_cost_usd")
+        raise SFTFullRunError("projected full-run cost exceeds runtime.full_run_max_cost_usd")
 
     bundle_path = (base_bundle_path or config.base_bundle_path).expanduser().resolve()
     loaded = load_dense_backbone_bundle(bundle_path, map_location="cpu")
@@ -289,13 +285,13 @@ def run_full_instruct_sft(
         ),
         eval_splits=_eval_splits(matched_eval_reports, eval_report),
         base_bundle_manifest=loaded.bundle.manifest,
-        step_callback=spend_guard.check,
+        step_callback=check_spend,
     )
     if not result.instruct_beats_base:
-        raise FullRunError("weighted matched response loss did not beat Base")
+        raise SFTFullRunError("weighted matched response loss did not beat Base")
 
     write_json(output_dir / "eval-report.json", result.to_dict())
-    cost = spend_guard.write_cost(step=result.steps_completed, status="complete")
+    cost = spend_tracker.write_cost(step=result.steps_completed, status="complete")
     refresh_manifest_files(output_dir, EXPECTED_ARTIFACTS)
     _assert_required_artifacts(output_dir, EXPECTED_ARTIFACTS)
 

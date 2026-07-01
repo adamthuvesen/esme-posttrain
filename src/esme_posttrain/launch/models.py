@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 
@@ -37,9 +36,3 @@ class RuntimeBlock:
             full_run_max_cost_usd=float(payload["full_run_max_cost_usd"]),
             timeout_hours=int(payload["timeout_hours"]),
         )
-
-
-@dataclass(frozen=True)
-class ArtifactBlock:
-    output_dir: Path
-    required_files: tuple[str, ...]

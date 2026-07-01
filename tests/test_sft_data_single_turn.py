@@ -25,7 +25,7 @@ from esme_posttrain.sft.smoke_instruct import tiny_backbone_config, tiny_tokeniz
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-instruct.json"
-WEIGHTS_FIELD = "key" "_format"
+WEIGHTS_FIELD = "key_format"
 
 
 def test_dataset_filtering_mixing_and_token_caps(tmp_path: Path) -> None:

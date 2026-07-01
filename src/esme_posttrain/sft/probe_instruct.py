@@ -5,15 +5,15 @@ from pathlib import Path
 from typing import Any
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
-from esme_posttrain.launch.common import LAUNCH_APPROVAL_FLAG, MODAL_CLIENT_VERSION
+from esme_posttrain.launch.config_guards import LAUNCH_APPROVAL_FLAG, MODAL_CLIENT_VERSION
 from esme_posttrain.run_artifacts import RuntimeSpendTracker, write_json
 from esme_posttrain.sft.data import build_eval_set, build_training_mix
 from esme_posttrain.sft.launch_instruct import SFTLaunchConfig
 from esme_posttrain.sft.sweep_instruct import SWEEP_OUTPUT_STEM
-from esme_posttrain.sft.sweep_shared import SweepError
+from esme_posttrain.sft.sweep_shared import SFTSweepError
 from esme_posttrain.sft.sweep_shared import select_sweep_device as _select_sweep_device
 from esme_posttrain.sft.trainer import SFTTrainerConfig, run_sft_training
-from esme_posttrain.sft.wandb_init import WandbConfig
+from esme_posttrain.training.wandb_init import WandbConfig
 
 PROBE_OUTPUT_STEM = "esme-instruct-sft-throughput-probe"
 PROBE_STEPS = 80
@@ -36,16 +36,6 @@ PROBE_GPU_USD_PER_HOUR = {
     "B200": 6.2496,
 }
 DEFAULT_MODAL_PROBE_ROOT = Path("/posttrain") / PROBE_OUTPUT_STEM
-
-
-class ThroughputSpendGuard(RuntimeSpendTracker):
-    def check(self, step: int) -> None:
-        cost = self.estimated_cost_usd()
-        if cost > self.stop_usd:
-            self.write_cost(step=step, status="runtime_cap_exceeded")
-            raise SweepError(
-                f"throughput probe runtime spend estimate ${cost:.4f} exceeded ${self.stop_usd:.2f}"
-            )
 
 
 def build_throughput_probe_preflight(
@@ -130,17 +120,17 @@ def run_throughput_probe(
 ) -> dict[str, Any]:
     blockers = throughput_probe_blockers(modal_gpu=modal_gpu, timeout_hours=PROBE_TIMEOUT_HOURS)
     if blockers:
-        raise SweepError("throughput probe refused: " + "; ".join(blockers))
+        raise SFTSweepError("throughput probe refused: " + "; ".join(blockers))
     output_root = output_root.expanduser().resolve()
     if output_root.name != PROBE_OUTPUT_STEM:
-        raise SweepError(f"throughput probe output root must end with {PROBE_OUTPUT_STEM}")
+        raise SFTSweepError(f"throughput probe output root must end with {PROBE_OUTPUT_STEM}")
     if "-excellence" in str(output_root):
-        raise SweepError("throughput probe output root must not use an excellence public name")
+        raise SFTSweepError("throughput probe output root must not use an excellence public name")
     output_root.mkdir(parents=True, exist_ok=True)
 
     started = started or time.perf_counter()
     usd_per_hour = PROBE_GPU_USD_PER_HOUR[modal_gpu]
-    guard = ThroughputSpendGuard(
+    spend_tracker = RuntimeSpendTracker(
         started=started,
         usd_per_hour=usd_per_hour,
         stop_usd=15.0,
@@ -167,9 +157,9 @@ def run_throughput_probe(
         allow_remote_download=allow_remote_download,
     )
     if train_report.shortfalls:
-        raise SweepError("training data shortfall: " + "; ".join(train_report.shortfalls))
+        raise SFTSweepError("training data shortfall: " + "; ".join(train_report.shortfalls))
     if eval_report.shortfalls and not eval_report.examples:
-        raise SweepError("eval data shortfall: " + "; ".join(eval_report.shortfalls))
+        raise SFTSweepError("eval data shortfall: " + "; ".join(eval_report.shortfalls))
 
     launch_id = _fresh_probe_id(output_root, modal_gpu)
     output_dir = output_root / launch_id
@@ -234,14 +224,18 @@ def run_throughput_probe(
             wandb=WandbConfig(enabled=False),
         ),
         base_bundle_manifest=loaded.bundle.manifest,
-        step_callback=guard.check,
+        step_callback=lambda step: spend_tracker.check_cap(
+            step,
+            label="throughput probe",
+            error_type=SFTSweepError,
+        ),
     )
     training_elapsed = time.perf_counter() - training_started
     trained_tokens_per_second = result.trained_tokens / max(1e-9, training_elapsed)
     supervised_tokens_per_second = result.supervised_tokens / max(1e-9, training_elapsed)
     projected_full_seconds = PROBE_TARGET_TRAIN_TOKENS / max(1e-9, trained_tokens_per_second)
     projected_full_cost = projected_full_seconds * usd_per_hour / 3600.0
-    cost = guard.write_cost(step=result.steps_completed, status="throughput_probe_complete")
+    cost = spend_tracker.write_cost(step=result.steps_completed, status="throughput_probe_complete")
     payload = {
         "status": "throughput_probe_complete",
         "mode": "throughput_probe",
@@ -281,4 +275,4 @@ def _fresh_probe_id(output_root: Path, modal_gpu: str) -> str:
         candidate = f"{base}{suffix}"
         if not (output_root / candidate).exists():
             return candidate
-    raise SweepError(f"could not find an isolated throughput probe id under {output_root}")
+    raise SFTSweepError(f"could not find an isolated throughput probe id under {output_root}")

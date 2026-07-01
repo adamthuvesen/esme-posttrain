@@ -11,7 +11,7 @@ import torch
 
 from esme_posttrain.modeling import BackboneConfig, DenseBackbone
 
-SFT_CHECKPOINT_FORMAT = 2
+TRAINING_CHECKPOINT_FORMAT = 2
 _CHECKPOINT_RE = re.compile(r"step-(\d{6,})$")
 
 
@@ -44,7 +44,7 @@ def save_training_checkpoint(
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "format_version": SFT_CHECKPOINT_FORMAT,
+        "format_version": TRAINING_CHECKPOINT_FORMAT,
         "config": model.config.to_dict(),
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict() if optimizer is not None else None,
@@ -52,9 +52,9 @@ def save_training_checkpoint(
         "step": int(step),
         "metrics": dict(metrics or {}),
     }
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    torch.save(payload, tmp)
-    tmp.replace(path)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    torch.save(payload, tmp_path)
+    tmp_path.replace(path)
 
 
 def load_training_checkpoint(
@@ -66,19 +66,27 @@ def load_training_checkpoint(
     if not isinstance(payload, dict):
         raise CheckpointError("checkpoint payload must be an object")
     version = payload.get("format_version")
-    if version not in {1, SFT_CHECKPOINT_FORMAT}:
-        raise CheckpointError("unsupported SFT checkpoint format")
-    config = BackboneConfig.from_dict(_object(payload.get("config"), "checkpoint.config"))
+    if version not in {1, TRAINING_CHECKPOINT_FORMAT}:
+        raise CheckpointError("unsupported training checkpoint format")
+    config = BackboneConfig.from_dict(
+        _require_checkpoint_object(payload.get("config"), "checkpoint.config")
+    )
     model = DenseBackbone(config)
-    model.load_state_dict(_object(payload.get("model_state"), "checkpoint.model_state"))
+    model.load_state_dict(
+        _require_checkpoint_object(payload.get("model_state"), "checkpoint.model_state")
+    )
     model.eval()
     return LoadedTrainingCheckpoint(
         model=model,
         config=config,
         step=int(payload["step"]),
-        metrics=_object(payload.get("metrics"), "checkpoint.metrics"),
-        optimizer_state=_optional_object(payload.get("optimizer_state"), "checkpoint.optimizer"),
-        scheduler_state=_optional_object(payload.get("scheduler_state"), "checkpoint.scheduler"),
+        metrics=_require_checkpoint_object(payload.get("metrics"), "checkpoint.metrics"),
+        optimizer_state=_optional_checkpoint_object(
+            payload.get("optimizer_state"), "checkpoint.optimizer"
+        ),
+        scheduler_state=_optional_checkpoint_object(
+            payload.get("scheduler_state"), "checkpoint.scheduler"
+        ),
     )
 
 
@@ -122,13 +130,13 @@ def _checkpoint_step_dirs(path: Path) -> Iterable[tuple[int, Path]]:
             yield int(match.group(1)), child
 
 
-def _object(value: Any, label: str) -> dict[str, Any]:
+def _require_checkpoint_object(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise CheckpointError(f"{label} must be an object")
     return value
 
 
-def _optional_object(value: Any, label: str) -> dict[str, Any] | None:
+def _optional_checkpoint_object(value: Any, label: str) -> dict[str, Any] | None:
     if value is None:
         return None
-    return _object(value, label)
+    return _require_checkpoint_object(value, label)

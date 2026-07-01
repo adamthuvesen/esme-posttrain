@@ -8,7 +8,6 @@ import torch
 
 from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_bundle
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.checkpointing import latest_checkpoint_path
 from esme_posttrain.sft.data import (
     DatasetSource,
     SingleTurnExample,
@@ -18,7 +17,6 @@ from esme_posttrain.sft.data import (
 from esme_posttrain.sft.launch_instruct import (
     SFTLaunchConfig,
 )
-from esme_posttrain.sft.metrics import EVAL_METRIC_NAMES, TRAIN_METRIC_NAMES
 from esme_posttrain.sft.smoke_instruct import tiny_backbone_config, tiny_tokenizer
 from esme_posttrain.sft.trainer import (
     EvalMetrics,
@@ -28,15 +26,17 @@ from esme_posttrain.sft.trainer import (
     _generate_samples,
     _markdown_fenced_text,
     _no_robots_catastrophic_regression,
-    collate_batch,
     load_sft_checkpoint,
-    resolve_torch_device,
     run_sft_training,
 )
+from esme_posttrain.training.checkpointing import latest_checkpoint_path
+from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.training.metrics import EVAL_METRIC_NAMES, TRAIN_METRIC_NAMES
+from esme_posttrain.training.runtime import resolve_torch_device
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-instruct.json"
-WEIGHTS_FIELD = "key" "_format"
+WEIGHTS_FIELD = "key_format"
 
 
 def test_collate_batch_honors_device() -> None:
@@ -247,7 +247,7 @@ def test_cpu_fixture_sft_loss_decreases_and_checkpoint_reloads_logits(tmp_path: 
     assert {
         key for payload in metrics if payload["event"] == "train" for key in payload
     } >= TRAIN_METRIC_NAMES
-    legacy_eval_names = {
+    selector_eval_names = {
         "eval/response_loss",
         "eval/perplexity",
         "eval/supervised_tokens",
@@ -255,7 +255,7 @@ def test_cpu_fixture_sft_loss_decreases_and_checkpoint_reloads_logits(tmp_path: 
     }
     assert {
         key for payload in metrics if payload["event"] == "eval" for key in payload
-    } >= legacy_eval_names
+    } >= selector_eval_names
     checkpoints = sorted((result.output_dir / "checkpoints").glob("step-*/checkpoint.pt"))
     assert len(checkpoints) == 2
     assert checkpoints[-1].parent.name == "step-000040"
@@ -394,6 +394,15 @@ def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) ->
             checkpoint_interval=5,
         ),
     )
+    best_metadata_path = output_dir / "best-checkpoint.json"
+    best_metadata = json.loads(best_metadata_path.read_text(encoding="utf-8"))
+    best_metadata["selected_metric_value"] = 0.0
+    best_metadata["selected_eval_suite"]["selector_response_loss"] = 0.0
+    for metrics in best_metadata["selected_eval_suite"]["splits"].values():
+        metrics["response_loss"] = 0.0
+        metrics["perplexity"] = 1.0
+    best_metadata_path.write_text(json.dumps(best_metadata, indent=2), encoding="utf-8")
+
     torch.manual_seed(214)
     resumed_without_extra_steps = run_sft_training(
         DenseBackbone(tiny_backbone_config()),
@@ -420,6 +429,7 @@ def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) ->
         first.base_eval.response_loss
     )
     assert resumed_without_extra_steps.instruct_beats_base is True
+    assert resumed_without_extra_steps.selected_metric_value == 0.0
 
     torch.manual_seed(214)
     second = run_sft_training(
@@ -445,6 +455,7 @@ def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) ->
     assert second.start_step == 5
     assert second.resumed_from_checkpoint is not None
     assert load_sft_checkpoint(second.checkpoint_path).step == 8
+    assert second.selected_metric_value == 0.0
 
 
 def test_sft_failure_saves_latest_checkpoint_and_preserves_error(tmp_path: Path) -> None:

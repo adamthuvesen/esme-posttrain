@@ -21,7 +21,7 @@ from esme_posttrain.sft.data import (
     measure_multi_turn_lengths,
     tokenize_multi_turn,
 )
-from esme_posttrain.sft.full_multiturn import FullRunError, run_full_multi_turn_sft
+from esme_posttrain.sft.full_multiturn import SFTFullRunError, run_full_multi_turn_sft
 from esme_posttrain.sft.launch_instruct import LaunchError
 from esme_posttrain.sft.launch_multiturn import (
     EXPECTED_ARTIFACTS as MULTITURN_EXPECTED_ARTIFACTS,
@@ -57,11 +57,12 @@ from esme_posttrain.sft.sweep_multiturn import (
     build_multi_turn_sweep_preflight,
     multi_turn_sweep_blockers,
 )
-from esme_posttrain.sft.trainer import collate_batch, load_sft_checkpoint
+from esme_posttrain.sft.trainer import load_sft_checkpoint
+from esme_posttrain.training.collate import collate_batch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-sft-multiturn.json"
-WEIGHTS_FIELD = "key" "_format"
+WEIGHTS_FIELD = "key_format"
 
 
 # --- chat template + multi-turn masking ---------------------------------------
@@ -323,7 +324,7 @@ def test_multi_turn_modal_smoke_body_refreshes_manifest_with_expected_artifacts(
     def fake_refresh_manifest_files(output_dir: Path, expected_artifacts: tuple[str, ...]) -> None:
         refresh_calls.append((output_dir, expected_artifacts))
 
-    monkeypatch.setattr(modal_chat_sft, "_fresh_output_dir", lambda root, stem: output_dir)
+    monkeypatch.setattr(modal_chat_sft, "fresh_output_dir", lambda root, stem: output_dir)
     monkeypatch.setattr(
         modal_chat_sft,
         "run_multi_turn_cpu_fixture",
@@ -639,7 +640,7 @@ def test_full_run_requires_cuda_when_required(tmp_path: Path) -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     if torch.cuda.is_available():
         pytest.skip("CUDA available; the loud-failure path is not exercised")
-    with pytest.raises(FullRunError, match="requires CUDA"):
+    with pytest.raises(SFTFullRunError, match="requires CUDA"):
         run_full_multi_turn_sft(
             config,
             output_dir=tmp_path / "full",

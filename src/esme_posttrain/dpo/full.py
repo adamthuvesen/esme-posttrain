@@ -5,14 +5,15 @@ the warm-started policy and the frozen reference, builds UltraFeedback preferenc
 data, runs the real decoding pre-check on that checkpoint, trains one vanilla DPO
 pass, and writes proxy-metric evidence (held-out preference accuracy, response
 length, n-gram repetition, chosen/rejected logps) plus chat samples and the K>=5
-judge. Guarded by a SpendGuard and refused unless the beta-sweep learning gate
-passed (enforced in the launcher). CUDA-required.
+judge. Guarded by the runtime spend tracker and refused unless the beta-sweep
+learning gate passed (enforced in the launcher). CUDA-required.
 """
 
 from __future__ import annotations
 
 import json
 import time
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -22,13 +23,17 @@ from tokenizers import Tokenizer
 from esme_posttrain.dpo.data import build_preference_set
 from esme_posttrain.dpo.decoding_precheck import run_decoding_precheck
 from esme_posttrain.dpo.launch import EXPECTED_ARTIFACTS, DPOLaunchConfig
-from esme_posttrain.dpo.smoke import _write_chat_samples
+from esme_posttrain.dpo.sample_artifacts import write_chat_samples
 from esme_posttrain.dpo.trainer import DPOTrainerConfig, run_dpo_training
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.run_artifacts import refresh_manifest_files, write_environment, write_json
-from esme_posttrain.sft.checkpointing import load_training_checkpoint
-from esme_posttrain.sft.full_instruct import SpendGuard
+from esme_posttrain.run_artifacts import (
+    RuntimeSpendTracker,
+    refresh_manifest_files,
+    write_environment,
+    write_json,
+)
 from esme_posttrain.sft.multiturn_judge import FIXED_MULTI_TURN_PROMPTS, run_multi_turn_judge
+from esme_posttrain.training.checkpointing import load_training_checkpoint
 
 
 class DPOFullRunError(RuntimeError):
@@ -61,11 +66,16 @@ def run_full_dpo(
         runtime["runtime_spend_stop_usd"] if smoke else runtime["full_run_runtime_spend_stop_usd"]
     )
     max_cost = float(runtime["smoke_max_cost_usd"] if smoke else runtime["full_run_max_cost_usd"])
-    spend_guard = SpendGuard(
+    spend_tracker = RuntimeSpendTracker(
         started=started or time.perf_counter(),
         usd_per_hour=float(profile["usd_per_hour"]),
         stop_usd=spend_stop,
         output_dir=output_dir,
+    )
+    check_spend = partial(
+        spend_tracker.check_cap,
+        label="DPO",
+        error_type=DPOFullRunError,
     )
     estimated = config.estimated_smoke_cost_usd if smoke else config.estimated_full_cost_usd
     if estimated > max_cost:
@@ -175,14 +185,11 @@ def run_full_dpo(
             "wandb_run": config.payload["sft_reference"]["wandb_run"],
             "best_step": config.payload["sft_reference"]["best_step"],
         },
-        step_callback=spend_guard.check,
+        step_callback=check_spend,
     )
-    if not result.margin_increased:
-        raise DPOFullRunError(
-            "held-out preference margin did not increase versus the SFT reference"
-        )
+    _assert_accepted_dpo_result(result)
 
-    _write_chat_samples(
+    write_chat_samples(
         output_dir / "chat-samples.md",
         policy,
         tokenizer,
@@ -200,7 +207,7 @@ def run_full_dpo(
     eval_payload["dpo_judge"] = judge_report.to_dict()
     eval_payload["decoding_precheck"] = precheck.to_dict()
     write_json(output_dir / "eval-report.json", eval_payload)
-    cost = spend_guard.write_cost(step=result.steps_completed, status="complete")
+    cost = spend_tracker.write_cost(step=result.steps_completed, status="complete")
     if cost["estimated_cost_usd"] > max_cost:
         raise DPOFullRunError("DPO run exceeded the approved cost cap")
     write_environment(output_dir / "environment.txt", device=device)
@@ -262,6 +269,7 @@ def _pair_caps(config: DPOLaunchConfig, *, smoke: bool) -> dict[str, int]:
             "train_pairs": int(budgets["smoke_train_pairs"]),
             "train_tokens": int(budgets["smoke_train_tokens"]),
             "eval_pairs": int(budgets["smoke_eval_pairs"]),
+            "eval_tokens": int(budgets["max_eval_tokens"]),
             "min_train_pairs": int(budgets["smoke_train_pairs"]),
             "min_eval_pairs": int(budgets["smoke_eval_pairs"]),
         }
@@ -269,6 +277,7 @@ def _pair_caps(config: DPOLaunchConfig, *, smoke: bool) -> dict[str, int]:
         "train_pairs": int(budgets["max_train_pairs"]),
         "train_tokens": int(budgets["max_train_tokens"]),
         "eval_pairs": int(budgets["max_eval_pairs"]),
+        "eval_tokens": int(budgets["max_eval_tokens"]),
         # max_*_pairs are caps; min_*_pairs are the sufficiency floors. UltraFeedback
         # responses are long, so far fewer than the cap survive max_length=1024 --
         # which is fine as long as we clear the floor.
@@ -310,8 +319,29 @@ def _assert_data_safe(
         raise DPOFullRunError(
             "preference training data shortfall: " + "; ".join(train_report["shortfalls"])
         )
+    if int(eval_report["selected_pairs"]) > caps["eval_pairs"]:
+        raise DPOFullRunError("eval pair cap exceeded")
+    if int(eval_report["selected_tokens"]) > caps["eval_tokens"]:
+        raise DPOFullRunError("eval token cap exceeded")
+    if eval_report["shortfalls"]:
+        raise DPOFullRunError(
+            "preference eval data shortfall: " + "; ".join(eval_report["shortfalls"])
+        )
     if int(eval_report["selected_pairs"]) == 0:
         raise DPOFullRunError("preference eval set is empty")
+
+
+def _assert_accepted_dpo_result(result: Any) -> None:
+    if result.selected_eval.preference_accuracy <= result.base_eval.preference_accuracy:
+        raise DPOFullRunError(
+            "held-out preference accuracy did not improve versus the SFT reference"
+        )
+    if not result.margin_increased:
+        raise DPOFullRunError(
+            "held-out preference margin did not increase versus the SFT reference"
+        )
+    if result.chosen_logp_collapsed:
+        raise DPOFullRunError("chosen response log-prob collapsed versus the SFT reference")
 
 
 def _prompt_masking_asserted(pairs: tuple[Any, ...]) -> bool:

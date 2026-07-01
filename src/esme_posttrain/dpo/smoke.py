@@ -16,11 +16,11 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from tokenizers import Tokenizer
 
 from esme_posttrain.dpo.data import PreferencePair, tokenize_preference_pair
 from esme_posttrain.dpo.decoding_precheck import run_decoding_precheck
 from esme_posttrain.dpo.launch import EXPECTED_ARTIFACTS, DPOLaunchConfig
+from esme_posttrain.dpo.sample_artifacts import write_chat_samples
 from esme_posttrain.dpo.trainer import (
     DPOTrainerConfig,
     run_dpo_training,
@@ -29,9 +29,8 @@ from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.run_artifacts import refresh_manifest_files, write_environment, write_json
 from esme_posttrain.sft.data import ChatTurn
 from esme_posttrain.sft.multiturn_judge import run_multi_turn_judge
-from esme_posttrain.sft.sampling import markdown_fenced_text
 from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
-from esme_posttrain.sft.wandb_init import WandbConfig
+from esme_posttrain.training.wandb_init import WandbConfig
 
 FIXTURE_MAX_LENGTH = 48
 FIXTURE_MAX_PROMPT_LENGTH = 24
@@ -155,7 +154,7 @@ def run_dpo_cpu_fixture(
         reference_bundle_manifest={"mode": "local_cpu_fixture_dpo_tiny_reference"},
     )
 
-    _write_chat_samples(
+    write_chat_samples(
         evidence_dir / "chat-samples.md",
         policy,
         tokenizer,
@@ -270,58 +269,6 @@ def _fixture_decoding_prompts() -> tuple[tuple[str, str], ...]:
         ("say_red", "user\nsay red\nassistant\n"),
         ("say_blue", "user\nsay blue\nassistant\n"),
     )
-
-
-def _write_chat_samples(
-    path: Path,
-    model: DenseBackbone,
-    tokenizer: Tokenizer,
-    eval_pairs: tuple[Any, ...],
-    *,
-    selected_step: int,
-) -> None:
-    eos_id = tokenizer.token_to_id("<eos>")
-    lines = [
-        "# DPO Chat Samples",
-        "",
-        f"Selected checkpoint step: {selected_step}",
-        "",
-        "Each prompt is rendered with the chat template; the DPO policy continues it.",
-        "",
-    ]
-    was_training = model.training
-    model.eval()
-    device = next(model.parameters()).device
-    with torch.no_grad():
-        for index, pair in enumerate(eval_pairs[:3], start=1):
-            prompt_ids = list(pair.prompt_ids)
-            generated = model.generate(
-                torch.tensor([prompt_ids], dtype=torch.long, device=device),
-                max_new_tokens=8,
-                eos_token_id=eos_id,
-            )
-            new_ids = generated[0].detach().cpu().tolist()[len(prompt_ids) :]
-            if eos_id is not None and eos_id in new_ids:
-                new_ids = new_ids[: new_ids.index(eos_id)]
-            prompt_text = tokenizer.decode(prompt_ids, skip_special_tokens=False)
-            generation = tokenizer.decode(new_ids, skip_special_tokens=False)
-            lines.extend(
-                [
-                    f"## Chat Sample {index}",
-                    "",
-                    "Prompt:",
-                    "",
-                    *markdown_fenced_text(prompt_text),
-                    "",
-                    "Generation:",
-                    "",
-                    *markdown_fenced_text(generation),
-                    "",
-                ]
-            )
-    if was_training:
-        model.train()
-    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _prepare_evidence_dir(config: DPOLaunchConfig, output_dir: Path | None) -> Path:

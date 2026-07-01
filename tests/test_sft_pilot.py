@@ -14,7 +14,7 @@ from esme_posttrain.sft import sweep_instruct as sft_sweep
 from esme_posttrain.sft.data import (
     DatasetSource,
 )
-from esme_posttrain.sft.full_instruct import FullRunError, run_full_instruct_sft
+from esme_posttrain.sft.full_instruct import SFTFullRunError, run_full_instruct_sft
 from esme_posttrain.sft.launch_instruct import (
     EXPECTED_ARTIFACTS as SFT_EXPECTED_ARTIFACTS,
 )
@@ -34,13 +34,13 @@ from esme_posttrain.sft.probe_instruct import (
 from esme_posttrain.sft.smoke_instruct import tiny_backbone_config, tiny_tokenizer
 from esme_posttrain.sft.sweep_instruct import (
     SWEEP_OUTPUT_STEM,
-    SweepArm,
+    SFTSweepArm,
     build_interval_sweep_preflight,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-instruct.json"
-WEIGHTS_FIELD = "key" "_format"
+WEIGHTS_FIELD = "key_format"
 
 
 def test_sft_config_pins_mix_caps_and_dry_run_never_launches() -> None:
@@ -121,7 +121,7 @@ def test_modal_smoke_body_refreshes_manifest_with_expected_artifacts(
     def fake_refresh_manifest_files(output_dir: Path, expected_artifacts: tuple[str, ...]) -> None:
         refresh_calls.append((output_dir, expected_artifacts))
 
-    monkeypatch.setattr(modal_instruct_sft, "_fresh_output_dir", lambda root, stem: output_dir)
+    monkeypatch.setattr(modal_instruct_sft, "fresh_output_dir", lambda root, stem: output_dir)
     monkeypatch.setattr(modal_instruct_sft, "run_cpu_fixture_sft", fake_run_cpu_fixture_sft)
     monkeypatch.setattr(modal_instruct_sft, "refresh_manifest_files", fake_refresh_manifest_files)
 
@@ -282,18 +282,22 @@ def test_full_run_learning_gate_rejects_wrong_stopped_run_path_counts(
     ]
 
 
-def test_instruct_run_card_keeps_full_run_approval_history_out_of_readme() -> None:
+def test_instruct_release_docs_keep_approval_history_internal() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     run_card = (REPO_ROOT / "run_cards" / "esme-214m-instruct.md").read_text(encoding="utf-8")
-
-    required = (
-        "learning gate records stopped-run reconciliation and bounded matched "
-        "interval-eval sweep evidence"
+    internal_recipe = (REPO_ROOT / "docs" / "internal" / "instruct-sft-recipe.md").read_text(
+        encoding="utf-8"
     )
+
+    required = "records stopped-run reconciliation and bounded matched interval-eval sweep evidence"
+    public_text = " ".join(f"{readme}\n{run_card}".split())
+    internal_text = " ".join(internal_recipe.split())
+
     assert required not in " ".join(readme.split())
-    assert required in " ".join(run_card.split())
-    assert "new full-data rerun requires explicit chat approval" not in " ".join(readme.split())
-    assert "Adam approved the full A100 launch" in " ".join(run_card.split())
+    assert required not in " ".join(run_card.split())
+    assert required in internal_text
+    assert "new full-data rerun requires explicit chat approval" not in public_text
+    assert "Adam approved the full A100 launch" not in public_text
 
 
 def test_full_run_refuses_without_approval_and_preflight_never_spawns(
@@ -539,7 +543,7 @@ def test_interval_sweep_writes_learning_gate_evidence_with_tiny_local_data(
         sft_sweep,
         "SWEEP_ARMS",
         (
-            SweepArm(
+            SFTSweepArm(
                 name="tiny-lr5e-2-b1",
                 learning_rate=0.05,
                 micro_batch_size=1,
@@ -591,7 +595,7 @@ def test_full_run_resume_requires_latest_checkpoint_in_chosen_output_dir(tmp_pat
     output_dir.mkdir()
     (output_dir / "existing.txt").write_text("not a checkpoint\n", encoding="utf-8")
 
-    with pytest.raises(FullRunError, match="empty or absent"):
+    with pytest.raises(SFTFullRunError, match="empty or absent"):
         run_full_instruct_sft(
             config,
             output_dir=output_dir,
@@ -600,7 +604,7 @@ def test_full_run_resume_requires_latest_checkpoint_in_chosen_output_dir(tmp_pat
             wandb_enabled=False,
         )
 
-    with pytest.raises(FullRunError, match="--resume requested but no checkpoint exists"):
+    with pytest.raises(SFTFullRunError, match="--resume requested but no checkpoint exists"):
         run_full_instruct_sft(
             config,
             output_dir=output_dir,

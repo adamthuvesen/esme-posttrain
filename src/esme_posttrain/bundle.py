@@ -59,14 +59,16 @@ def validate_base_bundle(bundle_dir: Path) -> ValidatedBundle:
     if manifest.get("weights_format") != BUNDLE_FORMAT:
         raise BundleError(f"base bundle weights_format must be {BUNDLE_FORMAT}")
 
-    files = _object(manifest.get("files"), "base bundle manifest.files")
+    files = _require_json_object(manifest.get("files"), "base bundle manifest.files")
     config_path = _verified_file(bundle_dir, files, "config")
     tokenizer_path = _verified_file(bundle_dir, files, "tokenizer")
     weights_path = _verified_file(bundle_dir, files, "weights")
 
     config_payload = _load_json_object(config_path, "base bundle config")
     config = BackboneConfig.from_dict(config_payload)
-    manifest_config = _object(manifest.get("model_config"), "base bundle manifest.model_config")
+    manifest_config = _require_json_object(
+        manifest.get("model_config"), "base bundle manifest.model_config"
+    )
     if manifest_config != config.to_dict():
         raise BundleError("base bundle config.json does not match manifest.model_config")
 
@@ -90,14 +92,17 @@ def load_dense_backbone_bundle(
     # carries trusted metadata in addition to tensors, and the manifest hashes were
     # verified before loading.
     payload = torch.load(bundle.weights_path, map_location=map_location, weights_only=False)
-    weights = _object(payload, "base bundle weights")
+    weights = _require_json_object(payload, "base bundle weights")
     if weights.get("format") != BUNDLE_FORMAT:
         raise BundleError(f"weights.format must be {BUNDLE_FORMAT}")
     if weights.get("key_format") != BUNDLE_FORMAT:
         raise BundleError(f"weights.key_format must be {BUNDLE_FORMAT}")
-    if _object(weights.get("model_config"), "weights.model_config") != bundle.config.to_dict():
+    if (
+        _require_json_object(weights.get("model_config"), "weights.model_config")
+        != bundle.config.to_dict()
+    ):
         raise BundleError("weights.model_config does not match config.json")
-    state_dict = _object(weights.get("state_dict"), "weights.state_dict")
+    state_dict = _require_json_object(weights.get("state_dict"), "weights.state_dict")
 
     model = DenseBackbone(bundle.config)
     model.load_state_dict(state_dict)
@@ -106,7 +111,7 @@ def load_dense_backbone_bundle(
 
 
 def _verified_file(bundle_dir: Path, files: dict[str, Any], key: str) -> Path:
-    entry = _object(files.get(key), f"base bundle manifest.files.{key}")
+    entry = _require_json_object(files.get(key), f"base bundle manifest.files.{key}")
     raw_path = entry.get("path")
     if not isinstance(raw_path, str) or not raw_path:
         raise BundleError(f"base bundle manifest.files.{key}.path must be a non-empty string")
@@ -129,10 +134,10 @@ def _load_json_object(path: Path, label: str) -> dict[str, Any]:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
         raise BundleError(f"malformed {label} JSON at {path}: {error.msg}") from error
-    return _object(raw, label)
+    return _require_json_object(raw, label)
 
 
-def _object(value: Any, label: str) -> dict[str, Any]:
+def _require_json_object(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise BundleError(f"{label} must be a JSON object")
     return value

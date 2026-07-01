@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
+
+from esme_posttrain.launch.errors import LaunchError
 
 LAUNCH_APPROVAL_FLAG = "--approved"
 MODAL_CLIENT_VERSION = "1.5.1"
@@ -16,21 +17,16 @@ IMAGE_PACKAGE_PINS: dict[str, str] = {
 SMOKE_SPEND_CAP_USD = 2.0
 
 
-class LaunchError(ValueError):
-    pass
-
-
 def load_json_object(config_path: Path) -> tuple[Path, dict[str, Any]]:
     resolved_path = config_path.expanduser().resolve()
-    try:
-        payload = json.loads(resolved_path.read_text(encoding="utf-8"))
-    except FileNotFoundError as error:
-        raise LaunchError(f"config path does not exist: {resolved_path}") from error
-    except json.JSONDecodeError as error:
-        raise LaunchError(f"config is not valid JSON: {error.msg}") from error
-    if not isinstance(payload, dict):
-        raise LaunchError("config must be a JSON object")
-    return resolved_path, payload
+    if not resolved_path.exists():
+        raise LaunchError(f"config path does not exist: {resolved_path}")
+    if not resolved_path.is_file():
+        raise LaunchError(f"config path must be a file: {resolved_path}")
+
+    from esme_posttrain.launch.validate import load_json_file
+
+    return resolved_path, dict(load_json_file(resolved_path, "config"))
 
 
 def estimate_cost_usd(
