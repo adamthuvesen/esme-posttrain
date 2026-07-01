@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "run_id": "esme_214m_sft_multiturn",
+  "run_card": "run_cards/esme-214m-sft-multiturn.md",
+  "requires_approval": true,
+  "artifact_name": "Esme-214M-Instruct",
+  "starts_from": "Esme-214M-Base",
+  "stage": "sft",
+  "base_bundle": {
+    "path": "fixtures/base_bundle",
+    "format": "llm_pretrain_dense_v1",
+    "model_family": "DenseBackbone",
+    "read_only": true
+  },
+  "datasets": {
+    "non_commercial_training_approved": false,
+    "train_mix": [
+      {
+        "name": "smol-smoltalk",
+        "source": "HuggingFaceTB/smol-smoltalk",
+        "revision": "f73fe857d519ff6ac5af2ea67c4d3834da7b8bcc",
+        "license": "apache-2.0",
+        "split": "train",
+        "role": "train",
+        "mix_ratio": 0.85,
+        "filters": {
+          "multi_turn_included": true,
+          "capacity_filtered_subsets": [
+            "apigen-80k",
+            "xlam-function-calling-60k",
+            "self-oss-instruct-sc2-exec-filter-50k"
+          ],
+          "max_prompt_chars": 6000,
+          "max_response_chars": 4000
+        }
+      },
+      {
+        "name": "tulu-3-personas",
+        "source": "allenai/tulu-3-sft-personas-instruction-following",
+        "revision": "fe0c7d350c9b4542b8d829a6f1daa1c259f0ba0e",
+        "license": "odc-by",
+        "split": "train",
+        "role": "train",
+        "mix_ratio": 0.15,
+        "filters": {
+          "include_constraints_in_prompt": true,
+          "max_prompt_chars": 6000,
+          "max_response_chars": 4000
+        }
+      }
+    ],
+    "eval_holdout": {
+      "name": "no_robots",
+      "source": "HuggingFaceH4/no_robots",
+      "revision": "e6f9a4ac5c37faeb744ba9ecf0473184d7f8105b",
+      "license": "cc-by-nc-4.0",
+      "split": "test",
+      "role": "eval",
+      "usage": "eval_only",
+      "train_allowed": false
+    }
+  },
+  "budgets": {
+    "max_train_samples": 50000,
+    "max_train_tokens": 80000000,
+    "target_train_tokens": 60000000,
+    "max_eval_samples": 500,
+    "max_eval_tokens": 1024000,
+    "matched_eval_samples_per_source": 256,
+    "matched_eval_tokens_per_source": 524288,
+    "max_sequence_tokens": 1024,
+    "smoke_train_samples": 10,
+    "smoke_train_tokens": 16384,
+    "smoke_eval_samples": 4
+  },
+  "optimizer": {
+    "name": "AdamW",
+    "learning_rate": 5e-05,
+    "micro_batch_size": 2,
+    "gradient_accumulation_steps": 8,
+    "effective_batch_size": 16,
+    "max_steps": 12000,
+    "smoke_max_steps": 40,
+    "seed": 214,
+    "grad_clip": 1.0,
+    "scheduler": "cosine_decay",
+    "warmup_steps": 480,
+    "weight_decay": 0.1
+  },
+  "loss": {
+    "assistant_only_loss": true,
+    "completion_only_loss": true,
+    "ignore_index": -100
+  },
+  "tuning": {
+    "mode": "full"
+  },
+  "sequence": {
+    "sequence_packing": false,
+    "pad_to_multiple_of": 8,
+    "no_packing_rationale": "Packing is disabled initially; this multi-turn recipe emits padding-efficiency metrics at 1024 sequence length so a follow-on run can justify adding a tested packer."
+  },
+  "runtime": {
+    "provider": "modal",
+    "selected_gpu": "A100",
+    "precision": "bf16",
+    "gpu_profiles": {
+      "L4": {
+        "modal_gpu": "L4",
+        "usd_per_hour": 0.8,
+        "projected_tokens_per_second": 5000,
+        "measured_tokens_per_second": null,
+        "measured_smoke_tokens_per_second": null,
+        "expected_smoke_duration_minutes": 6,
+        "rationale": "L4 is the smallest approved CUDA profile for a bounded multi-turn SFT smoke.",
+        "projection_source": "conservative full-run placeholder; not measured for the 1024-len multi-turn recipe",
+        "measured": false
+      },
+      "A100": {
+        "modal_gpu": "A100",
+        "usd_per_hour": 2.0988,
+        "projected_tokens_per_second": 1559.11,
+        "measured_tokens_per_second": 1559.11,
+        "measured_smoke_tokens_per_second": null,
+        "expected_smoke_duration_minutes": 8,
+        "rationale": "A100 fit microbatch 2 in the accepted Instruct probe; this multi-turn recipe trains at the same 1024 sequence length as the Esme-214M-Base context. Gradient accumulation raises the optimizer effective batch to 16 without more activation memory.",
+        "projection_source": "measured by the bounded 1024-len multi-turn throughput probe on 2026-06-27 (1559.11 trained tokens/s over 60 steps, call fc-01KW5GMPZGTYEPFT5RJEP85744); slower than the single-turn Instruct rate because multi-turn rows are denser. 60M target tokens project to ~10.7h and ~$22.44, under the $40 cap.",
+        "measured": true
+      }
+    },
+    "smoke_max_cost_usd": 2,
+    "full_run_max_cost_usd": 40,
+    "runtime_spend_stop_usd": 2,
+    "full_run_runtime_spend_stop_usd": 40,
+    "allow_retries": false,
+    "modal_volume": "esme-posttrain-esme-sft-multiturn",
+    "timeout_hours": 12
+  },
+  "monitoring": {
+    "log_interval": 10,
+    "eval_interval": 300,
+    "checkpoint_interval": 1000,
+    "retain_last_checkpoints": 3,
+    "early_stopping_patience": 4,
+    "no_robots_catastrophic_regression_multiplier": 1.5,
+    "sample_new_tokens": 256,
+    "wandb_project": "esme-posttrain",
+    "wandb_required_for_modal": true,
+    "judge_repeat_passes": 5
+  },
+  "artifacts": {
+    "output_dir": "runs/esme-214m-sft-multiturn/esme_214m_sft_multiturn",
+    "required_files": [
+      "config.json",
+      "data-report.json",
+      "selected-row-manifest.jsonl",
+      "eval-smol-smoltalk-manifest.jsonl",
+      "eval-tulu-3-personas-manifest.jsonl",
+      "eval-no_robots-manifest.jsonl",
+      "metrics.jsonl",
+      "checkpoint.pt",
+      "best-checkpoint.pt",
+      "best-checkpoint.json",
+      "samples.md",
+      "multi-turn-samples.md",
+      "tokenizer.json",
+      "manifest.json",
+      "eval-report.json",
+      "cost.json",
+      "environment.txt"
+    ]
+  },
+  "learning_gate": {
+    "full_run_requires_matched_sweep": true,
+    "evidence": {
+      "bounded_matched_interval_eval_sweep": {
+        "kind": "bounded_matched_interval_eval_sweep",
+        "eval_metric": "eval/matched/response_loss",
+        "baseline_step": 0,
+        "step0_response_loss": 2.144883066282036,
+        "best_response_loss": 1.8084324924117876,
+        "best_arm_id": "sweep-20260627T214722Z-lr5e-5-mb2-ga8-eb16",
+        "best_learning_rate": 5e-05,
+        "interval_eval_steps": [20, 40, 60, 80, 100, 120],
+        "evidence_uri": "runs/esme-214m-sft-multiturn/sweep-evidence/sweep-20260627T214722Z-evidence/interval-eval-sweep.json"
+      }
+    }
+  },
+  "acceptance": {
+    "heldout_response_loss_required": true,
+    "sft_must_beat_base": true,
+    "eval_dataset": "weighted matched multi-turn SmolTalk + single-turn Tulu with no_robots OOD guardrail"
+  },
+  "abort_rules": [
+    "The exact command and the approved $2 Modal smoke cap have not been approved.",
+    "The full Esme-214M-Instruct multi-turn SFT launch requires explicit approval, the --approved flag, and bounded matched-sweep learning-gate evidence where eval/matched/response_loss improves versus step 0.",
+    "Runtime spend reaches $2 for smoke, $40 for the approved full-run runaway cap, or projected spend exceeds either cap.",
+    "Training data source, revision, license, or no_robots eval-only status differs from this config.",
+    "HuggingFaceH4/no_robots is non-commercial and must remain eval-only unless explicit non-commercial training approval is recorded.",
+    "Multi-turn assistant-only masking is not asserted or response loss cannot be computed.",
+    "Weighted matched response loss does not beat Base, no_robots crosses its catastrophic-regression threshold, loss becomes NaN/inf, or checkpoint save/load fails.",
+    "Required artifacts cannot be written to the Modal Volume and local evidence mirror."
+  ]
+}

@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "run_id": "esme_214m_chat_dpo",
+  "run_card": "run_cards/esme-214m-chat-dpo.md",
+  "requires_approval": true,
+  "artifact_name": "Esme-214M-Chat",
+  "starts_from": "Esme-214M-Instruct",
+  "stage": "dpo",
+  "sft_reference": {
+    "volume": "esme-posttrain-esme-sft-multiturn",
+    "checkpoint_path": "esme-214m-sft-multiturn-full/best-checkpoint.pt",
+    "tokenizer_path": "esme-214m-sft-multiturn-full/tokenizer.json",
+    "format": "llm_posttrain_instruct_sft_v1",
+    "model_family": "DenseBackbone",
+    "read_only": true,
+    "wandb_run": "hhmk7uk2",
+    "best_step": 6300
+  },
+  "datasets": {
+    "non_commercial_training_approved": false,
+    "preference_train": {
+      "name": "ultrafeedback-binarized",
+      "source": "HuggingFaceH4/ultrafeedback_binarized",
+      "revision": "3949bf5f8c17c394422ccfab0c31ea9c20bdeb85",
+      "license": "mit",
+      "split": "train_prefs",
+      "role": "train"
+    },
+    "preference_eval": {
+      "name": "ultrafeedback-binarized",
+      "source": "HuggingFaceH4/ultrafeedback_binarized",
+      "revision": "3949bf5f8c17c394422ccfab0c31ea9c20bdeb85",
+      "license": "mit",
+      "split": "test_prefs",
+      "role": "eval"
+    },
+    "filtering": {
+      "max_prompt_chars": 4000,
+      "max_response_chars": 4000,
+      "drop_identical_responses": true
+    }
+  },
+  "budgets": {
+    "max_train_pairs": 62000,
+    "min_train_pairs": 8000,
+    "max_train_tokens": 160000000,
+    "target_train_tokens": 100000000,
+    "max_eval_pairs": 1000,
+    "min_eval_pairs": 100,
+    "max_eval_tokens": 4096000,
+    "max_length": 1024,
+    "max_prompt_length": 512,
+    "smoke_train_pairs": 12,
+    "smoke_train_tokens": 24576,
+    "smoke_eval_pairs": 6
+  },
+  "optimizer": {
+    "name": "adamw_torch",
+    "learning_rate": 1e-06,
+    "micro_batch_size": 4,
+    "gradient_accumulation_steps": 32,
+    "effective_batch_size": 128,
+    "epochs": 2,
+    "max_steps": 960,
+    "smoke_max_steps": 20,
+    "seed": 214,
+    "grad_clip": 1.0,
+    "scheduler": "cosine_decay",
+    "warmup_ratio": 0.1,
+    "weight_decay": 0.0
+  },
+  "dpo": {
+    "loss_type": "sigmoid",
+    "beta": 0.5,
+    "length_normalized": false,
+    "reference_free": false,
+    "auxiliary_sft_loss": false
+  },
+  "sequence": {
+    "pad_to_multiple_of": 8
+  },
+  "runtime": {
+    "provider": "modal",
+    "selected_gpu": "A100",
+    "precision": "bf16",
+    "gpu_profiles": {
+      "L4": {
+        "modal_gpu": "L4",
+        "usd_per_hour": 0.8,
+        "projected_tokens_per_second": 3000,
+        "rationale": "L4 is the smallest approved CUDA profile for a bounded DPO smoke; DPO scores chosen+rejected+reference per step so per-token throughput is below the SFT single-pass rate.",
+        "projection_source": "conservative placeholder; not measured for the DPO triple-forward path",
+        "measured": false
+      },
+      "A100": {
+        "modal_gpu": "A100",
+        "usd_per_hour": 2.0988,
+        "projected_tokens_per_second": 4200,
+        "rationale": "A100 fits the SmolLM2-360M-anchored DPO config (micro-batch 4 x grad-accum 32 = effective 128) at 1024 length for a 214M policy + a frozen reference forward.",
+        "projection_source": "derived conservatively from the accepted multi-turn SFT A100 probe (1559 trained tok/s single-pass); the DPO scored-token rate is higher because logp scoring is forward-only, but each optimizer step also runs a no-grad reference pass. 100M target scored tokens project to ~6.6h and ~$13.9 at this rate, under the $15 cap; the projection must be re-measured by a bounded probe before the full launch.",
+        "measured": false
+      }
+    },
+    "smoke_max_cost_usd": 2,
+    "full_run_max_cost_usd": 15,
+    "runtime_spend_stop_usd": 2,
+    "full_run_runtime_spend_stop_usd": 15,
+    "allow_retries": false,
+    "modal_volume": "esme-posttrain-esme-chat-dpo",
+    "timeout_hours": 10
+  },
+  "monitoring": {
+    "log_interval": 10,
+    "eval_interval": 60,
+    "checkpoint_interval": 240,
+    "sample_new_tokens": 256,
+    "wandb_project": "esme-posttrain",
+    "wandb_required_for_modal": true,
+    "wandb_tags": [
+      "Esme-214M-Chat",
+      "stage=dpo",
+      "vanilla-dpo",
+      "ultrafeedback-binarized"
+    ],
+    "judge_repeat_passes": 5,
+    "log_chosen_rejected_logps": true
+  },
+  "artifacts": {
+    "output_dir": "runs/esme-214m-chat-dpo/esme_214m_chat_dpo",
+    "required_files": [
+      "config.json",
+      "data-report.json",
+      "selected-pair-manifest.jsonl",
+      "eval-pair-manifest.jsonl",
+      "decoding-precheck.json",
+      "metrics.jsonl",
+      "checkpoint.pt",
+      "best-checkpoint.pt",
+      "best-checkpoint.json",
+      "chat-samples.md",
+      "tokenizer.json",
+      "manifest.json",
+      "eval-report.json",
+      "cost.json",
+      "environment.txt"
+    ]
+  },
+  "learning_gate": {
+    "full_run_requires_beta_sweep": true,
+    "swept_betas": [
+      0.1,
+      0.3,
+      0.5
+    ],
+    "evidence": {
+      "bounded_beta_sweep": {
+        "kind": "bounded_beta_sweep",
+        "selector_metric": "eval/preference_accuracy",
+        "swept_betas": [
+          0.1,
+          0.3,
+          0.5
+        ],
+        "best_beta": 0.5,
+        "reference_preference_accuracy": 0.0,
+        "best_preference_accuracy": 0.625,
+        "best_chosen_logp_collapsed": false,
+        "evidence_uri": "/__modal/volumes/vo-YkaLAh395rjBHUODq4CPtx/esme-chat-dpo-beta-sweep/sweep-20260628T134103Z-evidence/beta-sweep.json"
+      }
+    }
+  },
+  "acceptance": {
+    "preference_accuracy_must_beat_reference": true,
+    "no_chosen_logp_collapse": true,
+    "repetition_or_length_must_improve": true,
+    "proxies": [
+      "held-out preference accuracy (chosen margin > 0) versus the SFT reference",
+      "n-gram repetition rate versus the pre-DPO decoding baseline",
+      "response-length distribution stays sane (no verbosity reward-hacking)"
+    ]
+  },
+  "abort_rules": [
+    "The exact command and the approved $2 Modal smoke cap have not been approved.",
+    "The full Esme-214M-Chat DPO launch requires explicit approval, the --approved flag, and bounded beta-sweep learning-gate evidence where held-out preference accuracy beats the SFT reference without chosen-logp collapse.",
+    "Runtime spend reaches $2 for smoke, $15 for the approved full-run runaway cap, or projected spend exceeds either cap.",
+    "Preference data source, revision, license, or split differs from this config.",
+    "Chosen-logp collapses below the frozen reference (likelihood displacement) or the held-out preference margin does not increase.",
+    "The frozen SFT reference checkpoint cannot be read, DPO loss becomes NaN/inf, or required artifacts cannot be written to the Volume and local evidence mirror."
+  ]
+}

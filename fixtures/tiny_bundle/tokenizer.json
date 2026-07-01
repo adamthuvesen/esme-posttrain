@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [],
+  "normalizer": null,
+  "pre_tokenizer": {
+    "type": "Whitespace"
+  },
+  "post_processor": null,
+  "decoder": null,
+  "model": {
+    "type": "WordLevel",
+    "vocab": {
+      "<unk>": 0,
+      "<eos>": 1,
+      "user": 2,
+      "assistant": 3,
+      "system": 4,
+      "say": 5,
+      "red": 6,
+      "blue": 7,
+      "green": 8,
+      "repeat": 9,
+      "one": 10,
+      "two": 11,
+      "again": 12,
+      "helpful": 13
+    },
+    "unk_token": "<unk>"
+  }
+}

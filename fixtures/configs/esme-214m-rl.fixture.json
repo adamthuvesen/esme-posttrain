@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "run_id": "esme_214m_rlvr_countdown_lite_grpo",
+  "run_card": "run_cards/esme-214m-rl.md",
+  "requires_approval": true,
+  "artifact_name": "Esme-214M-RL",
+  "stage": "rlvr",
+  "starts_from": "Esme-214M-Chat",
+  "input_bundle": {
+    "path": "../tiny_bundle",
+    "format": "llm_pretrain_dense_v1",
+    "model_family": "DenseBackbone",
+    "read_only": true
+  },
+  "dataset": {
+    "name": "esme_214m_rl_countdown_lite",
+    "manifest_path": "../manifests/rl_tasks_tiny.json",
+    "train_split": "train",
+    "eval_split": "eval",
+    "secondary_transfer_eval": "GSM8K-lite",
+    "remote_download_allowed": false,
+    "train_on_gsm8k_lite": false
+  },
+  "approval_gate": {
+    "requires_adam_approval": true,
+    "approved": true,
+    "blocked_actions": ["dataset_download", "modal", "gpu", "paid_api", "full_training"]
+  },
+  "budgets": {
+    "dataset_sample_budget": 2,
+    "train_task_budget": 1,
+    "eval_task_budget": 1,
+    "max_rollout_tokens": 256,
+    "max_eval_rollouts": 1
+  },
+  "grpo": {
+    "method": "grpo",
+    "max_steps": 1,
+    "warmup_steps": 0,
+    "prompts_per_step": 1,
+    "group_size": 2,
+    "max_new_tokens": 2,
+    "temperature": 0.8,
+    "clip_epsilon": 0.2,
+    "kl_beta": 0.0,
+    "learning_rate": 0.0001,
+    "weight_decay": 0.0,
+    "scheduler": "constant",
+    "grad_clip": 1.0,
+    "seed": 214
+  },
+  "reward_policy": {
+    "verifiable_only": true,
+    "exact_solve_reward": 1.0,
+    "valid_expression_reward": 0.1,
+    "invalid_reward": 0.0,
+    "disallowed_observation_terms": ["style", "sharpness", "friendliness", "naturalness", "tone"]
+  },
+  "runtime": {
+    "provider": "modal",
+    "selected_gpu": "A100",
+    "gpu_profiles": {
+      "A10G": {
+        "modal_gpu": "A10G",
+        "usd_per_hour": 1.1,
+        "projected_tokens_per_second": 100.0,
+        "rationale": "fixture fallback profile",
+        "projection_source": "fixture",
+        "measured": false
+      },
+      "A100": {
+        "modal_gpu": "A100",
+        "usd_per_hour": 2.0988,
+        "projected_tokens_per_second": 100.0,
+        "rationale": "fixture selected profile",
+        "projection_source": "fixture",
+        "measured": false
+      }
+    },
+    "precision": "fp32",
+    "smoke_max_cost_usd": 2.0,
+    "full_run_max_cost_usd": 3.0,
+    "runtime_spend_stop_usd": 2.0,
+    "full_run_runtime_spend_stop_usd": 3.0,
+    "allow_retries": false,
+    "modal_volume": "esme-posttrain-esme-rlvr-countdown",
+    "timeout_hours": 1
+  },
+  "monitoring": {
+    "log_interval": 1,
+    "checkpoint_interval": 1,
+    "samples_per_eval_task": 1,
+    "eval_max_new_tokens": 2,
+    "eval_progress_interval_tasks": 1,
+    "eval_progress_interval_samples": 1,
+    "eval_sample_batch_size": 1,
+    "eval_wall_timeout_seconds": 60,
+    "eval_wall_timeout_seconds_per_sample": 1.0,
+    "eval_no_progress_timeout_seconds": 30,
+    "eval_no_progress_timeout_seconds_per_sample": 1.0,
+    "debug_eval_task_budget": 1,
+    "debug_samples_per_eval_task": 1,
+    "wandb_project": "esme-posttrain",
+    "wandb_required_for_modal": true,
+    "wandb_tags": [
+      "stage=rlvr",
+      "Esme-214M-RL",
+      "countdown-lite",
+      "grpo",
+      "fixture"
+    ]
+  },
+  "pipeline_smoke": {
+    "profile": "pipeline_smoke",
+    "enabled": true,
+    "train_task_budget": 1,
+    "max_steps": 1,
+    "warmup_steps": 0,
+    "prompts_per_step": 1,
+    "group_size": 2,
+    "max_new_tokens": 2,
+    "max_rollout_tokens": 256,
+    "eval_task_budget": 1,
+    "samples_per_eval_task": 1,
+    "eval_max_new_tokens": 2,
+    "eval_progress_interval_tasks": 1,
+    "eval_progress_interval_samples": 1,
+    "eval_sample_batch_size": 1,
+    "eval_wall_timeout_seconds": 60,
+    "eval_no_progress_timeout_seconds": 30,
+    "output_dir": "runs/esme-214m-rlvr-pipeline-smoke-fixture",
+    "report_path": "artifacts/rlvr-countdown-lite/pipeline-smoke-report.fixture.json",
+    "doc_path": "docs/internal/rlvr-countdown-lite-pipeline-check.fixture.md"
+  },
+  "artifacts": {
+    "output_dir": "runs/esme-214m-rlvr-countdown-grpo-fixture",
+    "report_path": "artifacts/rlvr-countdown-lite/grpo-report.fixture.json",
+    "doc_path": "docs/rlvr-countdown-lite-grpo.fixture.md",
+    "required_files": [
+      "config.json",
+      "data-report.json",
+      "rollouts.jsonl",
+      "metrics.jsonl",
+      "checkpoint.pt",
+      "best-checkpoint.pt",
+      "best-checkpoint.json",
+      "tokenizer.json",
+      "eval-before.json",
+      "eval-after.json",
+      "cost.json",
+      "environment.txt",
+      "manifest.json"
+    ]
+  },
+  "acceptance": {
+    "primary_metric": "valid_expression_rate",
+    "baseline_valid_expression_rate": 0.0,
+    "baseline_exact_solve_rate": 0.0,
+    "baseline_pass_at_1": 0.0,
+    "baseline_pass_at_8": 0.0,
+    "baseline_pass_at_32": 0.0,
+    "record_no_improvement": true
+  },
+  "abort_rules": [
+    "requires --approved and Adam's mission approval before any Modal/GPU/full_training action",
+    "stop before the $25 Countdown-Lite mission cap or the configured $3 fixture runtime hard stop",
+    "train only on local Countdown-Lite train split",
+    "do not train on GSM8K-lite or use it as a reward source",
+    "refuse if estimated rollout tokens exceed the rollout token budget",
+    "refuse if RLVR_MODAL_GPU does not match runtime.selected_gpu Modal accounting",
+    "run the no-spend pipeline_smoke gate before any renewed Modal spend",
+    "no paid API use and no remote dataset download"
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "files": {
+    "config": {
+      "path": "config.json",
+      "sha256": "30d7dbb056ef869da4b218e5492d8ef962ffed5df944724b0d78e5392f0d5b40"
+    },
+    "tokenizer": {
+      "path": "tokenizer.json",
+      "sha256": "e57ac92de67e53b360c70a3013c72eb408e6e937d851d7b28f81257f80120a68"
+    },
+    "weights": {
+      "path": "weights.pt",
+      "sha256": "c1cd4dc03cbb89967860e30c6246618d6c8719f28cc9083b91bcdf413abca459"
+    }
+  },
+  "format": "llm_pretrain_dense_v1",
+  "model": {
+    "id": "fixture-chat",
+    "name": "Fixture Chat",
+    "stage": "fixture"
+  },
+  "model_config": {
+    "attention_kind": "gqa",
+    "context_length": 48,
+    "embedding_dim": 16,
+    "feedforward_dim": 32,
+    "heads": 2,
+    "kv_heads": 1,
+    "layers": 1,
+    "logit_soft_cap": 0.0,
+    "mtp_predict_tokens": 0,
+    "name": "tiny-multi-turn-sft-fixture",
+    "qk_norm": true,
+    "rms_norm_eps": 1e-06,
+    "rope_theta": 10000.0,
+    "tie_embeddings": true,
+    "vocab_size": 32,
+    "z_loss_weight": 0.0
+  },
+  "model_family": "DenseBackbone",
+  "schema_version": 1,
+  "weights_format": "llm_pretrain_dense_v1"
+}
