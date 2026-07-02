@@ -479,6 +479,9 @@ def build_grpo_dynamics_figure(telemetry: GrpoTelemetry) -> go.Figure:
         y1=1,
         line={"color": REFERENCE_GREY, "width": 1, "dash": "dash"},
     )
+    # Anchor the label away from the nearest plot edge so a best step late in
+    # the run does not push the text off the card.
+    late_best = telemetry.best_step > total_steps * 0.7
     figure.add_annotation(
         {
             "text": (
@@ -489,8 +492,8 @@ def build_grpo_dynamics_figure(telemetry: GrpoTelemetry) -> go.Figure:
             "yref": "paper",
             "y": 0.97,
             "showarrow": False,
-            "xanchor": "left",
-            "xshift": 6,
+            "xanchor": "right" if late_best else "left",
+            "xshift": -6 if late_best else 6,
             "font": {"family": FONT_FAMILY, "size": 12, "color": REFERENCE_GREY},
         }
     )
