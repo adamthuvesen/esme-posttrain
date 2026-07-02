@@ -139,7 +139,7 @@ def test_modal_launcher_dry_run_rejects_timeout_env_config_mismatch() -> None:
 
     assert result.returncode == 2
     assert "RLVR_TIMEOUT_HOURS must match runtime.timeout_hours" in result.stderr
-    assert "env=4, config=3" in result.stderr
+    assert "env=4, config=8" in result.stderr
     assert "effective timeout cost ceiling $8.3952" in result.stderr
 
 
@@ -292,8 +292,8 @@ def test_full_acceptance_eval_stays_30x32_with_scaled_timeout() -> None:
     assert payload["eval_task_budget"] == 30
     assert payload["samples_per_eval_task"] == 32
     assert payload["eval_rollouts"] == 960
-    assert payload["eval_wall_timeout_seconds"] == 2400.0
-    assert payload["eval_no_progress_timeout_seconds"] == 720.0
+    assert payload["eval_wall_timeout_seconds"] == 5760.0
+    assert payload["eval_no_progress_timeout_seconds"] == 1440.0
     assert "960 samples" in payload["eval_timeout_basis"]
     assert payload["acceptance_preflight"]["full_acceptance_preserved"] is True
     assert payload["acceptance_preflight"]["total_samples"] == 960

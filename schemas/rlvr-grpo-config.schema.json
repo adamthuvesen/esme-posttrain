@@ -145,7 +145,10 @@
         "warmup_steps": { "type": "integer", "minimum": 0 },
         "scheduler": { "enum": ["constant", "linear_warmup_decay", "cosine_decay"] },
         "grad_clip": { "type": "number", "exclusiveMinimum": 0 },
-        "seed": { "type": "integer", "minimum": 1 }
+        "seed": { "type": "integer", "minimum": 1 },
+        "zero_variance_max_resamples": { "type": "integer", "minimum": 0 },
+        "replay_buffer_max_age_steps": { "type": "integer", "minimum": 0 },
+        "stratified_difficulty_sampling": { "type": "boolean" }
       },
       "additionalProperties": false
     },
@@ -163,6 +166,8 @@
         "exact_solve_reward": { "type": "number" },
         "valid_expression_reward": { "type": "number" },
         "invalid_reward": { "type": "number" },
+        "format_expression_reward": { "type": "number" },
+        "closeness_weight": { "type": "number", "minimum": 0 },
         "disallowed_observation_terms": {
           "type": "array",
           "items": { "type": "string" }

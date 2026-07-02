@@ -13,7 +13,7 @@ from esme_posttrain.rl.countdown_lite_baseline import (
     run_countdown_lite_baseline,
 )
 from esme_posttrain.rl.full import run_countdown_lite_grpo_job
-from esme_posttrain.rl.launch import EXPECTED_ARTIFACTS, load_rlvr_config
+from esme_posttrain.rl.launch import EXPECTED_ARTIFACTS_WITH_FINAL_EVAL, load_rlvr_config
 from esme_posttrain.rl.pipeline_smoke import run_rlvr_pipeline_smoke
 from esme_posttrain.rl.report import build_blocked_grpo_report, build_grpo_report
 
@@ -40,9 +40,13 @@ def test_countdown_lite_grpo_fixture_job_writes_required_artifacts(tmp_path: Pat
     assert payload["grpo_result"] == "not-acceptance-evidence"
     assert payload["gsm8k_lite"]["status"] == "not_run"
     assert payload["wandb_run"] is None
-    assert set(payload["required_artifacts_present"]) == set(EXPECTED_ARTIFACTS)
+    assert set(payload["required_artifacts_present"]) == set(EXPECTED_ARTIFACTS_WITH_FINAL_EVAL)
     assert all(payload["required_artifacts_present"].values())
     assert (tmp_path / "grpo-fixture" / "bundle" / "manifest.json").is_file()
+    assert (tmp_path / "grpo-fixture" / "bundle-final" / "manifest.json").is_file()
+    assert (tmp_path / "grpo-fixture" / "eval-after-final.json").is_file()
+    assert payload["after_final"] is not None
+    assert payload["after_final"]["task_count"] == 1
     assert (tmp_path / "grpo-fixture" / "eval-progress.jsonl").is_file()
     stages = [stage for stage, _fields in milestones]
     assert "trainer_start" in stages

@@ -64,6 +64,20 @@ EXPECTED_ARTIFACTS = (
     "environment.txt",
     "manifest.json",
 )
+# Opting into a final-checkpoint acceptance eval adds one artifact; the base
+# manifest stays valid for provenance configs that predate it.
+EXPECTED_ARTIFACTS_WITH_FINAL_EVAL = (*EXPECTED_ARTIFACTS, "eval-after-final.json")
+# Optional stability knobs (Dr. GRPO / DAPO / ARPO bundle); configs without
+# them keep the original trainer semantics.
+OPTIONAL_GRPO_KEYS = frozenset(
+    {
+        "zero_variance_max_resamples",
+        "replay_buffer_max_age_steps",
+        "stratified_difficulty_sampling",
+    }
+)
+OPTIONAL_REWARD_POLICY_KEYS = frozenset({"format_expression_reward", "closeness_weight"})
+EXACT_SOLVE_REWARD_MARGIN = 0.4
 
 
 @dataclass(frozen=True)
@@ -356,6 +370,7 @@ def validate_rlvr_payload(payload: dict[str, Any], config_path: Path) -> RLVRLau
         group_size=int(grpo["group_size"]),
         max_steps=int(grpo["max_steps"]),
         max_new_tokens=int(grpo["max_new_tokens"]),
+        zero_variance_max_resamples=int(grpo.get("zero_variance_max_resamples", 0)),
     )
     if estimated_train_tokens > int(budgets["max_rollout_tokens"]):
         raise LaunchError(
@@ -743,9 +758,19 @@ def _validate_grpo(payload: dict[str, Any]) -> dict[str, Any]:
             "scheduler",
             "grad_clip",
             "seed",
-        },
+        }
+        | (OPTIONAL_GRPO_KEYS & set(payload)),
         "grpo",
     )
+    for key in ("zero_variance_max_resamples", "replay_buffer_max_age_steps"):
+        if key in payload:
+            value = payload[key]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise LaunchError(f"grpo.{key} must be a non-negative integer")
+    if "stratified_difficulty_sampling" in payload and not isinstance(
+        payload["stratified_difficulty_sampling"], bool
+    ):
+        raise LaunchError("grpo.stratified_difficulty_sampling must be a boolean")
     if payload["method"] != METHOD:
         raise LaunchError(f"grpo.method must be {METHOD}")
     for key in ("max_steps", "prompts_per_step", "group_size", "max_new_tokens", "seed"):
@@ -783,7 +808,8 @@ def _validate_reward_policy(payload: dict[str, Any]) -> None:
             "valid_expression_reward",
             "invalid_reward",
             "disallowed_observation_terms",
-        },
+        }
+        | (OPTIONAL_REWARD_POLICY_KEYS & set(payload)),
         "reward_policy",
     )
     if payload["verifiable_only"] is not True:
@@ -791,10 +817,14 @@ def _validate_reward_policy(payload: dict[str, Any]) -> None:
     exact = payload["exact_solve_reward"]
     valid = payload["valid_expression_reward"]
     invalid = payload["invalid_reward"]
+    format_reward = payload.get("format_expression_reward", 0.0)
+    closeness_weight = payload.get("closeness_weight", 0.0)
     for key, value in (
         ("exact_solve_reward", exact),
         ("valid_expression_reward", valid),
         ("invalid_reward", invalid),
+        ("format_expression_reward", format_reward),
+        ("closeness_weight", closeness_weight),
     ):
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise LaunchError(f"reward_policy.{key} must be numeric")
@@ -802,6 +832,21 @@ def _validate_reward_policy(payload: dict[str, Any]) -> None:
         raise LaunchError(
             "reward_policy must satisfy exact_solve_reward > valid_expression_reward >= "
             "invalid_reward"
+        )
+    if "format_expression_reward" in payload and not (
+        float(valid) >= float(format_reward) >= float(invalid)
+    ):
+        raise LaunchError(
+            "reward_policy must satisfy valid_expression_reward >= "
+            "format_expression_reward >= invalid_reward"
+        )
+    if float(closeness_weight) < 0:
+        raise LaunchError("reward_policy.closeness_weight must be non-negative")
+    if float(exact) < float(valid) + float(closeness_weight) + EXACT_SOLVE_REWARD_MARGIN:
+        raise LaunchError(
+            "reward_policy.exact_solve_reward must exceed the closeness ceiling "
+            "(valid_expression_reward + closeness_weight) by at least "
+            f"{EXACT_SOLVE_REWARD_MARGIN}"
         )
     blocked_terms = payload["disallowed_observation_terms"]
     if not isinstance(blocked_terms, list) or not DISALLOWED_REWARD_TERMS.issubset(
@@ -995,7 +1040,10 @@ def _validate_artifacts(payload: dict[str, Any], config_dir: Path) -> tuple[Path
     if doc_path.is_absolute() or ".." in doc_path.parts or doc_path.parts[:1] != ("docs",):
         raise LaunchError("artifacts.doc_path must be a relative path under docs/")
     required = payload["required_files"]
-    if not isinstance(required, list) or tuple(required) != EXPECTED_ARTIFACTS:
+    if not isinstance(required, list) or tuple(required) not in (
+        EXPECTED_ARTIFACTS,
+        EXPECTED_ARTIFACTS_WITH_FINAL_EVAL,
+    ):
         raise LaunchError("artifacts.required_files must match the GRPO evidence manifest")
     repo_root = config_dir.parent
     return (
@@ -1054,6 +1102,7 @@ def _estimate_train_tokens(
     group_size: int,
     max_steps: int,
     max_new_tokens: int,
+    zero_variance_max_resamples: int = 0,
 ) -> int:
     try:
         bundle = validate_base_bundle(input_bundle_path)
@@ -1069,7 +1118,10 @@ def _estimate_train_tokens(
     ]
     max_prompt_tokens = max(prompt_lengths)
     rollout_sequences = prompts_per_step * group_size * max_steps
-    return rollout_sequences * (max_prompt_tokens + max_new_tokens)
+    # Worst case every group is zero-variance and burns every allowed resample,
+    # so the spend projection and token budget cover the dynamic-sampling cap.
+    resample_factor = 1 + zero_variance_max_resamples
+    return rollout_sequences * (max_prompt_tokens + max_new_tokens) * resample_factor
 
 
 def _launch_command(config_path: Path, runtime: dict[str, Any]) -> str:

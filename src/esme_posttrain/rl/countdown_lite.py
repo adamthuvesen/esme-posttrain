@@ -61,6 +61,10 @@ class VerificationResult:
     value: int | None
     reason: str
     expression: str | None = None
+    # True when a candidate expression parsed as arithmetic, even if it broke a
+    # task constraint (wrong numbers, non-integer value). Grades the reward tier
+    # between "no expression at all" and "valid expression".
+    is_well_formed: bool = False
 
 
 @dataclass(frozen=True)
@@ -197,6 +201,7 @@ def verify_countdown_lite_expression(
             int(value) if value.denominator == 1 else None,
             "expression must use each supplied number exactly once",
             expression=expression,
+            is_well_formed=True,
         )
     if value.denominator != 1:
         return VerificationResult(
@@ -205,6 +210,7 @@ def verify_countdown_lite_expression(
             None,
             "expression did not evaluate to an integer",
             expression,
+            is_well_formed=True,
         )
     integer_value = int(value)
     if integer_value != int(target):
@@ -214,8 +220,11 @@ def verify_countdown_lite_expression(
             integer_value,
             f"expression evaluated to {integer_value}, not target {target}",
             expression=expression,
+            is_well_formed=True,
         )
-    return VerificationResult(True, True, integer_value, "exact_solve", expression=expression)
+    return VerificationResult(
+        True, True, integer_value, "exact_solve", expression=expression, is_well_formed=True
+    )
 
 
 def extract_candidate_expression(text: str) -> str | None:

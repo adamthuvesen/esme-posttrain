@@ -24,7 +24,13 @@
   "approval_gate": {
     "requires_adam_approval": true,
     "approved": true,
-    "blocked_actions": ["dataset_download", "modal", "gpu", "paid_api", "full_training"]
+    "blocked_actions": [
+      "dataset_download",
+      "modal",
+      "gpu",
+      "paid_api",
+      "full_training"
+    ]
   },
   "budgets": {
     "dataset_sample_budget": 2,
@@ -46,14 +52,25 @@
     "weight_decay": 0.0,
     "scheduler": "constant",
     "grad_clip": 1.0,
-    "seed": 214
+    "seed": 214,
+    "zero_variance_max_resamples": 1,
+    "replay_buffer_max_age_steps": 20,
+    "stratified_difficulty_sampling": true
   },
   "reward_policy": {
     "verifiable_only": true,
     "exact_solve_reward": 1.0,
     "valid_expression_reward": 0.1,
     "invalid_reward": 0.0,
-    "disallowed_observation_terms": ["style", "sharpness", "friendliness", "naturalness", "tone"]
+    "disallowed_observation_terms": [
+      "style",
+      "sharpness",
+      "friendliness",
+      "naturalness",
+      "tone"
+    ],
+    "format_expression_reward": 0.05,
+    "closeness_weight": 0.3
   },
   "runtime": {
     "provider": "modal",
@@ -148,7 +165,8 @@
       "eval-after.json",
       "cost.json",
       "environment.txt",
-      "manifest.json"
+      "manifest.json",
+      "eval-after-final.json"
     ]
   },
   "acceptance": {

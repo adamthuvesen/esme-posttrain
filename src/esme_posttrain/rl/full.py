@@ -23,7 +23,6 @@ from esme_posttrain.rl.countdown_lite_baseline import (
 )
 from esme_posttrain.rl.grpo import CountdownGRPOTrainerConfig, run_countdown_lite_grpo
 from esme_posttrain.rl.launch import (
-    EXPECTED_ARTIFACTS,
     FULL_EVAL_PROFILE,
     PIPELINE_SMOKE_PROFILE,
     RLVRLaunchConfig,
@@ -131,6 +130,20 @@ def run_countdown_lite_grpo_job(
 
         dataset = config.payload["dataset"]
         budgets = config.budgets
+        required_artifacts = tuple(config.payload["artifacts"]["required_files"])
+        final_eval_required = "eval-after-final.json" in required_artifacts
+        precision = str(config.runtime["precision"])
+        if pipeline_smoke and device.type != "cuda" and precision == "bf16":
+            # The no-spend lifecycle gate runs on CPU where bf16 autocast is
+            # unsupported; downgrade loudly instead of refusing the smoke.
+            precision = "fp32"
+            _emit_milestone(
+                "pipeline_smoke_precision_downgraded",
+                milestone_callback,
+                wandb_run=wandb_run,
+                configured_precision="bf16",
+                effective_precision=precision,
+            )
         grpo_settings = pipeline_smoke_grpo_settings(config) if pipeline_smoke else config.grpo
         train_task_budget = (
             int(config.pipeline_smoke["train_task_budget"])
@@ -256,7 +269,23 @@ def run_countdown_lite_grpo_job(
                     config.payload["reward_policy"]["valid_expression_reward"]
                 ),
                 invalid_reward=float(config.payload["reward_policy"]["invalid_reward"]),
-                precision=str(config.runtime["precision"]),
+                format_expression_reward=float(
+                    config.payload["reward_policy"].get("format_expression_reward", 0.0)
+                ),
+                closeness_weight=float(
+                    config.payload["reward_policy"].get("closeness_weight", 0.0)
+                ),
+                zero_variance_max_resamples=int(
+                    grpo_settings.get("zero_variance_max_resamples", 0)
+                ),
+                replay_buffer_max_age_steps=int(
+                    grpo_settings.get("replay_buffer_max_age_steps", 0)
+                ),
+                stratified_difficulty_sampling=bool(
+                    grpo_settings.get("stratified_difficulty_sampling", False)
+                ),
+                write_final_bundle=final_eval_required,
+                precision=precision,
                 device=device.type,
                 log_interval=int(monitoring["log_interval"]),
                 checkpoint_interval=int(monitoring["checkpoint_interval"]),
@@ -302,13 +331,48 @@ def run_countdown_lite_grpo_job(
         )
         _log_eval_summary(wandb_run, "after", after, step=result.steps_completed)
         _emit_milestone("after_eval_complete", milestone_callback, wandb_run=wandb_run)
+
+        after_final = None
+        if final_eval_required:
+            if result.bundle_final_dir is None:
+                raise CountdownGRPOFullRunError(
+                    "eval-after-final.json is required but the trainer wrote no final bundle"
+                )
+            _emit_milestone(
+                "after_final_eval_start",
+                milestone_callback,
+                wandb_run=wandb_run,
+                eval_tasks=eval_settings["tasks"],
+                samples_per_task=eval_settings["samples_per_task"],
+                eval_profile=eval_settings["profile"],
+            )
+            after_final = _run_progress_reporting_eval(
+                config,
+                manifest_path=dataset_manifest,
+                bundle_path=Path(result.bundle_final_dir),
+                output_dir=output_dir / "eval-after-final",
+                device=device.type,
+                label="after_final_eval",
+                settings=eval_settings,
+                milestone_callback=milestone_callback,
+                wandb_run=wandb_run,
+                config_hash=config_hash,
+                model_id=model_id,
+            )
+            shutil.copy2(
+                output_dir / "eval-after-final" / "baseline-report.json",
+                output_dir / "eval-after-final.json",
+            )
+            _log_eval_summary(wandb_run, "after_final", after_final, step=result.steps_completed)
+            _emit_milestone("after_final_eval_complete", milestone_callback, wandb_run=wandb_run)
+
         cost = spend_tracker.write_cost(step=result.steps_completed, status="complete")
         if float(cost["estimated_cost_usd"]) > float(config.runtime["full_run_max_cost_usd"]):
             raise CountdownGRPOFullRunError("GRPO run exceeded runtime.full_run_max_cost_usd")
 
         write_environment(output_dir / "environment.txt", device=device)
-        refresh_manifest_files(output_dir, EXPECTED_ARTIFACTS)
-        _assert_required_artifacts(output_dir)
+        refresh_manifest_files(output_dir, required_artifacts)
+        _assert_required_artifacts(output_dir, required_artifacts)
         _emit_milestone("return_serialization", milestone_callback, wandb_run=wandb_run)
         return {
             "status": "pipeline_smoke_complete"
@@ -332,15 +396,23 @@ def run_countdown_lite_grpo_job(
             "trainer": result.to_dict(),
             "before": _selected_eval_metrics(before, eval_profile=eval_settings["profile"]),
             "after": _selected_eval_metrics(after, eval_profile=eval_settings["profile"]),
+            "after_final": (
+                _selected_eval_metrics(after_final, eval_profile=eval_settings["profile"])
+                if after_final is not None
+                else None
+            ),
             "before_report": str(output_dir / "eval-before.json"),
             "after_report": str(output_dir / "eval-after.json"),
+            "after_final_report": (
+                str(output_dir / "eval-after-final.json") if after_final is not None else None
+            ),
             "wandb_run": _wandb_url(wandb_run),
             "gsm8k_lite": {
                 "status": "not_run",
                 "reason": "no checked-in GSM8K-lite fixture or evaluator exists in esme-posttrain",
             },
             "required_artifacts_present": {
-                name: (output_dir / name).is_file() for name in EXPECTED_ARTIFACTS
+                name: (output_dir / name).is_file() for name in required_artifacts
             },
         }
     finally:
@@ -628,8 +700,8 @@ def _largest_shared_pass_at_key(before: dict[str, Any], after: dict[str, Any]) -
     return None
 
 
-def _assert_required_artifacts(output_dir: Path) -> None:
-    missing = [name for name in EXPECTED_ARTIFACTS if not (output_dir / name).is_file()]
+def _assert_required_artifacts(output_dir: Path, required_artifacts: tuple[str, ...]) -> None:
+    missing = [name for name in required_artifacts if not (output_dir / name).is_file()]
     if missing:
         raise CountdownGRPOFullRunError("missing required GRPO artifacts: " + ", ".join(missing))
 
