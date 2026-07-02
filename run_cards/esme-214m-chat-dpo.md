@@ -31,7 +31,7 @@ a Hugging Face `PreTrainedModel`.
   displacement.
 
 Length normalization is available through `dpo.length_normalized` and is the
-first mitigation to try if response length starts driving the preference margin.
+first fix to try if response length starts driving the preference margin.
 
 ## Acceptance
 

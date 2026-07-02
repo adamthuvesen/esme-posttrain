@@ -17,9 +17,9 @@ RLVR uses GRPO on the current Countdown-Lite verifier task.
 
 1. **SFT** starts from `Esme-214M-Base` and produces `Esme-214M-Instruct`. It teaches chat format, turn-taking, and basic instruction following with the multi-turn SFT foundation.
 
-2. **DPO** starts from `Esme-214M-Instruct` and produces `Esme-214M-Chat`. It prefers better answers over rejected answers without running on-policy RL. Chat export bundles are generated locally for downstream inference work.
+2. **DPO** starts from `Esme-214M-Instruct` and produces `Esme-214M-Chat`. It trains the model to pick chosen answers over rejected ones from preference pairs, without on-policy RL. Chat export bundles are generated locally for downstream inference work.
 
-3. **RLVR** starts from `Esme-214M-Chat` and produces `Esme-214M-RL`. It improves a task with verifier-backed rewards. Countdown-Lite GRPO is complete, with pass@1 at 16.67% and valid-expression rate at 35.73%.
+3. **RLVR** starts from `Esme-214M-Chat` and produces `Esme-214M-RL`. It trains against verifier-backed rewards on one task. Countdown-Lite GRPO is complete, with valid-expression rate at 99.38% and pass@1 at 16.67%.
 
 The current RLVR target is Countdown-Lite: generate a short arithmetic expression that uses each supplied number exactly once and reaches the target. The reward is verifier-backed. Style rewards are intentionally out of scope.
 
