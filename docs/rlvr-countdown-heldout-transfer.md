@@ -76,10 +76,9 @@ builder in `src/esme_posttrain/rl/countdown_heldout.py`, selection seed 4126).
 
 ## Checkpoint provenance
 
-- `Esme-214M-RL`: Modal Volume `esme-posttrain-esme-rlvr-countdown`,
-  `esme-214m-rlvr-countdown-grpo-v2-ccb6287-1/bundle/` — the dense bundle the
-  GRPO job exported after restoring the best checkpoint (step 234,
-  `train/reward_mean` 0.7142).
+- `Esme-214M-RL`: the dense bundle the GRPO job exported after restoring the
+  best checkpoint (step 234, `train/reward_mean` 0.7142). Artifact locations
+  and run identifiers: `docs/internal/rlvr-countdown-lite-grpo-run.md`.
 - `Esme-214M-Chat`: `exports/esme-214m-chat/` — the exported DPO best
   checkpoint, the exact artifact GRPO warm-started from.
 

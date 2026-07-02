@@ -9,15 +9,18 @@
 """Render README training-telemetry figures from post-training run artifacts.
 
 Reads the GRPO run's `rollouts.jsonl` + `metrics.jsonl` + `best-checkpoint.json`
-and the DPO run's `metrics.jsonl` + `best-checkpoint.json` (downloaded read-only
-from the run Modal volumes) and exports three static SVG cards into `assets/`:
+and the SFT and DPO runs' `metrics.jsonl` + `best-checkpoint.json` (downloaded
+read-only from the run Modal volumes) and exports four static SVG cards into
+`assets/`:
 
+- fig-sft-training-dynamics.svg: train loss and held-out response loss over the
+  7500 SFT steps, accepted (early-stopped) checkpoint marked.
+- fig-dpo-training-dynamics.svg: train preference accuracy and margin over the
+  960 DPO steps, accepted checkpoint marked.
 - fig-grpo-training-dynamics.svg: reward mean +-1 std, valid-expression and
   exact-solve rates over the 240 GRPO steps, best checkpoint marked.
 - fig-grpo-countdown-evidence.svg: Chat-vs-RL acceptance metrics and the
-  width-2 held-out transfer panel (bars from the tracked evidence docs).
-- fig-dpo-training-dynamics.svg: train preference accuracy and margin over the
-  960 DPO steps, accepted checkpoint marked.
+  unseen-2-number transfer panel (bars from the tracked evidence docs).
 
     uv run scripts/plot_run_telemetry.py --output-dir assets --json
 
@@ -106,6 +109,18 @@ class DpoTelemetry:
     margin: list[float]
     accepted_step: int
     accepted_eval_accuracy: float
+    train_rows: int
+    eval_rows: int
+
+
+@dataclass(frozen=True)
+class SftTelemetry:
+    train_steps: list[int]
+    train_loss: list[float]
+    eval_steps: list[int]
+    eval_response_loss: list[float]
+    accepted_step: int
+    accepted_response_loss: float
     train_rows: int
     eval_rows: int
 
@@ -237,6 +252,61 @@ def load_dpo_telemetry(run_dir: Path) -> DpoTelemetry:
         accepted_eval_accuracy=accepted_value,
         train_rows=len(train_steps),
         eval_rows=len(eval_accuracy_by_step),
+    )
+
+
+def load_sft_telemetry(run_dir: Path) -> SftTelemetry:
+    metrics_path = run_dir / "metrics.jsonl"
+    best_path = run_dir / "best-checkpoint.json"
+    for path in (metrics_path, best_path):
+        if not path.is_file():
+            raise FileNotFoundError(f"missing run artifact: {path}")
+
+    train_steps: list[int] = []
+    train_loss: list[float] = []
+    response_loss_by_step: dict[int, float] = {}
+    for line_number, line in enumerate(metrics_path.read_text().splitlines(), start=1):
+        record = json.loads(line)
+        if record["event"] == "train":
+            train_steps.append(record["step"])
+            train_loss.append(record["train/loss"])
+        elif record["event"] == "eval":
+            response_loss_by_step[record["step"]] = record["eval/matched/response_loss"]
+        else:
+            raise ValueError(f"{metrics_path}:{line_number}: unknown event {record['event']}")
+    if not train_steps or not response_loss_by_step:
+        raise ValueError(f"{metrics_path}: expected both train and eval records")
+    if train_steps != sorted(train_steps):
+        raise ValueError(f"{metrics_path}: train steps are not monotonically increasing")
+
+    best = json.loads(best_path.read_text())
+    if best["selected_metric"] != "eval/matched/response_loss":
+        raise ValueError(f"{best_path}: unexpected selection metric {best['selected_metric']}")
+    accepted_step = best["selected_step"]
+    accepted_value = best["selected_metric_value"]
+    if accepted_step not in response_loss_by_step:
+        raise ValueError(f"{best_path}: selected step {accepted_step} has no eval record")
+    if abs(response_loss_by_step[accepted_step] - accepted_value) > METRIC_TOLERANCE:
+        raise ValueError(
+            f"{best_path}: selected response loss {accepted_value:.6f} disagrees with"
+            f" metrics.jsonl eval {response_loss_by_step[accepted_step]:.6f}"
+        )
+    if accepted_value != min(response_loss_by_step.values()):
+        raise ValueError(
+            f"{best_path}: selected response loss {accepted_value:.6f} is not the"
+            f" minimum eval value {min(response_loss_by_step.values()):.6f}"
+        )
+
+    eval_steps = sorted(response_loss_by_step)
+    return SftTelemetry(
+        train_steps=train_steps,
+        train_loss=train_loss,
+        eval_steps=eval_steps,
+        eval_response_loss=[response_loss_by_step[s] for s in eval_steps],
+        accepted_step=accepted_step,
+        accepted_response_loss=accepted_value,
+        train_rows=len(train_steps),
+        eval_rows=len(eval_steps),
     )
 
 
@@ -461,7 +531,7 @@ def build_countdown_evidence_figure() -> go.Figure:
         layout=card_layout(
             title="Esme-214M-RL vs Esme-214M-Chat: verifier-scored evidence",
             subtitle=(
-                "Acceptance eval (30 tasks x 32 samples) vs 2-number held-out fresh tasks -"
+                "Acceptance eval (30 tasks x 32 samples) vs unseen 2-number tasks -"
                 " same protocol, max_new_tokens=12"
             ),
             conclusion=(
@@ -497,18 +567,20 @@ def build_countdown_evidence_figure() -> go.Figure:
                 "xref": "paper",
                 "yref": "paper",
                 "x": 0.22,
-                "y": 1.035,
+                "y": 1.02,
                 "xanchor": "center",
+                "yanchor": "bottom",
                 "showarrow": False,
                 "font": panel_caption_font,
             },
             {
-                "text": "<b>B - held-out fresh, 2-number stratum</b>",
+                "text": "<b>B - unseen 2-number tasks</b>",
                 "xref": "paper",
                 "yref": "paper",
                 "x": 0.79,
-                "y": 1.035,
+                "y": 1.02,
                 "xanchor": "center",
+                "yanchor": "bottom",
                 "showarrow": False,
                 "font": panel_caption_font,
             },
@@ -612,6 +684,80 @@ def build_dpo_training_figure(telemetry: DpoTelemetry) -> go.Figure:
     return figure
 
 
+def build_sft_training_figure(telemetry: SftTelemetry) -> go.Figure:
+    total_steps = telemetry.train_steps[-1]
+    figure = go.Figure(
+        layout=card_layout(
+            title="Esme-214M-Instruct: multi-turn SFT",
+            subtitle=(
+                f"Train loss and held-out response loss over {total_steps} steps -"
+                " smol-smoltalk + tulu-3-personas, from Esme-214M-Base"
+            ),
+            conclusion=(
+                f"Conclusion: held-out response loss bottoms at"
+                f" {telemetry.accepted_response_loss:.2f} on step {telemetry.accepted_step}"
+                " and rises afterwards;<br>early stopping restores that checkpoint, not the"
+                " final step."
+            ),
+        )
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=telemetry.train_steps,
+            y=telemetry.train_loss,
+            mode="lines",
+            name="train loss",
+            line={"color": BLUE, "width": 1.6},
+        )
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=telemetry.eval_steps,
+            y=telemetry.eval_response_loss,
+            mode="lines+markers",
+            name="held-out response loss",
+            line={"color": GREEN, "width": 2.4},
+            marker={"size": 5},
+        )
+    )
+    figure.update_layout(
+        xaxis=styled_axis(title={"text": "SFT step"}, range=[0, total_steps * 1.02]),
+        yaxis=styled_axis(
+            title={"text": "loss"},
+            range=[0.4, 2.3],
+            tickvals=[0.5, 1.0, 1.5, 2.0],
+        ),
+    )
+    figure.add_shape(
+        type="line",
+        xref="x",
+        yref="paper",
+        x0=telemetry.accepted_step,
+        x1=telemetry.accepted_step,
+        y0=0,
+        y1=1,
+        line={"color": REFERENCE_GREY, "width": 1, "dash": "dash"},
+    )
+    figure.add_annotation(
+        {
+            "text": (
+                f"accepted - step {telemetry.accepted_step}"
+                f" (response loss {telemetry.accepted_response_loss:.2f})"
+            ),
+            "x": telemetry.accepted_step,
+            "yref": "paper",
+            "y": 0.97,
+            "showarrow": False,
+            "xanchor": "right",
+            "xshift": -6,
+            "font": {"family": FONT_FAMILY, "size": 12, "color": REFERENCE_GREY},
+        }
+    )
+    figure.add_annotation(trace_label("train loss", total_steps * 0.3, 2.05, BLUE))
+    figure.add_annotation(trace_label("held-out response loss", total_steps * 0.35, 0.62, GREEN))
+    return figure
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Render README telemetry SVGs for the post-training runs."
@@ -628,6 +774,12 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("runs/esme-214m-chat-dpo-full"),
         help="DPO run directory with metrics.jsonl and best-checkpoint.json.",
     )
+    parser.add_argument(
+        "--sft-run-dir",
+        type=Path,
+        default=Path("runs/esme-214m-sft-multiturn-full"),
+        help="Multi-turn SFT run directory with metrics.jsonl and best-checkpoint.json.",
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("assets"))
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args(argv)
@@ -635,24 +787,29 @@ def main(argv: list[str] | None = None) -> int:
     try:
         grpo = load_grpo_telemetry(args.grpo_run_dir)
         dpo = load_dpo_telemetry(args.dpo_run_dir)
+        sft = load_sft_telemetry(args.sft_run_dir)
     except (OSError, ValueError, KeyError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     outputs = {
+        "sft_training_dynamics": args.output_dir / "fig-sft-training-dynamics.svg",
+        "dpo_training_dynamics": args.output_dir / "fig-dpo-training-dynamics.svg",
         "grpo_training_dynamics": args.output_dir / "fig-grpo-training-dynamics.svg",
         "grpo_countdown_evidence": args.output_dir / "fig-grpo-countdown-evidence.svg",
-        "dpo_training_dynamics": args.output_dir / "fig-dpo-training-dynamics.svg",
     }
+    build_sft_training_figure(sft).write_image(
+        outputs["sft_training_dynamics"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
+    )
+    build_dpo_training_figure(dpo).write_image(
+        outputs["dpo_training_dynamics"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
+    )
     build_grpo_dynamics_figure(grpo).write_image(
         outputs["grpo_training_dynamics"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
     )
     build_countdown_evidence_figure().write_image(
         outputs["grpo_countdown_evidence"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
-    )
-    build_dpo_training_figure(dpo).write_image(
-        outputs["dpo_training_dynamics"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
     )
 
     summary = {
@@ -666,6 +823,11 @@ def main(argv: list[str] | None = None) -> int:
         "dpo_eval_rows": dpo.eval_rows,
         "dpo_accepted_step": dpo.accepted_step,
         "dpo_accepted_eval_accuracy": dpo.accepted_eval_accuracy,
+        "sft_run_dir": str(args.sft_run_dir),
+        "sft_train_rows": sft.train_rows,
+        "sft_eval_rows": sft.eval_rows,
+        "sft_accepted_step": sft.accepted_step,
+        "sft_accepted_response_loss": sft.accepted_response_loss,
         "outputs": {key: str(path) for key, path in outputs.items()},
     }
     if args.as_json:

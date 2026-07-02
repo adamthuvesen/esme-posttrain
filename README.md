@@ -54,40 +54,24 @@ Use `uv run ...` for Python commands. Default local commands do not download rem
 
 ## Training Telemetry
 
-Static cards rendered from the accepted runs' Modal artifacts. GRPO reward
-rises steadily over 240 steps with no collapse; the best and final
-`Esme-214M-RL` checkpoints score identically.
+Static cards rendered from the accepted runs' Modal artifacts, one per
+post-training stage: multi-turn SFT stops at the held-out loss bottom, DPO's
+preference margin climbs while held-out accuracy picks the checkpoint, and
+GRPO reward rises steadily over 240 steps with no collapse — the best and
+final `Esme-214M-RL` checkpoints score identically.
 
-![GRPO training dynamics](assets/fig-grpo-training-dynamics.svg)
+<p>
+  <img src="assets/fig-sft-training-dynamics.svg" width="49%" alt="Multi-turn SFT training" />
+  <img src="assets/fig-dpo-training-dynamics.svg" width="49%" alt="DPO preference training" />
+</p>
+<p>
+  <img src="assets/fig-grpo-training-dynamics.svg" width="49%" alt="GRPO training dynamics" />
+  <img src="assets/fig-grpo-countdown-evidence.svg" width="49%" alt="Countdown-Lite evidence: acceptance and unseen-task transfer" />
+</p>
 
-![Countdown-Lite evidence: acceptance and held-out transfer](assets/fig-grpo-countdown-evidence.svg)
-
-![DPO preference training](assets/fig-dpo-training-dynamics.svg)
-
-To regenerate, fetch the run telemetry read-only from the Modal volumes and
-re-render:
-
-```bash
-uv run --with modal==1.5.0 modal volume get esme-posttrain-esme-rlvr-countdown \
-    esme-214m-rlvr-countdown-grpo-v2-ccb6287-1/rollouts.jsonl \
-    runs/esme-214m-rlvr-countdown-grpo-v2-ccb6287-1/
-uv run --with modal==1.5.0 modal volume get esme-posttrain-esme-rlvr-countdown \
-    esme-214m-rlvr-countdown-grpo-v2-ccb6287-1/metrics.jsonl \
-    runs/esme-214m-rlvr-countdown-grpo-v2-ccb6287-1/
-uv run --with modal==1.5.0 modal volume get esme-posttrain-esme-rlvr-countdown \
-    esme-214m-rlvr-countdown-grpo-v2-ccb6287-1/best-checkpoint.json \
-    runs/esme-214m-rlvr-countdown-grpo-v2-ccb6287-1/
-uv run --with modal==1.5.0 modal volume get esme-posttrain-esme-chat-dpo \
-    esme-214m-chat-dpo-full/metrics.jsonl runs/esme-214m-chat-dpo-full/
-uv run --with modal==1.5.0 modal volume get esme-posttrain-esme-chat-dpo \
-    esme-214m-chat-dpo-full/best-checkpoint.json runs/esme-214m-chat-dpo-full/
-
-uv run scripts/plot_run_telemetry.py --output-dir assets --json
-```
-
-The GRPO card derives per-step reward and rate curves from `rollouts.jsonl`
-(240 steps x 128 rollouts) and cross-checks them against every logged
-`metrics.jsonl` record and `best-checkpoint.json` before rendering. The
+The cards are rendered by `scripts/plot_run_telemetry.py` from the runs'
+`rollouts.jsonl`, `metrics.jsonl`, and `best-checkpoint.json`, cross-checking
+the derived curves against every logged metric record before rendering. The
 evidence card's bars are transcribed from the tables in
 `docs/rlvr-countdown-lite-grpo.md` and `docs/rlvr-countdown-heldout-transfer.md`.
 
