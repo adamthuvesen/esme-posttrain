@@ -63,6 +63,11 @@ uv run python scripts/modal_chat_sft.py --config configs/esme-214m-sft-multiturn
 - `docs/rlvr-countdown-lite.md` describes the RLVR task, baseline, and result.
 - `docs/rlvr-countdown-lite-grpo.md` summarizes the completed Countdown-Lite GRPO run.
 - `docs/rlvr-countdown-heldout-transfer.md` scores the RL and pre-RL checkpoints on held-out Countdown sets.
+- `run_cards/esme-214m-rl.md` records a placebo-controlled decomposition of the RL gain (via
+  [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp)): against a same-budget
+  random-reward placebo, real verifier reward lifts the held-out valid-expression rate 0.8% →
+  27.1% (paired +26.2 pp, 95% CI [+17.3, +36.0] pp) while the placebo stays at the base rate —
+  the RL gain is real reward signal, not a training-dynamics artifact. Preliminary (single seed).
 - Generated export bundles are written under gitignored `exports/`.
 - Generated run reports are written under gitignored `artifacts/`.
 
