@@ -25,6 +25,11 @@ from esme_posttrain.rl.launch import load_rlvr_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RL_CONFIG = REPO_ROOT / "configs" / "esme-214m-rl.json"
+BASE_BUNDLE_MANIFEST = REPO_ROOT / "exports" / "esme-214m-chat" / "manifest.json"
+requires_base_bundle = pytest.mark.skipif(
+    not BASE_BUNDLE_MANIFEST.is_file(),
+    reason="requires local exports/esme-214m-chat bundle (gitignored, absent in CI)",
+)
 
 
 def _trainer_config(**overrides: object) -> CountdownGRPOTrainerConfig:
@@ -279,6 +284,7 @@ def test_stratified_rows_mix_difficulties_in_every_batch_window() -> None:
     ]
 
 
+@requires_base_bundle
 def test_config_loads_and_projects_worst_case_resample_cost() -> None:
     config = load_rlvr_config(RL_CONFIG)
 
@@ -294,6 +300,7 @@ def test_config_loads_and_projects_worst_case_resample_cost() -> None:
     assert tuple(config.payload["artifacts"]["required_files"])[-1] == "eval-after-final.json"
 
 
+@requires_base_bundle
 def test_reward_policy_margin_is_enforced_at_launch_validation(tmp_path: Path) -> None:
     import json
 

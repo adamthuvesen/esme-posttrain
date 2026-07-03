@@ -25,6 +25,11 @@ from esme_posttrain.rl.launch import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RL_CONFIG = REPO_ROOT / "configs" / "esme-214m-rl.json"
 RL_FIXTURE_CONFIG = REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.json"
+BASE_BUNDLE_MANIFEST = REPO_ROOT / "exports" / "esme-214m-chat" / "manifest.json"
+requires_base_bundle = pytest.mark.skipif(
+    not BASE_BUNDLE_MANIFEST.is_file(),
+    reason="requires local exports/esme-214m-chat bundle (gitignored, absent in CI)",
+)
 
 
 def test_rlvr_fixture_dry_run_via_api() -> None:
@@ -114,6 +119,7 @@ def test_timeout_cost_ceiling_must_stay_under_runtime_hard_stop(
     )
 
 
+@requires_base_bundle
 def test_modal_launcher_dry_run_rejects_timeout_env_config_mismatch() -> None:
     env = {
         **os.environ,
@@ -285,6 +291,7 @@ def test_modal_launcher_pipeline_smoke_dry_run_uses_dedicated_command(
     )
 
 
+@requires_base_bundle
 def test_full_acceptance_eval_stays_30x32_with_scaled_timeout() -> None:
     payload = build_rlvr_dry_run(RL_CONFIG)
 
