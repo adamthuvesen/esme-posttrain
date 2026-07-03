@@ -60,6 +60,10 @@ preference margin climbs while held-out accuracy picks the checkpoint, and
 GRPO reward rises steadily over 240 steps with no collapse — the best and
 final `Esme-214M-RL` checkpoints score identically.
 
+**Reading note:** These charts show training stability and checkpoint selection,
+not broad capability. `Esme-214M` is intentionally small, so absolute gains are
+capped by the base model; the key signal is improvement without collapse.
+
 <p>
   <img src="assets/fig-sft-training-dynamics.svg" width="49%" alt="Multi-turn SFT training" />
   <img src="assets/fig-dpo-training-dynamics.svg" width="49%" alt="DPO preference training" />
