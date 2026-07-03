@@ -79,18 +79,17 @@ Supporting facts (verified from artifacts, not assumed):
 
 ## Preemption Incident
 
-The detached Modal run (`ap-6kXrTZLCQm3jexY4MPkkPk`, spawned call
-`fc-01KWGWE0PTCBSVK3REEDYMJPEJ`) executed twice:
+The detached private training job executed twice:
 
-- **First attempt** (`esme-214m-rlvr-countdown-grpo-v2-ccb6287`, W&B `39k48a1x`):
+- **First attempt** (`esme-214m-rlvr-countdown-grpo-v2-ccb6287`):
   completed the before-eval and all 240 training steps, wrote
   `best-checkpoint.json`, then died mid-after-eval — last progress record is
   sample 352/960, task `countdown_lite_eval_medium_0000`, at monotonic
-  ~6,507 s. Forensics verdict: Modal infrastructure preemption (SIGTERM; W&B
-  closed the run as "finished"; the launcher configures no Modal retries, so a
+  ~6,507 s. Forensics verdict: infrastructure preemption (SIGTERM; the training
+  logger closed the run as "finished"; the launcher configures no retries, so a
   code exception could not have restarted it; zero GPU memory errors).
-- **Second attempt** (`...-ccb6287-1`, W&B `qfkygv2y`): Modal's infra requeue of
-  the same call. Full clean lifecycle: before-eval, 240/240 steps, after-eval
+- **Second attempt** (`...-ccb6287-1`): infrastructure requeue of the same call.
+  Full clean lifecycle: before-eval, 240/240 steps, after-eval
   on the best checkpoint, after-eval on the final checkpoint,
   `return_serialization` at monotonic ~15,790 s. **This is the canonical run.**
 
@@ -99,8 +98,8 @@ The first attempt's `metrics.jsonl` is byte-identical to the second's (same seed
 `eval-before.json` is byte-identical too, and its volume dir has no
 `cost.json`/`eval-after.json` (the process died before writing them). The app
 is stopped with 0 running tasks. Spend impact: the preemption cost roughly one
-duplicated training pass, because the Modal function restarts from zero instead
-of resuming from the volume artifacts it had already written.
+duplicated training pass, because the private training function restarts from
+zero instead of resuming from the artifacts it had already written.
 
 ## Spend
 
@@ -116,21 +115,16 @@ close-out; all artifacts were fetched with read-only volume gets.
 
 ## Identifiers
 
-- Modal app: `ap-6kXrTZLCQm3jexY4MPkkPk` (stopped)
-- Modal function call: `fc-01KWGWE0PTCBSVK3REEDYMJPEJ`
-- W&B project: `esme-posttrain`
-  - Preempted attempt: `39k48a1x` — https://wandb.ai/adam-thuvesen-mentimeter/esme-posttrain/runs/39k48a1x
-  - Canonical attempt: `qfkygv2y` — https://wandb.ai/adam-thuvesen-mentimeter/esme-posttrain/runs/qfkygv2y
-- Volume dirs (`esme-posttrain-esme-rlvr-countdown`):
-  `esme-214m-rlvr-countdown-grpo-v2-ccb6287` (preempted),
-  `esme-214m-rlvr-countdown-grpo-v2-ccb6287-1` (canonical)
+- Private job identifiers are omitted from the repo docs.
+- Run dirs: preempted attempt `esme-214m-rlvr-countdown-grpo-v2-ccb6287`;
+  canonical attempt `esme-214m-rlvr-countdown-grpo-v2-ccb6287-1`.
 - Best checkpoint: step 234, `train/reward_mean` 0.7142
   (`best-checkpoint.pt`, sha256 `58a48b58…df4bf808` per `manifest.json`)
 
 ## Follow-Up Recommendation
 
-Make the Modal GRPO function resume from existing volume artifacts instead of
-restarting from zero. The run dir already carries everything a requeue needs:
+Make the GRPO function resume from existing artifacts instead of restarting from
+zero. The run dir already carries everything a requeue needs:
 `eval-before/baseline-partial.jsonl` and `eval-progress.jsonl` (skip or resume
 completed eval phases), `checkpoints/` and `best-checkpoint.pt` (resume training
 at the last checkpoint), and `metrics.jsonl` (append, not truncate). The

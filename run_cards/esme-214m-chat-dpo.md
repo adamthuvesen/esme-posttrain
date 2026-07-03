@@ -11,7 +11,7 @@ Esme-214M-Base -> Esme-214M-Instruct -> Esme-214M-Chat -> Esme-214M-RL
 - Produces: `Esme-214M-Chat`
 - Starts from: `Esme-214M-Instruct`
 - Config: `configs/esme-214m-chat-dpo.json`
-- Launcher: `scripts/modal_chat_dpo.py`
+- Launcher: private operator module.
 
 ## Method
 

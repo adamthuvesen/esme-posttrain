@@ -77,16 +77,14 @@ builder in `src/esme_posttrain/rl/countdown_heldout.py`, selection seed 4126).
 ## Checkpoint provenance
 
 - `Esme-214M-RL`: the dense bundle the GRPO job exported after restoring the
-  best checkpoint (step 234, `train/reward_mean` 0.7142). Artifact locations
-  and run identifiers: `docs/internal/rlvr-countdown-lite-grpo-run.md`.
+  best checkpoint (step 234, `train/reward_mean` 0.7142).
 - `Esme-214M-Chat`: `exports/esme-214m-chat/` — the exported DPO best
   checkpoint, the exact artifact GRPO warm-started from.
 
 ## Execution and spend
 
-- All evals ran locally on CPU: **local, $0**. No Modal function was launched;
-  Modal was used only for a read-only `modal volume get` of the RL bundle. No
-  W&B run.
+- All evals ran locally on CPU: **local, $0**. No private training function was
+  launched and no W&B run was created.
 - Eval command per cell (bundle and split vary):
   `uv run esme-posttrain rlvr-countdown-lite-baseline --manifest
   data/manifests/esme-214m-rl-heldout.tasks.json --bundle <bundle-dir>

@@ -27,8 +27,8 @@ Every stage follows the same ladder. Code: `src/esme_posttrain/launch/config_gua
 flowchart TD
     RC[Run card + config JSON] --> DR[1. Dry run: validate + price, no training]
     DR --> FX[2. CPU fixture / smoke: tiny model, no spend]
-    FX --> MS[3. Modal smoke: GPU, capped at $2]
-    MS --> FR[4. Full run: needs --approved + caps]
+    FX --> MS[3. Private GPU smoke: capped at $2]
+    MS --> FR[4. Full run: approval + caps]
     BL{{Launch blockers:<br/>missing approval, cost over cap,<br/>GPU env mismatch, timeout > 24h}}
     BL -.block.-> MS
     BL -.block.-> FR
@@ -41,10 +41,10 @@ Key points:
   code and enforced config numbers, not prose.
 - Two distinct failure modes: a raised `LaunchError` means the config is malformed
   (unknown keys, wrong types); a returned `launch_blockers` list means the config is
-  valid but not allowed to spend (missing `--approved`, projected cost over cap).
+  valid but not allowed to spend (missing approval, projected cost over cap).
 - Spend caps are hardcoded in Python (`SMOKE_SPEND_CAP_USD = 2.0`); a config cannot
-  override them. The dry-run prices the worst case up front and emits pre-built
-  launch commands so nobody hand-composes a spend command.
+  override them. The dry-run prices the worst case up front so operators do not
+  hand-compose spend commands.
 
 ## Stage 1: SFT (Base -> Instruct)
 
@@ -152,7 +152,8 @@ flowchart LR
   hashes every file, then reloads its own output and generates before declaring
   success.
 - Provenance nests: the RL manifest embeds the Chat manifest, which points to DPO
-  step 600 and its W&B run — full ancestry, verifiable offline from one JSON file.
+  step 600 and its training run — full ancestry, verifiable offline from one JSON
+  file.
 - Sibling repos exchange artifacts, never imports; `llm_pretrain_dense_v1` is the
   API version between them.
 
@@ -165,7 +166,7 @@ flowchart LR
 2. **Two recurring leashes**: a frozen reference model (DPO structurally, GRPO via
    KL penalty) and hard budgets that raise loudly mid-run.
 3. **Nothing spends by accident**: run cards, approval gates, hardcoded caps,
-   dry-runs that price the worst case, pre-built launch commands.
+   dry-runs that price the worst case.
 4. **Evidence over vibes**: `metrics.jsonl`, data reports, survivor counts, failure
    reports, manifests with hashes — every run can be audited without having
    watched it.

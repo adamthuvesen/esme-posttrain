@@ -25,8 +25,8 @@ budget-insensitive (pass@32 holds at 40% across 12/24/48), confirming the
 
 ## Execution and spend
 
-- **Local CPU, $0. No Modal function, no GPU, no W&B run, no network.** Same as the
-  prior held-out eval.
+- **Local CPU, $0. No private training function, no GPU, no W&B run, no network.**
+  Same as the prior held-out eval.
 - 8 eval cells ran on this machine: both bundles x {`heldout_fresh`,
   `heldout_shift`} x {24, 48} tokens. The 12-token numbers are reused from the
   committed `artifacts/heldout-transfer-new/` reports (not rerun — they reproduce

@@ -17,9 +17,9 @@ RLVR uses GRPO on the current Countdown-Lite verifier task.
 
 | Stage | Starts from | Produces | Accepted signal |
 | --- | --- | --- | --- |
-| SFT | `Esme-214M-Base` | `Esme-214M-Instruct` | Held-out response loss bottoms at `1.36` on step `6300`. |
-| DPO | `Esme-214M-Instruct` | `Esme-214M-Chat` | Held-out preference accuracy peaks at `67.4%` on step `600`. |
-| RLVR | `Esme-214M-Chat` | `Esme-214M-RL` | Best GRPO reward is `0.71` on step `234`; acceptance exact-solve rate is `16.35%`. |
+| SFT | `Esme-214M-Base` | `Esme-214M-Instruct` | Held-out response loss bottoms cleanly, no collapse ([run card](run_cards/esme-214m-sft-multiturn.md)). |
+| DPO | `Esme-214M-Instruct` | `Esme-214M-Chat` | Held-out preference accuracy climbs then plateaus ([run card](run_cards/esme-214m-chat-dpo.md)). |
+| RLVR | `Esme-214M-Chat` | `Esme-214M-RL` | Verifier reward and exact-solve rate rise, no reward collapse ([run card](run_cards/esme-214m-rl.md)). |
 
 SFT teaches chat format, turn-taking, and basic instruction following. DPO
 trains the model to prefer chosen answers over rejected answers, without
@@ -46,38 +46,21 @@ uv run esme-posttrain --version
 make check
 ```
 
-Use `uv run ...` for Python commands. Default local commands do not download remote datasets, start Modal jobs, or spend money.
-
-Modal SFT training launchers need a local `Esme-214M-Base` export bundle before
-they can start a job. Set `ESME_BASE_BUNDLE_LOCAL` to the bundle directory, or
-place the sibling `esme-pretrain` checkout next to this repo so the fallback
-`../esme-pretrain/exports/esme-214m-base` exists.
-
-```bash
-export ESME_BASE_BUNDLE_LOCAL=/path/to/esme-214m-base
-uv run python scripts/modal_chat_sft.py --config configs/esme-214m-sft-multiturn.json --dry-run --json
-```
+Use `uv run ...` for Python commands. Default local commands do not download
+remote datasets, start private training jobs, or spend money.
 
 ## Current Artifacts
 
 - `docs/rlvr-countdown-lite.md` describes the RLVR task, baseline, and result.
 - `docs/rlvr-countdown-lite-grpo.md` summarizes the completed Countdown-Lite GRPO run.
 - `docs/rlvr-countdown-heldout-transfer.md` scores the RL and pre-RL checkpoints on held-out Countdown sets.
-- `run_cards/esme-214m-rl.md` records a placebo-controlled decomposition of the RL gain (via
-  [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp)): against a same-budget
-  random-reward placebo, real verifier reward lifts the held-out valid-expression rate 0.8% →
-  27.1% (paired +26.2 pp, 95% CI [+17.3, +36.0] pp) while the placebo stays at the base rate —
-  the RL gain is real reward signal, not a training-dynamics artifact. Preliminary (single seed).
+- `run_cards/esme-214m-rl.md` records a placebo-controlled decomposition (via
+  [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp)) showing the RL gain is real reward
+  signal, not a training-dynamics artifact.
 - Generated export bundles are written under gitignored `exports/`.
 - Generated run reports are written under gitignored `artifacts/`.
 
 ## Training Telemetry
-
-Static cards rendered from the accepted runs' Modal artifacts. The README keeps
-one visual per post-training stage: SFT and DPO show checkpoint selection, and
-RLVR shows verifier-scored behavior before and after RL. The GRPO reward curve
-is still generated for run-level debugging, but the README leaves that detail
-to the RL docs.
 
 **Reading note:** These charts show training stability and checkpoint selection,
 not broad capability. `Esme-214M` is intentionally small, so absolute gains are
@@ -93,14 +76,8 @@ capped by the base model; the key signal is improvement without collapse.
   <img src="assets/fig-grpo-countdown-evidence.svg" width="100%" alt="Countdown-Lite evidence: acceptance and unseen-task transfer" />
 </p>
 
-The cards are rendered by `scripts/plot_run_telemetry.py` from the runs'
-`rollouts.jsonl`, `metrics.jsonl`, and `best-checkpoint.json`, cross-checking
-the derived curves against every logged metric record before rendering. The
-script also exports `assets/fig-grpo-training-dynamics.svg` for the RL docs.
-The RL evidence card uses sample-level valid-expression and exact-solve rates
-transcribed from `docs/rlvr-countdown-lite-grpo.md` and
-`docs/rlvr-countdown-heldout-transfer.md`; task-level pass@k metrics stay in
-those detailed reports.
+The cards are rendered by `scripts/plot_run_telemetry.py` from the accepted run
+artifacts; see its module docstring for inputs and the full figure set.
 
 ## Repository Layout
 

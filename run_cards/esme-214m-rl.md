@@ -31,7 +31,7 @@ Esme-214M-Base -> Esme-214M-Instruct -> Esme-214M-Chat -> Esme-214M-RL
 - Starts from: `Esme-214M-Chat`
 - Config: `configs/esme-214m-rl.json`
 - Config and dataset-manifest validation: `src/esme_posttrain/rl/launch.py`
-- Launcher: `scripts/modal_rlvr_grpo.py`
+- Launcher: private operator module.
 - Public result summary: `docs/rlvr-countdown-lite-grpo.md`
 - Operator provenance, training-shape verdict, incident record:
   `docs/internal/rlvr-countdown-lite-grpo-run.md`
@@ -119,8 +119,8 @@ and the accepted run are unchanged (`reward_mode` defaults to `"verifier"`,
 steps → export the best-by-`train/reward_mean` bundle, with no before/after acceptance eval.
 The decomposition does not use those evals (completions come from the emitter, checkpoint
 selection is by `train/reward_mean`), and skipping them removes the ~4h eval phases that
-dominated — and repeatedly timed out — the placebo Modal run. It should now finish in well
-under an hour.
+dominated — and repeatedly timed out — the placebo run. It should now finish in
+well under an hour.
 
 Completions for each arm are exported as `grpo-decomp` `CompletionSet` artifacts
 (`provenance.json` + `completions.jsonl`) with the emitter:
@@ -136,17 +136,17 @@ Each emitted sample is the model's Countdown expression wrapped in `\boxed{...}`
 used exactly once, `+ - *` only, integer result equal to target). The result table is
 produced by `grpo-decomp report --task-set esme-countdown` in the `grpo-decomp` repo.
 
-CPU-fixture proof (no Modal): `tests/test_rlvr_decomp.py` here, plus
+CPU-fixture proof (no private compute): `tests/test_rlvr_decomp.py` here, plus
 `tests/test_esme_countdown_decomp.py` in `grpo-decomp`.
 
 ### Result (2026-07-03, PRELIMINARY — 1 seed)
 
-Placebo run: Modal app `ap-1RPkygxfTUW6yM3PDFGW42`, volume dir
-`esme-214m-rlvr-placebo-grpo-2`, 240 steps, ~24 min, ~$0.83. Its `train/reward_mean`
-stayed flat (~0.42, the random-draw average) with no climb — confirming the reward carried
-no task signal. Two earlier attempts on A100 spot failed first to worker preemption (step
-156) and then to a before-eval wall-timeout (928/960); adding `skip_acceptance_eval` removed
-the eval phases and the run completed clean on the third try. Sunk spend on the two failed
+Placebo run: private training job, 240 steps, ~24 min, ~$0.83. Its
+`train/reward_mean` stayed flat (~0.42, the random-draw average) with no climb
+— confirming the reward carried no task signal. Two earlier attempts on A100
+spot failed first to worker preemption (step 156) and then to a before-eval
+wall-timeout (928/960); adding `skip_acceptance_eval` removed the eval phases
+and the run completed clean on the third try. Sunk spend on the two failed
 attempts ~$5.
 
 Greedy pass@1 on `heldout_fresh` (n=30), graded by the `esme-countdown` verifier:
@@ -176,7 +176,7 @@ results/esme-countdown/{summary,decomposition}`.
 Re-measured the same three arms on the same 30 held-out problems, but **sampled (n=16,
 temperature 1.0)** and scored on **two axes**: valid-expression rate (the rung the reward's
 graded ladder actually pays for — invalid 0.0 < valid 0.3 < exact 1.0) and exact-solve pass@k.
-No new training or Modal spend — pure local inference over the three existing bundles, plus a
+No new training or private compute spend — pure local inference over the three existing bundles, plus a
 CPU analysis (`grpo-decomp scripts/esme_sampled_decomp.py`).
 
 | Arm | valid-expr rate | pass@1 | pass@8 | pass@16 | any-exact solved |
