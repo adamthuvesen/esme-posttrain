@@ -20,8 +20,9 @@ from esme_posttrain.rl.countdown_lite import (
     verify_countdown_lite_expression,
 )
 from esme_posttrain.run_artifacts import write_json
-from esme_posttrain.training.checkpointing import save_training_checkpoint
+from esme_posttrain.training.checkpointing import capture_rng_state, save_training_checkpoint
 from esme_posttrain.training.collate import IGNORE_INDEX
+from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import append_metric
 from esme_posttrain.training.runtime import (
     lr_lambda_factory,
@@ -38,7 +39,7 @@ StepCallback = Callable[[int], None]
 EXACT_SOLVE_REWARD_MARGIN = 0.4
 
 
-class CountdownGRPOTrainerError(ValueError):
+class CountdownGRPOTrainerError(TrainerError):
     pass
 
 
@@ -403,6 +404,9 @@ def run_countdown_lite_grpo(
                 },
             )
         if config.checkpoint_interval and step % config.checkpoint_interval == 0:
+            # RNG state rides along for determinism audits; full mid-run rollout
+            # resume (replay buffer, rollout budget, best-state tracking) is out
+            # of scope for the GRPO trainer.
             save_training_checkpoint(
                 output_dir / "checkpoints" / f"step-{step:06d}" / "checkpoint.pt",
                 model=policy,
@@ -410,6 +414,8 @@ def run_countdown_lite_grpo(
                 optimizer=optimizer,
                 scheduler=scheduler,
                 metrics=step_payload,
+                rng_state=capture_rng_state(),
+                data_position=step * config.prompts_per_step,
             )
         if step_callback is not None:
             step_callback(step)
@@ -427,6 +433,8 @@ def run_countdown_lite_grpo(
         optimizer=optimizer,
         scheduler=scheduler,
         metrics=final_metrics,
+        rng_state=capture_rng_state(),
+        data_position=last_step * config.prompts_per_step,
     )
     if config.write_final_bundle:
         _write_bundle(

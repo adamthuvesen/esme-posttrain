@@ -36,8 +36,15 @@ from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import file_sha256
 from esme_posttrain.modeling import DenseBackbone, soft_cap_logits
-from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
+from esme_posttrain.training.checkpointing import (
+    capture_rng_state,
+    latest_checkpoint_path,
+    load_training_checkpoint,
+    restore_rng_state,
+    save_training_checkpoint,
+)
 from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch, cyclic_batch
+from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import append_metric
 from esme_posttrain.training.runtime import (
     lr_lambda_factory,
@@ -83,7 +90,7 @@ def is_chosen_logp_collapsed(
     return drop > rel_tolerance * abs(base_chosen_logp)
 
 
-class DPOTrainerError(ValueError):
+class DPOTrainerError(TrainerError):
     pass
 
 
@@ -111,6 +118,7 @@ class DPOTrainerConfig:
     log_interval: int = 1
     eval_interval: int = 0
     checkpoint_interval: int = 0
+    resume_from_latest: bool = False
     device: str = "cpu"
     wandb: WandbConfig = field(default_factory=WandbConfig)
 
@@ -164,6 +172,17 @@ class DPOEvalMetrics:
             "pairs": self.pairs,
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> DPOEvalMetrics:
+        return cls(
+            preference_accuracy=float(payload["preference_accuracy"]),
+            margin=float(payload["margin"]),
+            chosen_logp=float(payload["chosen_logp"]),
+            rejected_logp=float(payload["rejected_logp"]),
+            loss=float(payload["loss"]),
+            pairs=int(payload["pairs"]),
+        )
+
 
 @dataclass(frozen=True)
 class DPOTrainResult:
@@ -183,6 +202,8 @@ class DPOTrainResult:
     chosen_logp_collapsed: bool
     base_chosen_logp: float
     selected_chosen_logp: float
+    start_step: int = 0
+    resumed_from_checkpoint: str | None = None
     wandb_run_url: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -203,6 +224,8 @@ class DPOTrainResult:
             "chosen_logp_collapsed": self.chosen_logp_collapsed,
             "base_chosen_logp": self.base_chosen_logp,
             "selected_chosen_logp": self.selected_chosen_logp,
+            "start_step": self.start_step,
+            "resumed_from_checkpoint": self.resumed_from_checkpoint,
             "wandb_run_url": self.wandb_run_url,
         }
 
@@ -301,9 +324,6 @@ def run_dpo_training(
         batch_size=config.micro_batch_size,
         pad_to_multiple_of=config.pad_to_multiple_of,
     )
-    wandb_run = _start_dpo_wandb(config, reference_bundle_manifest)
-    append_metric(metrics_path, _dpo_eval_payload(step=0, metrics=base_eval), wandb_run)
-
     optimizer = torch.optim.AdamW(
         policy.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
     )
@@ -316,13 +336,52 @@ def run_dpo_training(
         ),
     )
 
-    best_selector_value = -float("inf")
-    selected_step = 0
-    selected_eval = base_eval
-    last_completed_step = 0
+    start_step = 0
+    resumed_from_checkpoint: Path | None = None
+    if config.resume_from_latest:
+        resumed = _resume_latest_checkpoint(output_dir, policy, optimizer, scheduler, device)
+        if resumed is not None:
+            start_step = resumed.step
+            resumed_from_checkpoint = latest_checkpoint_path(output_dir)
+
+    wandb_run = start_wandb(
+        config.wandb,
+        run_config={
+            "artifact_name": config.artifact_name,
+            "reference_artifact_name": config.reference_artifact_name,
+            "beta": config.beta,
+            "length_normalized": config.length_normalized,
+            "max_steps": config.max_steps,
+            "micro_batch_size": config.micro_batch_size,
+            "gradient_accumulation_steps": config.gradient_accumulation_steps,
+            "effective_batch_size": config.effective_batch_size,
+            "learning_rate": config.learning_rate,
+            "scheduler": config.scheduler,
+            "warmup_steps": config.warmup_steps,
+            "weight_decay": config.weight_decay,
+            "precision": config.precision,
+            "seed": config.seed,
+        },
+        base_bundle_manifest=reference_bundle_manifest,
+    )
+    if resumed_from_checkpoint is None:
+        append_metric(metrics_path, _dpo_eval_payload(step=0, metrics=base_eval), wandb_run)
+
+    if resumed_from_checkpoint is not None and best_checkpoint_metadata_path.is_file():
+        restored_best = _load_best_checkpoint_state(
+            best_checkpoint_path, best_checkpoint_metadata_path
+        )
+        best_selector_value = restored_best.selected_metric_value
+        selected_step = restored_best.selected_step
+        selected_eval = restored_best.selected_eval
+    else:
+        best_selector_value = -float("inf")
+        selected_step = start_step
+        selected_eval = base_eval
+    last_completed_step = start_step
 
     policy.train()
-    for step in range(1, config.max_steps + 1):
+    for step in range(start_step + 1, config.max_steps + 1):
         last_completed_step = step
         optimizer.zero_grad(set_to_none=True)
         step_loss = 0.0
@@ -399,7 +458,11 @@ def run_dpo_training(
                 output_dir / "checkpoints" / f"step-{step:06d}" / "checkpoint.pt",
                 model=policy,
                 step=step,
+                optimizer=optimizer,
+                scheduler=scheduler,
                 metrics={"event": "periodic"},
+                rng_state=capture_rng_state(),
+                data_position=step * config.gradient_accumulation_steps,
             )
 
     policy.eval()
@@ -433,7 +496,11 @@ def run_dpo_training(
         checkpoint_path,
         model=policy,
         step=last_completed_step,
+        optimizer=optimizer,
+        scheduler=scheduler,
         metrics={"event": "final"},
+        rng_state=capture_rng_state(),
+        data_position=last_completed_step * config.gradient_accumulation_steps,
     )
     loaded_best = load_training_checkpoint(best_checkpoint_path, map_location=device)
     policy.load_state_dict(loaded_best.model.state_dict())
@@ -473,6 +540,10 @@ def run_dpo_training(
         chosen_logp_collapsed=chosen_logp_collapsed,
         base_chosen_logp=base_eval.chosen_logp,
         selected_chosen_logp=selected_eval.chosen_logp,
+        start_step=start_step,
+        resumed_from_checkpoint=str(resumed_from_checkpoint)
+        if resumed_from_checkpoint is not None
+        else None,
         wandb_run_url=wandb_run_url,
     )
 
@@ -649,86 +720,58 @@ def _save_best_checkpoint(
     metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def _start_dpo_wandb(
-    config: DPOTrainerConfig, reference_bundle_manifest: dict[str, Any] | None
+def _resume_latest_checkpoint(
+    output_dir: Path,
+    policy: DenseBackbone,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
+    device: torch.device,
 ) -> Any | None:
-    # Reuse the SFT W&B initializer; it reads the shared WandbConfig fields plus a
-    # handful of attributes that exist on DPOTrainerConfig (max_steps, batch sizes,
-    # learning_rate, scheduler, warmup_steps, weight_decay, precision, seed). The
-    # DPO-specific knobs (beta, length_normalized) ride in via extra_config.
-    return start_wandb(_DPOWandbAdapter(config), reference_bundle_manifest)
+    checkpoint = latest_checkpoint_path(output_dir)
+    if checkpoint is None:
+        return None
+    loaded = load_training_checkpoint(checkpoint, map_location=device)
+    if loaded.config != policy.config:
+        raise DPOTrainerError("latest checkpoint model config does not match current policy")
+    if loaded.optimizer_state is None or loaded.scheduler_state is None:
+        raise DPOTrainerError(
+            f"checkpoint lacks optimizer/scheduler state and cannot seed a faithful "
+            f"resume: {checkpoint}"
+        )
+    policy.load_state_dict(loaded.model.state_dict())
+    optimizer.load_state_dict(loaded.optimizer_state)
+    scheduler.load_state_dict(loaded.scheduler_state)
+    # Pre-v3 checkpoints carry no RNG state; restore is a no-op for them.
+    restore_rng_state(loaded.rng_state)
+    return loaded
 
 
 @dataclass(frozen=True)
-class _DPOWandbAdapter:
-    """Presents a DPOTrainerConfig to the shared W&B initializer.
+class _BestCheckpointState:
+    selected_metric_value: float
+    selected_step: int
+    selected_eval: DPOEvalMetrics
 
-    ``start_wandb`` reads SFT-only fields (tuning_mode, assistant_only_loss,
-    completion_only_loss); this adapter supplies DPO-appropriate constants for
-    them so the W&B config stays well-formed without duplicating the initializer.
-    """
 
-    config: DPOTrainerConfig
-
-    @property
-    def wandb(self) -> WandbConfig:
-        return self.config.wandb
-
-    @property
-    def artifact_name(self) -> str:
-        return self.config.artifact_name
-
-    @property
-    def max_steps(self) -> int:
-        return self.config.max_steps
-
-    @property
-    def micro_batch_size(self) -> int:
-        return self.config.micro_batch_size
-
-    @property
-    def gradient_accumulation_steps(self) -> int:
-        return self.config.gradient_accumulation_steps
-
-    @property
-    def effective_batch_size(self) -> int:
-        return self.config.effective_batch_size
-
-    @property
-    def learning_rate(self) -> float:
-        return self.config.learning_rate
-
-    @property
-    def scheduler(self) -> str:
-        return self.config.scheduler
-
-    @property
-    def warmup_steps(self) -> int:
-        return self.config.warmup_steps
-
-    @property
-    def weight_decay(self) -> float:
-        return self.config.weight_decay
-
-    @property
-    def precision(self) -> str:
-        return self.config.precision
-
-    @property
-    def tuning_mode(self) -> str:
-        return "full"
-
-    @property
-    def assistant_only_loss(self) -> bool:
-        return True
-
-    @property
-    def completion_only_loss(self) -> bool:
-        return True
-
-    @property
-    def seed(self) -> int:
-        return self.config.seed
+def _load_best_checkpoint_state(checkpoint_path: Path, metadata_path: Path) -> _BestCheckpointState:
+    if not checkpoint_path.is_file():
+        raise DPOTrainerError(f"resume requires existing best checkpoint: {checkpoint_path}")
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise TypeError("metadata payload must be an object")
+        eval_payload = payload["eval"]
+        if not isinstance(eval_payload, dict):
+            raise TypeError("eval must be an object")
+        return _BestCheckpointState(
+            selected_metric_value=float(payload["selected_metric_value"]),
+            selected_step=int(payload["selected_step"]),
+            selected_eval=DPOEvalMetrics.from_dict(eval_payload),
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise DPOTrainerError(
+            f"best checkpoint metadata is malformed and cannot seed resume state: {metadata_path}"
+        ) from error
 
 
 def _write_tokenizer(tokenizer: Tokenizer, path: Path) -> None:

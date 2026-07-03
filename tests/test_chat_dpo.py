@@ -315,6 +315,179 @@ def test_dpo_logs_chosen_rejected_logps_every_eval(tmp_path: Path) -> None:
     assert "wandb_run_url" in result.to_dict()
 
 
+def _tiny_dpo_pairs(tokenizer) -> tuple:
+    return tuple(
+        tokenize_preference_pair(
+            tokenizer,
+            PreferencePair(
+                prompt_turns=(ChatTurn("user", text),),
+                chosen=chosen,
+                rejected=rejected,
+                source="f",
+                row_id=text,
+            ),
+            max_length=48,
+            max_prompt_length=24,
+        )
+        for text, chosen, rejected in (("say red", "red", "blue"), ("say green", "green", "two"))
+    )
+
+
+def _tiny_dpo_models() -> tuple[DenseBackbone, DenseBackbone]:
+    cfg = tiny_backbone_config()
+    torch.manual_seed(0)
+    reference = DenseBackbone(cfg)
+    policy = DenseBackbone(cfg)
+    policy.load_state_dict(reference.state_dict())
+    return policy, reference
+
+
+def _dpo_config(output_dir: Path, *, max_steps: int, resume_from_latest: bool = False):
+    return DPOTrainerConfig(
+        max_steps=max_steps,
+        micro_batch_size=2,
+        gradient_accumulation_steps=1,
+        learning_rate=0.02,
+        beta=0.5,
+        seed=214,
+        output_dir=output_dir,
+        scheduler="cosine_decay",
+        warmup_steps=2,
+        eval_interval=4,
+        checkpoint_interval=4,
+        log_interval=1,
+        resume_from_latest=resume_from_latest,
+    )
+
+
+def _train_rows(metrics_path: Path) -> dict[int, dict]:
+    rows = [
+        json.loads(line)
+        for line in metrics_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    return {row["step"]: row for row in rows if row.get("event") == "train"}
+
+
+def test_dpo_resume_continues_step_optimizer_and_rng_like_uninterrupted(tmp_path: Path) -> None:
+    tokenizer = tiny_chat_tokenizer()
+    pairs = _tiny_dpo_pairs(tokenizer)
+
+    policy_a, reference_a = _tiny_dpo_models()
+    uninterrupted = run_dpo_training(
+        policy_a,
+        reference_a,
+        tokenizer,
+        pairs,
+        pairs,
+        _dpo_config(tmp_path / "uninterrupted", max_steps=8),
+    )
+
+    policy_b, reference_b = _tiny_dpo_models()
+    resumable_dir = tmp_path / "resumable"
+
+    class _Preempted(Exception):
+        pass
+
+    def _interrupt_after_step_5(step: int) -> None:
+        # Fires after the step-4 periodic checkpoint exists, before step 5 logs.
+        if step == 5:
+            raise _Preempted
+
+    with pytest.raises(_Preempted):
+        run_dpo_training(
+            policy_b,
+            reference_b,
+            tokenizer,
+            pairs,
+            pairs,
+            _dpo_config(resumable_dir, max_steps=8),
+            step_callback=_interrupt_after_step_5,
+        )
+
+    # The interrupted run's checkpoint must carry the new resume payload.
+    checkpoint = load_training_checkpoint(
+        resumable_dir / "checkpoints" / "step-000004" / "checkpoint.pt"
+    )
+    assert checkpoint.rng_state is not None
+    assert checkpoint.data_position == 4
+    assert checkpoint.optimizer_state is not None
+    assert checkpoint.scheduler_state is not None
+
+    policy_c, reference_c = _tiny_dpo_models()
+    resumed = run_dpo_training(
+        policy_c,
+        reference_c,
+        tokenizer,
+        pairs,
+        pairs,
+        _dpo_config(resumable_dir, max_steps=8, resume_from_latest=True),
+    )
+    assert resumed.start_step == 4
+    assert resumed.resumed_from_checkpoint is not None
+    assert resumed.steps_completed == 8
+
+    # Steps 5..8 must reproduce the uninterrupted run exactly: same losses
+    # (optimizer moments restored), same learning rates (scheduler restored).
+    uninterrupted_rows = _train_rows(uninterrupted.metrics_path)
+    resumed_rows = _train_rows(resumed.metrics_path)
+    for step in range(5, 9):
+        assert resumed_rows[step]["train/loss"] == uninterrupted_rows[step]["train/loss"]
+        assert (
+            resumed_rows[step]["train/learning_rate"]
+            == uninterrupted_rows[step]["train/learning_rate"]
+        )
+    # The resumed run selects the same checkpoint as the uninterrupted one.
+    assert resumed.selected_step == uninterrupted.selected_step
+    assert resumed.selected_eval.preference_accuracy == pytest.approx(
+        uninterrupted.selected_eval.preference_accuracy
+    )
+    # Resume must not append a second step-0 base eval row.
+    eval_rows = [
+        json.loads(line)
+        for line in resumed.metrics_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and json.loads(line).get("event") == "eval"
+    ]
+    assert sum(1 for row in eval_rows if row["step"] == 0) == 1
+
+
+def test_dpo_resume_without_checkpoint_starts_fresh(tmp_path: Path) -> None:
+    tokenizer = tiny_chat_tokenizer()
+    pairs = _tiny_dpo_pairs(tokenizer)
+    policy, reference = _tiny_dpo_models()
+    result = run_dpo_training(
+        policy,
+        reference,
+        tokenizer,
+        pairs,
+        pairs,
+        _dpo_config(tmp_path / "fresh", max_steps=4, resume_from_latest=True),
+    )
+    assert result.start_step == 0
+    assert result.resumed_from_checkpoint is None
+    assert result.steps_completed == 4
+
+
+def test_dpo_resume_rejects_model_only_checkpoint_loudly(tmp_path: Path) -> None:
+    tokenizer = tiny_chat_tokenizer()
+    pairs = _tiny_dpo_pairs(tokenizer)
+    policy, reference = _tiny_dpo_models()
+    output_dir = tmp_path / "old"
+    output_dir.mkdir()
+    # Old DPO periodic checkpoints saved model state only; a faithful resume is
+    # impossible without optimizer/scheduler state and must fail loudly.
+    save_training_checkpoint(output_dir / "checkpoint.pt", model=policy, step=2)
+    with pytest.raises(DPOTrainerError, match="optimizer/scheduler state"):
+        run_dpo_training(
+            policy,
+            reference,
+            tokenizer,
+            pairs,
+            pairs,
+            _dpo_config(output_dir, max_steps=4, resume_from_latest=True),
+        )
+
+
 # --- decoding pre-check -------------------------------------------------------
 
 

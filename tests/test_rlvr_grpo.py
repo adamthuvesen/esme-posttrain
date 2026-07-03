@@ -16,6 +16,7 @@ from esme_posttrain.rl.full import run_countdown_lite_grpo_job
 from esme_posttrain.rl.launch import EXPECTED_ARTIFACTS_WITH_FINAL_EVAL, load_rlvr_config
 from esme_posttrain.rl.pipeline_smoke import run_rlvr_pipeline_smoke
 from esme_posttrain.rl.report import build_blocked_grpo_report, build_grpo_report
+from esme_posttrain.training.checkpointing import load_training_checkpoint
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RL_FIXTURE_CONFIG = REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.json"
@@ -44,6 +45,9 @@ def test_countdown_lite_grpo_fixture_job_writes_required_artifacts(tmp_path: Pat
     assert all(payload["required_artifacts_present"].values())
     assert (tmp_path / "grpo-fixture" / "bundle" / "manifest.json").is_file()
     assert (tmp_path / "grpo-fixture" / "bundle-final" / "manifest.json").is_file()
+    final_checkpoint = load_training_checkpoint(tmp_path / "grpo-fixture" / "checkpoint.pt")
+    assert final_checkpoint.rng_state is not None
+    assert final_checkpoint.data_position is not None and final_checkpoint.data_position > 0
     assert (tmp_path / "grpo-fixture" / "eval-after-final.json").is_file()
     assert payload["after_final"] is not None
     assert payload["after_final"]["task_count"] == 1

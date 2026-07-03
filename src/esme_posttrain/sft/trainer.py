@@ -39,9 +39,11 @@ from esme_posttrain.sft.sampling import (
 )
 from esme_posttrain.training.checkpointing import (
     LoadedTrainingCheckpoint,
+    capture_rng_state,
     checkpoint_dir,
     latest_checkpoint_path,
     load_training_checkpoint,
+    restore_rng_state,
     retain_last_checkpoints,
     save_training_checkpoint,
 )
@@ -293,7 +295,26 @@ def run_sft_training(
                 best_checkpoint_path, best_checkpoint_metadata_path
             )
 
-    wandb_run = _start_wandb(config, base_bundle_manifest)
+    wandb_run = _start_wandb(
+        config.wandb,
+        run_config={
+            "artifact_name": config.artifact_name,
+            "max_steps": config.max_steps,
+            "micro_batch_size": config.micro_batch_size,
+            "gradient_accumulation_steps": config.gradient_accumulation_steps,
+            "effective_batch_size": config.effective_batch_size,
+            "learning_rate": config.learning_rate,
+            "scheduler": config.scheduler,
+            "warmup_steps": config.warmup_steps,
+            "weight_decay": config.weight_decay,
+            "precision": config.precision,
+            "tuning_mode": config.tuning_mode,
+            "assistant_only_loss": config.assistant_only_loss,
+            "completion_only_loss": config.completion_only_loss,
+            "seed": config.seed,
+        },
+        base_bundle_manifest=base_bundle_manifest,
+    )
     if resumed_from_checkpoint is None:
         # The base eval predates the checkpoint load; logging it on resume would
         # append a base-model row mislabeled with the resumed step.
@@ -460,6 +481,7 @@ def run_sft_training(
                     trained_tokens=trained_tokens,
                     supervised_tokens=supervised_tokens,
                     retain_last=config.retain_last_checkpoints,
+                    data_position=step * config.gradient_accumulation_steps,
                 )
         model.eval()
         if last_eval_step != last_completed_step:
@@ -486,6 +508,7 @@ def run_sft_training(
             scheduler=scheduler,
             trained_tokens=trained_tokens,
             supervised_tokens=supervised_tokens,
+            data_position=last_completed_step * config.gradient_accumulation_steps,
         )
         _write_failure_report(
             output_dir,
@@ -505,6 +528,7 @@ def run_sft_training(
             scheduler=scheduler,
             trained_tokens=trained_tokens,
             supervised_tokens=supervised_tokens,
+            data_position=last_completed_step * config.gradient_accumulation_steps,
         )
         status = "non_finite_loss" if "NaN or inf" in str(error) else "failed"
         _write_failure_report(
@@ -568,6 +592,8 @@ def run_sft_training(
                 "supervised_tokens": supervised_tokens,
             },
         },
+        rng_state=capture_rng_state(),
+        data_position=last_completed_step * config.gradient_accumulation_steps,
     )
     loaded_best = load_training_checkpoint(best_checkpoint_path, map_location=device)
     model.load_state_dict(loaded_best.model.state_dict())
@@ -653,6 +679,8 @@ def save_sft_checkpoint(
     optimizer: torch.optim.Optimizer | None = None,
     scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
     metrics: dict[str, Any] | None = None,
+    rng_state: dict[str, Any] | None = None,
+    data_position: int | None = None,
 ) -> None:
     save_training_checkpoint(
         path,
@@ -661,6 +689,8 @@ def save_sft_checkpoint(
         optimizer=optimizer,
         scheduler=scheduler,
         metrics=metrics,
+        rng_state=rng_state,
+        data_position=data_position,
     )
 
 
@@ -821,6 +851,9 @@ def _resume_latest_checkpoint(
         optimizer.load_state_dict(loaded.optimizer_state)
     if loaded.scheduler_state is not None:
         scheduler.load_state_dict(loaded.scheduler_state)
+    # Pre-v3 checkpoints carry no RNG state; restore is a no-op for them and the
+    # resumed run continues from the fresh seed, exactly as before.
+    restore_rng_state(loaded.rng_state)
     return loaded
 
 
@@ -833,6 +866,7 @@ def _save_failure_checkpoint(
     scheduler: torch.optim.lr_scheduler.LRScheduler,
     trained_tokens: int,
     supervised_tokens: int,
+    data_position: int,
 ) -> tuple[Path | None, str | None]:
     path = checkpoint_dir(output_dir, step) / "checkpoint.pt"
     try:
@@ -849,6 +883,8 @@ def _save_failure_checkpoint(
                     "supervised_tokens": supervised_tokens,
                 },
             },
+            rng_state=capture_rng_state(),
+            data_position=data_position,
         )
     except Exception as error:  # pragma: no cover - only hit on storage failure.
         return None, str(error)
@@ -865,6 +901,7 @@ def _save_periodic_checkpoint(
     trained_tokens: int,
     supervised_tokens: int,
     retain_last: int,
+    data_position: int,
 ) -> None:
     path = checkpoint_dir(output_dir, step) / "checkpoint.pt"
     save_sft_checkpoint(
@@ -879,6 +916,8 @@ def _save_periodic_checkpoint(
                 "supervised_tokens": supervised_tokens,
             }
         },
+        rng_state=capture_rng_state(),
+        data_position=data_position,
     )
     retain_last_checkpoints(output_dir, retain_last)
 

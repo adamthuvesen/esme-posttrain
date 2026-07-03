@@ -17,38 +17,36 @@ class WandbConfig:
     extra_config: dict[str, Any] = field(default_factory=dict)
 
 
-def start_wandb(config: Any, base_bundle_manifest: dict[str, Any] | None) -> Any | None:
-    if not config.wandb.enabled:
+def start_wandb(
+    config: WandbConfig,
+    *,
+    run_config: dict[str, Any],
+    base_bundle_manifest: dict[str, Any] | None = None,
+) -> Any | None:
+    """Start a W&B run from explicit fields; each stage supplies its own run_config.
+
+    The logged config is ``run_config`` plus the base bundle manifest, with
+    ``config.extra_config`` layered on top. No trainer-config attributes are
+    read here, so no stage needs an adapter shim.
+    """
+    if not config.enabled:
         return None
     import wandb
 
     settings: dict[str, Any] = {}
-    if config.wandb.mode:
-        settings["mode"] = config.wandb.mode
+    if config.mode:
+        settings["mode"] = config.mode
     return wandb.init(
-        project=config.wandb.project,
-        name=config.wandb.run_name,
-        tags=list(config.wandb.tags),
-        group=config.wandb.group,
-        job_type=config.wandb.job_type,
-        notes=config.wandb.notes,
+        project=config.project,
+        name=config.run_name,
+        tags=list(config.tags),
+        group=config.group,
+        job_type=config.job_type,
+        notes=config.notes,
         config={
-            "artifact_name": config.artifact_name,
-            "max_steps": config.max_steps,
-            "micro_batch_size": config.micro_batch_size,
-            "gradient_accumulation_steps": config.gradient_accumulation_steps,
-            "effective_batch_size": config.effective_batch_size,
-            "learning_rate": config.learning_rate,
-            "scheduler": config.scheduler,
-            "warmup_steps": config.warmup_steps,
-            "weight_decay": config.weight_decay,
-            "precision": config.precision,
-            "tuning_mode": config.tuning_mode,
-            "assistant_only_loss": config.assistant_only_loss,
-            "completion_only_loss": config.completion_only_loss,
-            "seed": config.seed,
+            **run_config,
             "base_bundle": base_bundle_manifest,
-            **config.wandb.extra_config,
+            **config.extra_config,
         },
         **settings,
     )

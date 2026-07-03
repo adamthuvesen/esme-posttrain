@@ -72,3 +72,13 @@ def test_named_schedule_functions_cover_warmup_and_decay() -> None:
 def test_lr_factory_rejects_unknown_scheduler() -> None:
     with pytest.raises(TrainerError, match="unknown scheduler"):
         lr_lambda_factory(scheduler="wsd", warmup_steps=0, max_steps=10)
+
+
+def test_stage_trainer_errors_subclass_the_shared_base() -> None:
+    from esme_posttrain.dpo.trainer import DPOTrainerError
+    from esme_posttrain.rl.grpo import CountdownGRPOTrainerError
+
+    assert issubclass(DPOTrainerError, TrainerError)
+    assert issubclass(CountdownGRPOTrainerError, TrainerError)
+    # TrainerError stays a ValueError, so existing except ValueError sites hold.
+    assert issubclass(TrainerError, ValueError)

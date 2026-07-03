@@ -514,7 +514,22 @@ def _start_rlvr_wandb(
             "debug_samples_per_eval_task": monitoring["debug_samples_per_eval_task"],
         },
     )
-    return start_wandb(_RLVRWandbAdapter(config, wandb_config), base_bundle_manifest)
+    return start_wandb(
+        wandb_config,
+        run_config={
+            "artifact_name": config.artifact_name,
+            "max_steps": int(config.grpo["max_steps"]),
+            "prompts_per_step": int(config.grpo["prompts_per_step"]),
+            "group_size": int(config.grpo["group_size"]),
+            "learning_rate": float(config.grpo["learning_rate"]),
+            "scheduler": str(config.grpo["scheduler"]),
+            "warmup_steps": int(config.grpo["warmup_steps"]),
+            "weight_decay": float(config.grpo["weight_decay"]),
+            "precision": str(config.runtime["precision"]),
+            "seed": int(config.grpo["seed"]),
+        },
+        base_bundle_manifest=base_bundle_manifest,
+    )
 
 
 def _configure_rlvr_wandb_metrics(wandb_run: Any | None) -> None:
@@ -553,72 +568,6 @@ def _log_eval_summary(
 def _wandb_url(wandb_run: Any | None) -> str | None:
     value = getattr(wandb_run, "url", None) if wandb_run is not None else None
     return str(value) if value else None
-
-
-class _RLVRWandbAdapter:
-    def __init__(self, config: RLVRLaunchConfig, wandb_config: WandbConfig) -> None:
-        self._config = config
-        self._wandb_config = wandb_config
-
-    @property
-    def wandb(self) -> WandbConfig:
-        return self._wandb_config
-
-    @property
-    def artifact_name(self) -> str:
-        return self._config.artifact_name
-
-    @property
-    def max_steps(self) -> int:
-        return int(self._config.grpo["max_steps"])
-
-    @property
-    def micro_batch_size(self) -> int:
-        return int(self._config.grpo["prompts_per_step"])
-
-    @property
-    def gradient_accumulation_steps(self) -> int:
-        return 1
-
-    @property
-    def effective_batch_size(self) -> int:
-        return int(self._config.grpo["prompts_per_step"])
-
-    @property
-    def learning_rate(self) -> float:
-        return float(self._config.grpo["learning_rate"])
-
-    @property
-    def scheduler(self) -> str:
-        return str(self._config.grpo["scheduler"])
-
-    @property
-    def warmup_steps(self) -> int:
-        return int(self._config.grpo["warmup_steps"])
-
-    @property
-    def weight_decay(self) -> float:
-        return float(self._config.grpo["weight_decay"])
-
-    @property
-    def precision(self) -> str:
-        return str(self._config.runtime["precision"])
-
-    @property
-    def tuning_mode(self) -> str:
-        return "full"
-
-    @property
-    def assistant_only_loss(self) -> bool:
-        return True
-
-    @property
-    def completion_only_loss(self) -> bool:
-        return True
-
-    @property
-    def seed(self) -> int:
-        return int(self._config.grpo["seed"])
 
 
 class _RLVRWandbTrainLogger:

@@ -1,2 +1,2 @@
 class TrainerError(ValueError):
-    pass
+    """Base error for the shared training spine; stage trainer errors subclass it."""
