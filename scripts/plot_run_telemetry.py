@@ -51,6 +51,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Style contract: match esme-pretrain/scripts/plot_run_telemetry.py (which in
 # turn matches grpo-decomp/results/fig-gsm8k-decomposition.svg).
@@ -68,6 +69,9 @@ REFERENCE_GREY = "#9aa1ad"
 BLUE_BAND = "rgba(99, 110, 250, 0.16)"
 CARD_WIDTH = 920
 CARD_HEIGHT = 560
+# The DPO card is a two-panel 1x2 (train | held-out zoomed), so it is wider.
+DPO_CARD_WIDTH = 1180
+DPO_CARD_HEIGHT = 600
 
 # Rollouts per GRPO step; mirrors the run config (8 prompts x group size 16).
 GRPO_ROLLOUTS_PER_STEP = 128
@@ -311,10 +315,12 @@ def load_sft_telemetry(run_dir: Path) -> SftTelemetry:
     )
 
 
-def rounded_border_path(radius_px: float) -> str:
+def rounded_border_path(
+    radius_px: float, width: int = CARD_WIDTH, height: int = CARD_HEIGHT
+) -> str:
     """Rounded-rect border in paper coordinates (plotly paths have no arc command)."""
-    rx = radius_px / CARD_WIDTH
-    ry = radius_px / CARD_HEIGHT
+    rx = radius_px / width
+    ry = radius_px / height
     x0, x1 = 0.5 / CARD_WIDTH, 1 - 0.5 / CARD_WIDTH
     y0, y1 = 0.5 / CARD_HEIGHT, 1 - 0.5 / CARD_HEIGHT
     return (
@@ -322,6 +328,32 @@ def rounded_border_path(radius_px: float) -> str:
         f"L {x1},{y1 - ry} Q {x1},{y1} {x1 - rx},{y1} "
         f"L {x0 + rx},{y1} Q {x0},{y1} {x0},{y1 - ry} "
         f"L {x0},{y0 + ry} Q {x0},{y0} {x0 + rx},{y0} Z"
+    )
+
+
+def rounded_panel_border_path(
+    x0: float,
+    x1: float,
+    *,
+    radius_px: float = 8,
+    width: int = CARD_WIDTH,
+    height: int = CARD_HEIGHT,
+) -> str:
+    """Rounded border for one subplot domain in paper coordinates."""
+    px = 0.5 / width
+    py = 0.5 / height
+    left = x0 + px
+    right = x1 - px
+    bottom = py
+    top = 1 - py
+    rx = min(radius_px / width, (right - left) / 2)
+    ry = min(radius_px / height, (top - bottom) / 2)
+    return (
+        f"M {left + rx},{bottom} L {right - rx},{bottom} "
+        f"Q {right},{bottom} {right},{bottom + ry} "
+        f"L {right},{top - ry} Q {right},{top} {right - rx},{top} "
+        f"L {left + rx},{top} Q {left},{top} {left},{top - ry} "
+        f"L {left},{bottom + ry} Q {left},{bottom} {left + rx},{bottom} Z"
     )
 
 
@@ -606,79 +638,284 @@ def build_countdown_evidence_figure() -> go.Figure:
     return figure
 
 
+def _dpo_panel_annotation(
+    figure: go.Figure,
+    *,
+    xref: str,
+    yref: str,
+    color: str,
+    total_steps: int,
+    start_x: int,
+    start_v: float,
+    acc_v: float,
+    delta_pp: float,
+    accepted_step: int,
+    delta_y: float,
+    caption_y: float,
+    acc_x: int,
+    acc_yshift: int,
+    acc_anchor: str,
+    bottom_x: float,
+    approx: bool,
+) -> None:
+    """Symmetric per-panel labels: start value, value at accepted step, delta, accepted caption.
+
+    Each panel is annotated the same way so the two read as parallel standalone graphs. The
+    delta + caption sit in the clear bottom-left corner so neither crowds the dashed accepted
+    line; the accepted-value label can be nudged (``acc_x``/``acc_yshift``/``acc_anchor``) off
+    the line on the jagged train panel. ``approx`` tags the windowed train read with a tilde.
+    """
+    tilde = "~" if approx else ""
+    figure.add_annotation(
+        text=f"{start_v * 100:.1f}%",
+        x=start_x,
+        y=start_v,
+        xref=xref,
+        yref=yref,
+        yshift=-16,
+        showarrow=False,
+        font={"family": FONT_FAMILY, "size": 12, "color": SUBTITLE_COLOR},
+    )
+    figure.add_annotation(
+        text=f"<b>{tilde}{acc_v * 100:.1f}%</b>",
+        x=acc_x,
+        y=acc_v,
+        xref=xref,
+        yref=yref,
+        xanchor=acc_anchor,
+        yshift=acc_yshift,
+        showarrow=False,
+        font={"family": FONT_FAMILY, "size": 12.5, "color": color},
+    )
+    figure.add_annotation(
+        text=f"<b>+{delta_pp:.1f} pp</b>  step {start_x}→{accepted_step}",
+        x=bottom_x,
+        y=delta_y,
+        xref=xref,
+        yref=yref,
+        xanchor="left",
+        showarrow=False,
+        font={"family": FONT_FAMILY, "size": 12.5, "color": "#374151"},
+    )
+    figure.add_annotation(
+        text=f"accepted · step {accepted_step}",
+        x=bottom_x,
+        y=caption_y,
+        xref=xref,
+        yref=yref,
+        xanchor="left",
+        showarrow=False,
+        font={"family": FONT_FAMILY, "size": 11.5, "color": REFERENCE_GREY},
+    )
+
+
 def build_dpo_training_figure(telemetry: DpoTelemetry) -> go.Figure:
+    """Two framed standalone panels in one card: train accuracy | held-out zoomed.
+
+    Greedy single-axis plotting compressed the held-out gain into a flat sliver dwarfed by the
+    train curve. Splitting the axes (train 0.4-1.05, held-out zoomed 0.60-0.70) makes the modest
+    but real held-out improvement legible while the train panel owns the overfitting story that
+    motivates checkpoint selection.
+    """
     total_steps = telemetry.train_steps[-1]
-    figure = go.Figure(
-        layout=card_layout(
-            title="Esme-214M-Chat: DPO preference training",
-            subtitle=(
-                f"Train and held-out preference accuracy over {total_steps} steps -"
-                " UltraFeedback-binarized pairs, beta 0.5"
-            ),
-            conclusion=(
-                "Conclusion: train preference accuracy rises, while held-out accuracy picks"
-                f" the accepted checkpoint<br>at step {telemetry.accepted_step}, where it peaks at"
-                f" {telemetry.accepted_eval_accuracy * 100:.1f}%."
-            ),
-        )
+    accepted = telemetry.accepted_step
+
+    start_acc = telemetry.eval_preference_accuracy[0]
+    start_step = telemetry.eval_steps[0]
+    delta_eval_pp = (telemetry.accepted_eval_accuracy - start_acc) * 100
+
+    # Windowed so the train label lands on the local level at the accepted step, not a spike.
+    train_start = telemetry.preference_accuracy[0]
+    window = [
+        v
+        for s, v in zip(telemetry.train_steps, telemetry.preference_accuracy, strict=True)
+        if abs(s - accepted) <= 40
+    ]
+    train_at_accepted = statistics.mean(window)
+    delta_train_pp = (train_at_accepted - train_start) * 100
+
+    left_domain = (0.0, 0.45)
+    right_domain = (0.55, 1.0)
+    figure = make_subplots(
+        rows=1,
+        cols=2,
+        shared_yaxes=False,
+        horizontal_spacing=0.10,
+        subplot_titles=(
+            "Train preference accuracy (overfits to ~0.95)",
+            "Held-out preference accuracy, zoomed",
+        ),
     )
     figure.add_trace(
         go.Scatter(
             x=telemetry.train_steps,
             y=telemetry.preference_accuracy,
             mode="lines",
-            name="train preference accuracy",
-            line={"color": BLUE, "width": 1.8},
-            opacity=0.45,
-        )
+            line={"color": BLUE, "width": 1.9},
+            opacity=0.6,
+        ),
+        row=1,
+        col=1,
     )
     figure.add_trace(
         go.Scatter(
             x=telemetry.eval_steps,
             y=telemetry.eval_preference_accuracy,
-            mode="lines+markers",
-            name="held-out preference accuracy",
-            line={"color": GREEN, "width": 2.6},
-            marker={"size": 7},
-        )
-    )
-    figure.update_layout(
-        xaxis=styled_axis(title={"text": "DPO step"}, range=[0, total_steps * 1.02]),
-        yaxis=styled_axis(
-            title={"text": "preference accuracy"},
-            range=[0.4, 1.05],
-            tickvals=[0.4, 0.6, 0.8, 1.0],
+            mode="lines",
+            line={"color": GREEN, "width": 2.8},
         ),
+        row=1,
+        col=2,
     )
-    figure.add_shape(
-        type="line",
+
+    figure.update_layout(
+        width=DPO_CARD_WIDTH,
+        height=DPO_CARD_HEIGHT,
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        showlegend=False,
+        font={"family": FONT_FAMILY, "size": 12, "color": TICK_COLOR},
+        margin={"l": 72, "r": 72, "t": 132, "b": 96},
+        # Equal domains + symmetric margins: both panels the same width, pair centred. Use two
+        # panel borders so the top/bottom strokes do not connect through the center gap.
+        xaxis=styled_axis(
+            title={"text": "DPO step"}, range=[0, total_steps * 1.02], domain=list(left_domain)
+        ),
+        yaxis=styled_axis(
+            title={"text": "preference accuracy"}, range=[0.4, 1.05], tickvals=[0.4, 0.6, 0.8, 1.0]
+        ),
+        xaxis2=styled_axis(
+            title={"text": "DPO step"}, range=[0, total_steps * 1.02], domain=list(right_domain)
+        ),
+        yaxis2=styled_axis(
+            title={"text": "held-out accuracy"},
+            range=[0.60, 0.70],
+            tickvals=[0.60, 0.62, 0.64, 0.66, 0.68, 0.70],
+            tickformat=".2f",
+        ),
+        shapes=[
+            {
+                "type": "path",
+                "path": rounded_panel_border_path(
+                    *left_domain,
+                    width=DPO_CARD_WIDTH,
+                    height=DPO_CARD_HEIGHT,
+                ),
+                "xref": "paper",
+                "yref": "paper",
+                "line": {"color": BORDER_COLOR, "width": 1},
+                "layer": "above",
+            },
+            {
+                "type": "path",
+                "path": rounded_panel_border_path(
+                    *right_domain,
+                    width=DPO_CARD_WIDTH,
+                    height=DPO_CARD_HEIGHT,
+                ),
+                "xref": "paper",
+                "yref": "paper",
+                "line": {"color": BORDER_COLOR, "width": 1},
+                "layer": "above",
+            },
+        ],
+    )
+
+    for xref in ("x", "x2"):
+        figure.add_shape(
+            type="line",
+            xref=xref,
+            yref="paper",
+            x0=accepted,
+            x1=accepted,
+            y0=0,
+            y1=1,
+            line={"color": REFERENCE_GREY, "width": 1, "dash": "dash"},
+        )
+
+    _dpo_panel_annotation(
+        figure,
         xref="x",
+        yref="y",
+        color=BLUE,
+        total_steps=total_steps,
+        start_x=telemetry.train_steps[0],
+        start_v=train_start,
+        acc_v=train_at_accepted,
+        delta_pp=delta_train_pp,
+        accepted_step=accepted,
+        delta_y=0.505,
+        caption_y=0.455,
+        acc_x=accepted - 55,
+        acc_yshift=24,
+        acc_anchor="right",
+        bottom_x=0.14 * total_steps,
+        approx=True,
+    )
+    _dpo_panel_annotation(
+        figure,
+        xref="x2",
+        yref="y2",
+        color=GREEN,
+        total_steps=total_steps,
+        start_x=start_step,
+        start_v=start_acc,
+        acc_v=telemetry.accepted_eval_accuracy,
+        delta_pp=delta_eval_pp,
+        accepted_step=accepted,
+        delta_y=0.6155,
+        caption_y=0.6075,
+        acc_x=accepted,
+        acc_yshift=16,
+        acc_anchor="center",
+        bottom_x=0.03 * total_steps,
+        approx=False,
+    )
+
+    # Card title / subtitle / conclusion (card_layout is single-plot; place them by hand here).
+    figure.add_annotation(
+        text="<b>Esme-214M-Chat: DPO preference training</b>",
+        xref="paper",
         yref="paper",
-        x0=telemetry.accepted_step,
-        x1=telemetry.accepted_step,
-        y0=0,
-        y1=1,
-        line={"color": REFERENCE_GREY, "width": 1, "dash": "dash"},
+        x=-0.055,
+        y=1.30,
+        xanchor="left",
+        showarrow=False,
+        font={"family": FONT_FAMILY, "size": 22, "color": TITLE_COLOR},
     )
     figure.add_annotation(
-        {
-            "text": (
-                f"accepted - step {telemetry.accepted_step}"
-                f" (held-out acc {telemetry.accepted_eval_accuracy * 100:.1f}%)"
-            ),
-            "x": telemetry.accepted_step,
-            "yref": "paper",
-            "y": 0.06,
-            "showarrow": False,
-            "xanchor": "right",
-            "xshift": -6,
-            "font": {"family": FONT_FAMILY, "size": 12, "color": REFERENCE_GREY},
-        }
+        text=(
+            f"Train and held-out preference accuracy over {total_steps} steps ·"
+            " UltraFeedback-binarized pairs, beta 0.5"
+        ),
+        xref="paper",
+        yref="paper",
+        x=-0.055,
+        y=1.19,
+        xanchor="left",
+        showarrow=False,
+        font={"family": FONT_FAMILY, "size": 14, "color": SUBTITLE_COLOR},
     )
-    figure.add_annotation(trace_label("train preference accuracy", total_steps * 0.03, 0.98, BLUE))
     figure.add_annotation(
-        trace_label("held-out preference accuracy", total_steps * 0.44, 0.63, GREEN)
+        text=(
+            "Conclusion: train preference accuracy overfits toward 0.95, so the accepted"
+            f" checkpoint is chosen at the held-out peak<br>(step {accepted},"
+            f" {telemetry.accepted_eval_accuracy * 100:.1f}%) — early stopping against DPO"
+            f" overfitting. Held-out still improves, modestly: +{delta_eval_pp:.1f} pp from the"
+            " first eval."
+        ),
+        xref="paper",
+        yref="paper",
+        x=-0.055,
+        y=-0.155,
+        xanchor="left",
+        yanchor="top",
+        align="left",
+        showarrow=False,
+        font={"family": FONT_FAMILY, "size": 12, "color": SUBTITLE_COLOR},
     )
+    for note in figure.layout.annotations[:2]:  # the two subplot titles
+        note.font = {"family": FONT_FAMILY, "size": 13.5, "color": "#374151"}
     return figure
 
 
@@ -801,7 +1038,10 @@ def main(argv: list[str] | None = None) -> int:
         outputs["sft_training_dynamics"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
     )
     build_dpo_training_figure(dpo).write_image(
-        outputs["dpo_training_dynamics"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
+        outputs["dpo_training_dynamics"],
+        format="svg",
+        width=DPO_CARD_WIDTH,
+        height=DPO_CARD_HEIGHT,
     )
     build_grpo_dynamics_figure(grpo).write_image(
         outputs["grpo_training_dynamics"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
