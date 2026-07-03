@@ -71,6 +71,8 @@ OPTIONAL_GRPO_KEYS = frozenset(
         "zero_variance_max_resamples",
         "replay_buffer_max_age_steps",
         "stratified_difficulty_sampling",
+        "reward_mode",
+        "random_reward_seed",
     }
 )
 OPTIONAL_REWARD_POLICY_KEYS = frozenset({"format_expression_reward", "closeness_weight"})
@@ -126,6 +128,10 @@ class RLVRLaunchConfig:
     @property
     def pipeline_smoke(self) -> dict[str, Any]:
         return dict(self.payload["pipeline_smoke"])
+
+    @property
+    def skip_acceptance_eval(self) -> bool:
+        return bool(self.payload.get("skip_acceptance_eval", False))
 
     @property
     def selected_gpu_profile(self) -> dict[str, Any]:
@@ -298,9 +304,12 @@ def validate_rlvr_payload(payload: dict[str, Any], config_path: Path) -> RLVRLau
             "pipeline_smoke",
             "artifacts",
             "acceptance",
-        },
+        }
+        | ({"skip_acceptance_eval"} & set(payload)),
         "config",
     )
+    if "skip_acceptance_eval" in payload and not isinstance(payload["skip_acceptance_eval"], bool):
+        raise LaunchError("skip_acceptance_eval must be a boolean")
     if payload["schema_version"] != 1:
         raise LaunchError("schema_version must be 1")
     if payload["run_id"] != RUN_ID:
@@ -744,6 +753,12 @@ def _validate_grpo(payload: dict[str, Any]) -> dict[str, Any]:
         payload["stratified_difficulty_sampling"], bool
     ):
         raise LaunchError("grpo.stratified_difficulty_sampling must be a boolean")
+    if "reward_mode" in payload and payload["reward_mode"] not in {"verifier", "random"}:
+        raise LaunchError("grpo.reward_mode must be verifier or random")
+    if "random_reward_seed" in payload:
+        seed_value = payload["random_reward_seed"]
+        if isinstance(seed_value, bool) or not isinstance(seed_value, int) or seed_value < 0:
+            raise LaunchError("grpo.random_reward_seed must be a non-negative integer")
     if payload["method"] != METHOD:
         raise LaunchError(f"grpo.method must be {METHOD}")
     for key in ("max_steps", "prompts_per_step", "group_size", "max_new_tokens", "seed"):

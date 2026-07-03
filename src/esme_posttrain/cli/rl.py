@@ -11,6 +11,7 @@ from esme_posttrain.rl.countdown_lite_baseline import (
     CountdownBaselineRequest,
     run_countdown_lite_baseline,
 )
+from esme_posttrain.rl.decomp_emitter import DecompEmitterError, EmitRequest, emit_completion_set
 from esme_posttrain.rl.launch import build_rlvr_dry_run, format_rlvr_dry_run, load_rlvr_config
 from esme_posttrain.rl.pipeline_smoke import run_rlvr_pipeline_smoke
 
@@ -97,6 +98,42 @@ def add_rl_parsers(subparsers: argparse._SubParsersAction) -> None:
     )
     countdown_baseline.set_defaults(handler=_handle_countdown_lite_baseline)
 
+    emit_completions = subparsers.add_parser(
+        "rlvr-emit-decomp-completions",
+        help=(
+            "Emit a grpo-decomp CompletionSet (provenance.json + completions.jsonl) for one "
+            "arm on an Esme held-out Countdown set."
+        ),
+    )
+    emit_completions.add_argument(
+        "--bundle",
+        type=Path,
+        required=True,
+        help="Path to the Esme bundle/checkpoint to sample from.",
+    )
+    emit_completions.add_argument(
+        "--heldout-manifest",
+        type=Path,
+        default=Path("data/manifests/esme-214m-rl-heldout.tasks.json"),
+        help="Held-out Countdown task manifest.",
+    )
+    emit_completions.add_argument(
+        "--set", dest="set_name", default="heldout_fresh", help="Held-out split to emit."
+    )
+    emit_completions.add_argument(
+        "--out", dest="output_dir", type=Path, required=True, help="CompletionSet output dir."
+    )
+    emit_completions.add_argument("--n", type=int, default=1, help="Samples per problem.")
+    emit_completions.add_argument("--temperature", type=float, default=0.0)
+    emit_completions.add_argument("--max-new-tokens", type=int, default=12)
+    emit_completions.add_argument("--seed", type=int, default=0)
+    emit_completions.add_argument("--device", default="cpu")
+    emit_completions.add_argument(
+        "--model-label", default=None, help="Override the provenance model label."
+    )
+    emit_completions.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    emit_completions.set_defaults(handler=_handle_emit_decomp_completions)
+
 
 def _handle_rlvr_dry_run(args: argparse.Namespace) -> int:
     try:
@@ -162,6 +199,43 @@ def _handle_countdown_lite_baseline(args: argparse.Namespace) -> int:
         exit_with_error(str(exc))
     emit_payload(payload, json_output=args.json, formatter=_format_countdown_lite_baseline)
     return 0
+
+
+def _handle_emit_decomp_completions(args: argparse.Namespace) -> int:
+    try:
+        payload = emit_completion_set(
+            EmitRequest(
+                bundle_path=args.bundle,
+                heldout_manifest_path=args.heldout_manifest,
+                output_dir=args.output_dir,
+                set_name=args.set_name,
+                n=args.n,
+                temperature=args.temperature,
+                max_new_tokens=args.max_new_tokens,
+                seed=args.seed,
+                device=args.device,
+                model_label=args.model_label,
+            )
+        )
+    except DecompEmitterError as exc:
+        exit_with_error(str(exc))
+    emit_payload(payload, json_output=args.json, formatter=_format_emit_decomp_completions)
+    return 0
+
+
+def _format_emit_decomp_completions(payload: Payload) -> str:
+    return "\n".join(
+        [
+            "status: decomp_completion_set_written",
+            f"output_dir: {payload.get('output_dir')}",
+            f"set_name: {payload.get('set_name')}",
+            f"dataset_name: {payload.get('dataset_name')}",
+            f"dataset_revision: {payload.get('dataset_revision')}",
+            f"n_problems: {payload.get('n_problems')}",
+            f"n_samples: {payload.get('n_samples')}",
+            f"model: {payload.get('model')}",
+        ]
+    )
 
 
 def _format_countdown_lite_build(payload: Payload) -> str:

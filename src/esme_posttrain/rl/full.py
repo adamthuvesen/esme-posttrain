@@ -59,7 +59,12 @@ def run_countdown_lite_grpo_job(
     before_eval_only: bool = False,
     pipeline_smoke: bool = False,
     paid_compute: bool = True,
+    skip_acceptance_eval: bool = False,
 ) -> dict[str, Any]:
+    if skip_acceptance_eval and (before_eval_only or pipeline_smoke):
+        raise CountdownGRPOFullRunError(
+            "skip_acceptance_eval is incompatible with before_eval_only / pipeline_smoke"
+        )
     run_profile = PIPELINE_SMOKE_PROFILE if pipeline_smoke else None
     _emit_milestone(
         "job_start",
@@ -131,6 +136,14 @@ def run_countdown_lite_grpo_job(
         dataset = config.payload["dataset"]
         budgets = config.budgets
         required_artifacts = tuple(config.payload["artifacts"]["required_files"])
+        if skip_acceptance_eval:
+            # The placebo decomposition run needs only the trained bundle; its completions
+            # come from the emitter and checkpoint selection uses train/reward_mean, not the
+            # acceptance eval. Drop the eval-derived artifacts from the required set.
+            eval_artifacts = {"eval-before.json", "eval-after.json", "eval-after-final.json"}
+            required_artifacts = tuple(
+                name for name in required_artifacts if name not in eval_artifacts
+            )
         final_eval_required = "eval-after-final.json" in required_artifacts
         precision = str(config.runtime["precision"])
         if pipeline_smoke and device.type != "cuda" and precision == "bf16":
@@ -166,34 +179,44 @@ def run_countdown_lite_grpo_job(
             config, before_eval_only=before_eval_only, pipeline_smoke=pipeline_smoke
         )
 
-        _emit_milestone(
-            "before_eval_start",
-            milestone_callback,
-            wandb_run=wandb_run,
-            eval_tasks=eval_settings["tasks"],
-            samples_per_task=eval_settings["samples_per_task"],
-            eval_profile=eval_settings["profile"],
-            before_eval_only=before_eval_only,
-            pipeline_smoke=pipeline_smoke,
-        )
-        before = _run_progress_reporting_eval(
-            config,
-            manifest_path=dataset_manifest,
-            bundle_path=bundle_path,
-            output_dir=output_dir / "eval-before",
-            device=device.type,
-            label="before_eval",
-            settings=eval_settings,
-            milestone_callback=milestone_callback,
-            wandb_run=wandb_run,
-            config_hash=config_hash,
-            model_id=model_id,
-        )
-        shutil.copy2(
-            output_dir / "eval-before" / "baseline-report.json", output_dir / "eval-before.json"
-        )
-        _log_eval_summary(wandb_run, "before", before, step=0)
-        _emit_milestone("before_eval_complete", milestone_callback, wandb_run=wandb_run)
+        before: dict[str, Any] | None = None
+        if skip_acceptance_eval:
+            _emit_milestone(
+                "before_eval_skipped",
+                milestone_callback,
+                wandb_run=wandb_run,
+                reason="skip_acceptance_eval",
+            )
+        else:
+            _emit_milestone(
+                "before_eval_start",
+                milestone_callback,
+                wandb_run=wandb_run,
+                eval_tasks=eval_settings["tasks"],
+                samples_per_task=eval_settings["samples_per_task"],
+                eval_profile=eval_settings["profile"],
+                before_eval_only=before_eval_only,
+                pipeline_smoke=pipeline_smoke,
+            )
+            before = _run_progress_reporting_eval(
+                config,
+                manifest_path=dataset_manifest,
+                bundle_path=bundle_path,
+                output_dir=output_dir / "eval-before",
+                device=device.type,
+                label="before_eval",
+                settings=eval_settings,
+                milestone_callback=milestone_callback,
+                wandb_run=wandb_run,
+                config_hash=config_hash,
+                model_id=model_id,
+            )
+            shutil.copy2(
+                output_dir / "eval-before" / "baseline-report.json",
+                output_dir / "eval-before.json",
+            )
+            _log_eval_summary(wandb_run, "before", before, step=0)
+            _emit_milestone("before_eval_complete", milestone_callback, wandb_run=wandb_run)
         check_spend(0)
 
         if before_eval_only:
@@ -275,6 +298,8 @@ def run_countdown_lite_grpo_job(
                 closeness_weight=float(
                     config.payload["reward_policy"].get("closeness_weight", 0.0)
                 ),
+                reward_mode=str(grpo_settings.get("reward_mode", "verifier")),
+                random_reward_seed=int(grpo_settings.get("random_reward_seed", 0)),
                 zero_variance_max_resamples=int(
                     grpo_settings.get("zero_variance_max_resamples", 0)
                 ),
@@ -304,33 +329,43 @@ def run_countdown_lite_grpo_job(
         )
         check_spend(result.steps_completed)
 
-        _emit_milestone(
-            "after_eval_start",
-            milestone_callback,
-            wandb_run=wandb_run,
-            eval_tasks=eval_settings["tasks"],
-            samples_per_task=eval_settings["samples_per_task"],
-            eval_profile=eval_settings["profile"],
-            pipeline_smoke=pipeline_smoke,
-        )
-        after = _run_progress_reporting_eval(
-            config,
-            manifest_path=dataset_manifest,
-            bundle_path=result.bundle_dir,
-            output_dir=output_dir / "eval-after",
-            device=device.type,
-            label="after_eval",
-            settings=eval_settings,
-            milestone_callback=milestone_callback,
-            wandb_run=wandb_run,
-            config_hash=config_hash,
-            model_id=model_id,
-        )
-        shutil.copy2(
-            output_dir / "eval-after" / "baseline-report.json", output_dir / "eval-after.json"
-        )
-        _log_eval_summary(wandb_run, "after", after, step=result.steps_completed)
-        _emit_milestone("after_eval_complete", milestone_callback, wandb_run=wandb_run)
+        after: dict[str, Any] | None = None
+        if skip_acceptance_eval:
+            _emit_milestone(
+                "after_eval_skipped",
+                milestone_callback,
+                wandb_run=wandb_run,
+                reason="skip_acceptance_eval",
+            )
+        else:
+            _emit_milestone(
+                "after_eval_start",
+                milestone_callback,
+                wandb_run=wandb_run,
+                eval_tasks=eval_settings["tasks"],
+                samples_per_task=eval_settings["samples_per_task"],
+                eval_profile=eval_settings["profile"],
+                pipeline_smoke=pipeline_smoke,
+            )
+            after = _run_progress_reporting_eval(
+                config,
+                manifest_path=dataset_manifest,
+                bundle_path=result.bundle_dir,
+                output_dir=output_dir / "eval-after",
+                device=device.type,
+                label="after_eval",
+                settings=eval_settings,
+                milestone_callback=milestone_callback,
+                wandb_run=wandb_run,
+                config_hash=config_hash,
+                model_id=model_id,
+            )
+            shutil.copy2(
+                output_dir / "eval-after" / "baseline-report.json",
+                output_dir / "eval-after.json",
+            )
+            _log_eval_summary(wandb_run, "after", after, step=result.steps_completed)
+            _emit_milestone("after_eval_complete", milestone_callback, wandb_run=wandb_run)
 
         after_final = None
         if final_eval_required:
@@ -390,19 +425,32 @@ def run_countdown_lite_grpo_job(
             "paid_compute": paid_compute,
             "cost": cost,
             "projected_cost_usd": config.estimated_full_cost_usd,
-            "grpo_result": "pipeline_smoke_passed"
-            if pipeline_smoke
-            else _result_label(before, after, eval_profile=str(eval_settings["profile"])),
+            "grpo_result": _grpo_result(
+                pipeline_smoke=pipeline_smoke,
+                skip_acceptance_eval=skip_acceptance_eval,
+                before=before,
+                after=after,
+                eval_profile=str(eval_settings["profile"]),
+            ),
+            "skip_acceptance_eval": skip_acceptance_eval,
             "trainer": result.to_dict(),
-            "before": _selected_eval_metrics(before, eval_profile=eval_settings["profile"]),
-            "after": _selected_eval_metrics(after, eval_profile=eval_settings["profile"]),
+            "before": (
+                _selected_eval_metrics(before, eval_profile=eval_settings["profile"])
+                if before is not None
+                else None
+            ),
+            "after": (
+                _selected_eval_metrics(after, eval_profile=eval_settings["profile"])
+                if after is not None
+                else None
+            ),
             "after_final": (
                 _selected_eval_metrics(after_final, eval_profile=eval_settings["profile"])
                 if after_final is not None
                 else None
             ),
-            "before_report": str(output_dir / "eval-before.json"),
-            "after_report": str(output_dir / "eval-after.json"),
+            "before_report": (str(output_dir / "eval-before.json") if before is not None else None),
+            "after_report": (str(output_dir / "eval-after.json") if after is not None else None),
             "after_final_report": (
                 str(output_dir / "eval-after-final.json") if after_final is not None else None
             ),
@@ -624,6 +672,23 @@ def _model_id(manifest: dict[str, Any] | None, *, fallback: str) -> str:
             if isinstance(value, str) and value:
                 return value
     return fallback
+
+
+def _grpo_result(
+    *,
+    pipeline_smoke: bool,
+    skip_acceptance_eval: bool,
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+    eval_profile: str,
+) -> str:
+    if pipeline_smoke:
+        return "pipeline_smoke_passed"
+    if skip_acceptance_eval or before is None or after is None:
+        # No acceptance eval ran, so there is no before/after to judge — the run is a
+        # training-only artifact (the placebo decomposition arm), not acceptance evidence.
+        return "training-only"
+    return _result_label(before, after, eval_profile=eval_profile)
 
 
 def _result_label(before: dict[str, Any], after: dict[str, Any], *, eval_profile: str) -> str:

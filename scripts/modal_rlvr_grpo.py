@@ -138,6 +138,7 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
                 before_eval_only=before_eval_only,
                 pipeline_smoke=pipeline_smoke,
                 paid_compute=True,
+                skip_acceptance_eval=config.skip_acceptance_eval,
             )
         finally:
             _emit_remote_milestone(

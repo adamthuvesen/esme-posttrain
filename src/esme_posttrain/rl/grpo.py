@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import math
+import random
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import torch
 from tokenizers import Tokenizer
@@ -64,6 +65,11 @@ class CountdownGRPOTrainerConfig:
     invalid_reward: float = 0.0
     format_expression_reward: float = 0.0
     closeness_weight: float = 0.0
+    # "verifier" (default) keeps the real task signal. "random" is the decomposition
+    # placebo: the reward is drawn from the same support independently of correctness,
+    # so any gain it produces comes from the training dynamics, not the reward signal.
+    reward_mode: Literal["verifier", "random"] = "verifier"
+    random_reward_seed: int = 0
     zero_variance_max_resamples: int = 0
     replay_buffer_max_age_steps: int = 0
     stratified_difficulty_sampling: bool = False
@@ -106,6 +112,8 @@ class CountdownGRPOTrainerConfig:
             )
         if self.precision not in {"fp32", "bf16"}:
             raise CountdownGRPOTrainerError("precision must be fp32 or bf16")
+        if self.reward_mode not in {"verifier", "random"}:
+            raise CountdownGRPOTrainerError("reward_mode must be verifier or random")
         if not (
             self.exact_solve_reward
             > self.valid_expression_reward
@@ -231,6 +239,12 @@ def run_countdown_lite_grpo(
         raise CountdownGRPOTrainerError("policy and reference must share the same model config")
 
     set_reproducible_seed(config.seed)
+    # The placebo reward stream is a dedicated RNG seeded independently of the rollout
+    # RNG, so the random reward assigned to a rollout is statistically independent of the
+    # tokens that rollout sampled — no task signal can leak through a shared stream.
+    placebo_rng = (
+        random.Random(config.random_reward_seed) if config.reward_mode == "random" else None
+    )
     output_dir = config.output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -318,6 +332,7 @@ def run_countdown_lite_grpo(
                 device=device,
                 eos_id=eos_id,
                 group_index=group_index,
+                placebo_rng=placebo_rng,
             )
             for group_index, row in enumerate(step_rows)
         ]
@@ -331,6 +346,7 @@ def run_countdown_lite_grpo(
                 config=config,
                 device=device,
                 eos_id=eos_id,
+                placebo_rng=placebo_rng,
             ),
             replay_buffer=replay_buffer,
             step=step,
@@ -506,6 +522,7 @@ def _sample_group(
     device: torch.device,
     eos_id: int | None,
     group_index: int,
+    placebo_rng: random.Random | None = None,
 ) -> tuple[_Rollout, ...]:
     policy.eval()
     rollouts: list[_Rollout] = []
@@ -536,7 +553,13 @@ def _sample_group(
                 numbers=_as_int_tuple(row["numbers"]),
                 target=target,
             )
-            reward = _reward_for(verification, config, target=target)
+            # The verification is still computed so rollout metrics report the true
+            # solve/valid rates; only the training reward is swapped for the placebo.
+            reward = (
+                _random_reward(placebo_rng, config)
+                if config.reward_mode == "random"
+                else _reward_for(verification, config, target=target)
+            )
             rollouts.append(
                 _Rollout(
                     task_id=str(row["task_id"]),
@@ -565,6 +588,7 @@ def _group_resampler(
     config: CountdownGRPOTrainerConfig,
     device: torch.device,
     eos_id: int | None,
+    placebo_rng: random.Random | None = None,
 ) -> Callable[[int], tuple[_Rollout, ...]]:
     def resample(group_index: int) -> tuple[_Rollout, ...]:
         return _sample_group(
@@ -575,9 +599,28 @@ def _group_resampler(
             device=device,
             eos_id=eos_id,
             group_index=group_index,
+            placebo_rng=placebo_rng,
         )
 
     return resample
+
+
+def _random_reward(rng: random.Random | None, config: CountdownGRPOTrainerConfig) -> float:
+    """Draw a placebo reward uniformly over the real reward support, ignoring correctness.
+
+    The support is the three verifier reward levels {invalid, valid_expression, exact_solve}
+    (the closeness bonus is a continuous top-up on real solves and carries no signal on its
+    own, so it is excluded). The draw uses a dedicated RNG seeded from ``random_reward_seed``,
+    independent of the rollout tokens, so the reward is signal-free by construction.
+    """
+    if rng is None:
+        raise CountdownGRPOTrainerError("random reward_mode requires a placebo RNG")
+    support = (
+        float(config.invalid_reward),
+        float(config.valid_expression_reward),
+        float(config.exact_solve_reward),
+    )
+    return rng.choice(support)
 
 
 @dataclass(frozen=True)
@@ -944,6 +987,8 @@ def _config_payload(config: CountdownGRPOTrainerConfig) -> dict[str, Any]:
         "invalid_reward": config.invalid_reward,
         "format_expression_reward": config.format_expression_reward,
         "closeness_weight": config.closeness_weight,
+        "reward_mode": config.reward_mode,
+        "random_reward_seed": config.random_reward_seed,
         "zero_variance_max_resamples": config.zero_variance_max_resamples,
         "replay_buffer_max_age_steps": config.replay_buffer_max_age_steps,
         "stratified_difficulty_sampling": config.stratified_difficulty_sampling,
@@ -972,7 +1017,9 @@ def _data_report(
             "invalid_reward": config.invalid_reward,
             "format_expression_reward": config.format_expression_reward,
             "closeness_weight": config.closeness_weight,
-            "verifiable_only": True,
+            "reward_mode": config.reward_mode,
+            "random_reward_seed": config.random_reward_seed,
+            "verifiable_only": config.reward_mode == "verifier",
         },
         "selected_task_manifest": [
             {

@@ -96,3 +96,45 @@ uv run esme-posttrain rlvr-dry-run --config fixtures/configs/esme-214m-rl.fixtur
 uv run esme-posttrain rlvr-pipeline-smoke --config configs/esme-214m-rl.json --json
 uv run esme-posttrain rlvr-countdown-lite-build-data --repo-root . --json
 ```
+
+## GRPO-gain decomposition (real signal vs placebo)
+
+The accepted `Esme-214M-RL` gain is decomposed with the `grpo-decomp` harness by
+comparing three arms on the held-out `heldout_fresh` Countdown set:
+
+- **base** — `exports/esme-214m-chat` (pre-RL).
+- **correct** — `exports/esme-214m-rl-caff0a1` (real verifier reward).
+- **random** — the same recipe/budget with `grpo.reward_mode = "random"`: the reward is
+  drawn (seeded via `random_reward_seed`) uniformly over the same three-level support
+  {invalid, valid, exact}, independent of the completion. Any gain it shows is
+  training-process placebo, not reward signal.
+
+The placebo is the only new run. It uses `configs/esme-214m-rl-placebo.json`, which is the
+accepted config with `reward_mode: random`, `skip_acceptance_eval: true`, and distinct
+`runs/` + report/doc paths, so it never overwrites the accepted run. The real verifier path
+and the accepted run are unchanged (`reward_mode` defaults to `"verifier"`,
+`skip_acceptance_eval` defaults to `false`).
+
+`skip_acceptance_eval` makes the placebo run just-training: load base bundle → 240 GRPO
+steps → export the best-by-`train/reward_mean` bundle, with no before/after acceptance eval.
+The decomposition does not use those evals (completions come from the emitter, checkpoint
+selection is by `train/reward_mean`), and skipping them removes the ~4h eval phases that
+dominated — and repeatedly timed out — the placebo Modal run. It should now finish in well
+under an hour.
+
+Completions for each arm are exported as `grpo-decomp` `CompletionSet` artifacts
+(`provenance.json` + `completions.jsonl`) with the emitter:
+
+```bash
+uv run esme-posttrain rlvr-emit-decomp-completions \
+  --bundle exports/esme-214m-chat --set heldout_fresh \
+  --out runs/decomp/base__esme-countdown --n 1 --temperature 0.0 --json
+```
+
+Each emitted sample is the model's Countdown expression wrapped in `\boxed{...}`; the
+`grpo-decomp` `esme-countdown` verifier grades it with Esme's rules (each supplied number
+used exactly once, `+ - *` only, integer result equal to target). The result table is
+produced by `grpo-decomp report --task-set esme-countdown` in the `grpo-decomp` repo.
+
+CPU-fixture proof (no Modal): `tests/test_rlvr_decomp.py` here, plus
+`tests/test_esme_countdown_decomp.py` in `grpo-decomp`.
