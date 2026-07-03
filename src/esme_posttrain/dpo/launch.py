@@ -168,7 +168,6 @@ def validate_dpo_payload(payload: dict[str, Any], config_path: Path) -> DPOLaunc
             "artifacts",
             "learning_gate",
             "acceptance",
-            "abort_rules",
         },
         "config",
     )
@@ -212,7 +211,6 @@ def validate_dpo_payload(payload: dict[str, Any], config_path: Path) -> DPOLaunc
     )
     _validate_learning_gate(_require_object_field(payload["learning_gate"], "learning_gate"))
     _validate_acceptance(_require_object_field(payload["acceptance"], "acceptance"))
-    _validate_abort_rules(payload["abort_rules"])
 
     runtime_block = RuntimeBlock.from_validated_payload(runtime)
     estimated_full_cost = estimate_cost_usd(
@@ -281,7 +279,6 @@ def build_dpo_dry_run(
         "learning_gate": config.payload["learning_gate"],
         "dependency_pins": {"modal": MODAL_CLIENT_VERSION, **IMAGE_PACKAGE_PINS},
         "acceptance": config.payload["acceptance"],
-        "abort_rules": config.payload["abort_rules"],
         "launch_blockers": smoke_blockers,
         "full_launch_blockers": full_blockers,
         "modal_smoke_command": config.smoke_launch_command,
@@ -314,7 +311,6 @@ def full_launch_blockers(
     config: DPOLaunchConfig, *, approved: bool = False, modal_gpu: str | None = None
 ) -> list[str]:
     runtime = config.payload["runtime"]
-    cap_label = f"${DPO_FULL_RUN_SPEND_CAP_USD:.0f} cap"
     blockers = _common_full_launch_blockers(
         runtime=runtime,
         estimated_full_cost_usd=config.estimated_full_cost_usd,
@@ -322,8 +318,6 @@ def full_launch_blockers(
         modal_gpu=modal_gpu,
         approval_message="full Esme-214M-Chat DPO launch requires --approved",
         modal_gpu_env_var="DPO_MODAL_GPU",
-        full_run_cap_usd=DPO_FULL_RUN_SPEND_CAP_USD,
-        cap_label=cap_label,
     )
     blockers.extend(_learning_gate_blockers(config.payload["learning_gate"]))
     return blockers
@@ -722,15 +716,6 @@ def _validate_acceptance(payload: dict[str, Any]) -> None:
     proxies = payload["proxies"]
     if not isinstance(proxies, list) or len(proxies) < 3:
         raise LaunchError("acceptance.proxies must list the primary cheap proxy signals")
-
-
-def _validate_abort_rules(value: Any) -> None:
-    if not isinstance(value, list) or len(value) < 6:
-        raise LaunchError("abort_rules must list the launch and runtime stop rules")
-    joined = " ".join(str(item).lower() for item in value)
-    for phrase in ("approved", "$2", "beta", "chosen-logp", "reference", "preference"):
-        if phrase not in joined:
-            raise LaunchError(f"abort_rules must include {phrase}")
 
 
 def _launch_command(config_path: Path, runtime: dict[str, Any], *, mode: str) -> str:

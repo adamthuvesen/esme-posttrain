@@ -178,13 +178,5 @@
       "n-gram repetition rate versus the pre-DPO decoding baseline",
       "response-length distribution stays sane (no verbosity reward-hacking)"
     ]
-  },
-  "abort_rules": [
-    "The exact command and the approved $2 Modal smoke cap have not been approved.",
-    "The full Esme-214M-Chat DPO launch requires explicit approval, the --approved flag, and bounded beta-sweep learning-gate evidence where held-out preference accuracy beats the SFT reference without chosen-logp collapse.",
-    "Runtime spend reaches $2 for smoke, $15 for the approved full-run runaway cap, or projected spend exceeds either cap.",
-    "Preference data source, revision, license, or split differs from this config.",
-    "Chosen-logp collapses below the frozen reference (likelihood displacement) or the held-out preference margin does not increase.",
-    "The frozen SFT reference checkpoint cannot be read, DPO loss becomes NaN/inf, or required artifacts cannot be written to the Volume and local evidence mirror."
-  ]
+  }
 }

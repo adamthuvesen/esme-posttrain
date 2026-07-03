@@ -30,7 +30,7 @@ Esme-214M is intentionally small for learning purposes. That makes the full LLM 
 ## What Is Here
 
 - Stage code for SFT, DPO, RLVR, launch validation, dense-bundle export, and shared artifact writing.
-- Configs and schemas for the current Esme-214M post-training path.
+- Configs for the current Esme-214M post-training path, validated in code by the stage launch modules.
 - Evidence docs for SFT, DPO, and completed Countdown-Lite GRPO.
 - Export tooling for `Esme-214M-Chat` bundles.
 

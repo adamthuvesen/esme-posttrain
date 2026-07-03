@@ -186,7 +186,6 @@ def validate_multi_turn_payload(
             "artifacts",
             "learning_gate",
             "acceptance",
-            "abort_rules",
         },
         "config",
     )
@@ -235,7 +234,6 @@ def validate_multi_turn_payload(
     )
     _validate_learning_gate(_require_object_field(payload["learning_gate"], "learning_gate"))
     _validate_acceptance(_require_object_field(payload["acceptance"], "acceptance"))
-    _validate_abort_rules(payload["abort_rules"])
 
     train_steps = int(optimizer["max_steps"])
     tokens_per_step = max(1, int(budgets["target_train_tokens"]) // train_steps)
@@ -312,7 +310,6 @@ def build_multi_turn_dry_run(
         "learning_gate": config.payload["learning_gate"],
         "dependency_pins": {"modal": MODAL_CLIENT_VERSION, **IMAGE_PACKAGE_PINS},
         "acceptance": config.payload["acceptance"],
-        "abort_rules": config.payload["abort_rules"],
         "launch_blockers": smoke_blockers,
         "full_launch_blockers": full_blockers,
         "modal_smoke_command": config.smoke_launch_command,
@@ -351,8 +348,6 @@ def full_launch_blockers(
         modal_gpu=modal_gpu,
         approval_message="full multi-turn SFT launch requires --approved",
         modal_gpu_env_var="SFT_MODAL_GPU",
-        full_run_cap_usd=MULTITURN_FULL_RUN_SPEND_CAP_USD,
-        cap_label="$40 runaway cap",
     )
     blockers.extend(_learning_gate_blockers(config.payload["learning_gate"]))
     return blockers
@@ -475,15 +470,6 @@ def _validate_acceptance(payload: dict[str, Any]) -> None:
     if payload["sft_must_beat_base"] is not True:
         raise LaunchError("acceptance.sft_must_beat_base must be true")
     _str(payload["eval_dataset"], "acceptance.eval_dataset")
-
-
-def _validate_abort_rules(value: Any) -> None:
-    if not isinstance(value, list) or len(value) < 7:
-        raise LaunchError("abort_rules must list the launch and runtime stop rules")
-    joined = " ".join(str(item).lower() for item in value)
-    for phrase in ("approved", "$2", "$40", "no_robots", "response loss", "checkpoint"):
-        if phrase not in joined:
-            raise LaunchError(f"abort_rules must include {phrase}")
 
 
 def _launch_command(config_path: Path, runtime: dict[str, Any], *, mode: str) -> str:

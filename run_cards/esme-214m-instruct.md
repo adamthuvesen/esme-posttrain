@@ -6,7 +6,7 @@
 - Starts from: `Esme-214M-Base`
 - Bundle format: `llm_pretrain_dense_v1`
 - Config: `configs/esme-214m-instruct.json`
-- Config schema: `schemas/instruct-sft-config.schema.json`
+- Config validation: `src/esme_posttrain/sft/launch_instruct.py`
 
 This single-turn SFT recipe is retained for reproducibility. The active public
 post-training path now uses the multi-turn SFT foundation in

@@ -44,16 +44,12 @@ def smoke_launch_blockers(
     runtime: dict[str, Any],
     estimated_smoke_cost_usd: float,
 ) -> list[str]:
-    cap_label = f"the approved ${SMOKE_SPEND_CAP_USD:.0f} smoke cap"
+    # Cap and timeout bounds are already enforced by validate_modal_runtime,
+    # which raises before any blocker check can run. Only the projection —
+    # computed after validation — can still block here.
     blockers: list[str] = []
-    if float(runtime["smoke_max_cost_usd"]) > SMOKE_SPEND_CAP_USD:
-        blockers.append(f"runtime.smoke_max_cost_usd exceeds {cap_label}")
-    if float(runtime["runtime_spend_stop_usd"]) > SMOKE_SPEND_CAP_USD:
-        blockers.append(f"runtime.runtime_spend_stop_usd exceeds {cap_label}")
     if estimated_smoke_cost_usd > float(runtime["smoke_max_cost_usd"]):
         blockers.append("projected Modal smoke cost exceeds runtime.smoke_max_cost_usd")
-    if int(runtime["timeout_hours"]) > 24:
-        blockers.append("runtime.timeout_hours exceeds Modal's 24h function maximum")
     return blockers
 
 
@@ -65,9 +61,10 @@ def full_launch_blockers(
     modal_gpu: str | None,
     approval_message: str,
     modal_gpu_env_var: str,
-    full_run_cap_usd: float,
-    cap_label: str,
 ) -> list[str]:
+    # Cap bounds are already enforced by validate_modal_runtime, which raises
+    # before any blocker check can run. Blockers cover only launch-time state:
+    # approval, the GPU env var, and the post-validation cost projection.
     blockers: list[str] = []
     if not approved:
         blockers.append(approval_message)
@@ -77,10 +74,6 @@ def full_launch_blockers(
             f"{modal_gpu_env_var} must match runtime.gpu_profiles[runtime.selected_gpu].modal_gpu "
             "for full-run cost accounting"
         )
-    if float(runtime["full_run_max_cost_usd"]) > full_run_cap_usd:
-        blockers.append(f"runtime.full_run_max_cost_usd exceeds the {cap_label}")
-    if float(runtime["full_run_runtime_spend_stop_usd"]) > full_run_cap_usd:
-        blockers.append(f"runtime.full_run_runtime_spend_stop_usd exceeds the {cap_label}")
     if estimated_full_cost_usd > float(runtime["full_run_max_cost_usd"]):
         blockers.append("projected full-run cost exceeds runtime.full_run_max_cost_usd")
     return blockers

@@ -31,27 +31,20 @@ def test_estimate_cost_requires_positive_inputs() -> None:
         estimate_cost_usd(tokens=0, projected_tokens_per_second=10.0, usd_per_hour=1.0)
 
 
-def test_shared_smoke_launch_blockers_preserve_cap_messages() -> None:
-    runtime = {
-        "smoke_max_cost_usd": 3.0,
-        "runtime_spend_stop_usd": 3.0,
-        "timeout_hours": 25,
-    }
+def test_shared_smoke_launch_blockers_flag_projection_over_budget() -> None:
+    runtime = {"smoke_max_cost_usd": 2.0}
 
     assert smoke_launch_blockers(runtime=runtime, estimated_smoke_cost_usd=4.0) == [
-        "runtime.smoke_max_cost_usd exceeds the approved $2 smoke cap",
-        "runtime.runtime_spend_stop_usd exceeds the approved $2 smoke cap",
         "projected Modal smoke cost exceeds runtime.smoke_max_cost_usd",
-        "runtime.timeout_hours exceeds Modal's 24h function maximum",
     ]
+    assert smoke_launch_blockers(runtime=runtime, estimated_smoke_cost_usd=1.0) == []
 
 
 def test_shared_full_launch_blockers_keep_pipeline_wording() -> None:
     runtime = {
         "selected_gpu": "A100",
         "gpu_profiles": {"A100": {"modal_gpu": "A100"}},
-        "full_run_max_cost_usd": 41.0,
-        "full_run_runtime_spend_stop_usd": 41.0,
+        "full_run_max_cost_usd": 40.0,
     }
 
     assert full_launch_blockers(
@@ -61,16 +54,23 @@ def test_shared_full_launch_blockers_keep_pipeline_wording() -> None:
         modal_gpu="H100",
         approval_message="full multi-turn SFT launch requires --approved",
         modal_gpu_env_var="SFT_MODAL_GPU",
-        full_run_cap_usd=40.0,
-        cap_label="$40 runaway cap",
     ) == [
         "full multi-turn SFT launch requires --approved",
         "SFT_MODAL_GPU must match runtime.gpu_profiles[runtime.selected_gpu].modal_gpu "
         "for full-run cost accounting",
-        "runtime.full_run_max_cost_usd exceeds the $40 runaway cap",
-        "runtime.full_run_runtime_spend_stop_usd exceeds the $40 runaway cap",
         "projected full-run cost exceeds runtime.full_run_max_cost_usd",
     ]
+    assert (
+        full_launch_blockers(
+            runtime=runtime,
+            estimated_full_cost_usd=39.0,
+            approved=True,
+            modal_gpu="A100",
+            approval_message="full multi-turn SFT launch requires --approved",
+            modal_gpu_env_var="SFT_MODAL_GPU",
+        )
+        == []
+    )
 
 
 def test_build_modal_launch_command_preserves_approval_flag(tmp_path: Path) -> None:

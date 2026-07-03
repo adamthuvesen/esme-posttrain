@@ -70,7 +70,7 @@
   },
   "optimizer": {
     "name": "AdamW",
-    "learning_rate": 0.00003,
+    "learning_rate": 3e-05,
     "micro_batch_size": 2,
     "gradient_accumulation_steps": 8,
     "effective_batch_size": 16,
@@ -201,7 +201,7 @@
         "best_arm_id": "sweep-20260627T143203Z-lr3e-5-mb2-ga8-eb16",
         "best_step": 60,
         "selected_full_run_arm_id": "sweep-20260627T143203Z-lr3e-5-mb2-ga8-eb16",
-        "selected_full_run_learning_rate": 0.00003,
+        "selected_full_run_learning_rate": 3e-05,
         "selected_full_run_effective_batch_size": 16,
         "best_no_robots_response_loss": 2.7090167036172934,
         "final_response_loss_for_best_arm": 1.8420357651088226,
@@ -224,15 +224,5 @@
     "heldout_response_loss_required": true,
     "instruct_must_beat_base": true,
     "eval_dataset": "weighted matched SmolTalk/Tulu with no_robots OOD guardrail"
-  },
-  "abort_rules": [
-    "The exact command and the approved $2 Modal smoke cap have not been approved.",
-    "The full Esme-214M-Instruct SFT launch requires explicit approval, the --approved flag, stopped-run reconciliation, and bounded_matched_interval_eval_sweep proof where eval/matched/response_loss improves versus step 0.",
-    "Runtime spend reaches $2 for smoke, $25 for any future full-run approval, or projected spend exceeds either cap.",
-    "Training data source, revision, license, 80/20 mix, or no_robots eval-only status differs from this config.",
-    "HuggingFaceH4/no_robots is non-commercial and must remain eval-only unless explicit non-commercial training approval is recorded.",
-    "Prompt-token masking is not asserted or response loss cannot be computed.",
-    "Weighted matched response loss does not beat Base, no_robots crosses its catastrophic-regression threshold, loss becomes NaN/inf, or checkpoint save/load fails.",
-    "Required artifacts cannot be written to the Modal Volume and local evidence mirror."
-  ]
+  }
 }

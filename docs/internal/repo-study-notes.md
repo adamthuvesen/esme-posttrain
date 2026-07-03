@@ -37,7 +37,8 @@ flowchart TD
 Key points:
 
 - The config is a contract, not a settings file: it names its run card, budgets,
-  baseline metrics, and abort rules (see `configs/esme-214m-rl.json`).
+  and baseline metrics (see `configs/esme-214m-rl.json`). Stop conditions live in
+  code and enforced config numbers, not prose.
 - Two distinct failure modes: a raised `LaunchError` means the config is malformed
   (unknown keys, wrong types); a returned `launch_blockers` list means the config is
   valid but not allowed to spend (missing `--approved`, projected cost over cap).

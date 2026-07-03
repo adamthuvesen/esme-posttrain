@@ -42,9 +42,6 @@ FULL_EVAL_PROFILE = "full_acceptance_30x32"
 BEFORE_EVAL_DEBUG_PROFILE = "before_eval_debug"
 PIPELINE_SMOKE_PROFILE = "pipeline_smoke"
 
-REQUIRED_BLOCKED_ACTIONS = frozenset(
-    {"dataset_download", "modal", "gpu", "paid_api", "full_training"}
-)
 DISALLOWED_REWARD_TERMS = frozenset({"style", "sharpness", "friendliness", "naturalness", "tone"})
 VERIFIABLE_REWARD_TYPES = frozenset(
     {"exact_match", "numeric_match", "regex_match", "unit_test", "execution_check"}
@@ -223,7 +220,6 @@ def build_grpo_dry_run(
         "approval_required": True,
         "approval_flag": LAUNCH_APPROVAL_FLAG,
         "approval_state": "not approved for launch",
-        "blocked_actions": list(config.payload["approval_gate"]["blocked_actions"]),
         "full_launch_blockers": full_blockers,
         "full_launch_command": config.full_launch_command,
         "resume_command": config.full_launch_command,
@@ -294,7 +290,6 @@ def validate_rlvr_payload(payload: dict[str, Any], config_path: Path) -> RLVRLau
             "starts_from",
             "input_bundle",
             "dataset",
-            "approval_gate",
             "budgets",
             "grpo",
             "reward_policy",
@@ -303,7 +298,6 @@ def validate_rlvr_payload(payload: dict[str, Any], config_path: Path) -> RLVRLau
             "pipeline_smoke",
             "artifacts",
             "acceptance",
-            "abort_rules",
         },
         "config",
     )
@@ -329,7 +323,6 @@ def validate_rlvr_payload(payload: dict[str, Any], config_path: Path) -> RLVRLau
     dataset_manifest_path, dataset = _validate_dataset(
         object_field(payload["dataset"], "dataset"), config_dir
     )
-    _validate_approval_gate(object_field(payload["approval_gate"], "approval_gate"))
     budgets = _validate_budgets(object_field(payload["budgets"], "budgets"), dataset)
     grpo = _validate_grpo(object_field(payload["grpo"], "grpo"))
     _validate_reward_policy(object_field(payload["reward_policy"], "reward_policy"))
@@ -359,7 +352,6 @@ def validate_rlvr_payload(payload: dict[str, Any], config_path: Path) -> RLVRLau
         object_field(payload["artifacts"], "artifacts"), config_dir
     )
     _validate_acceptance(object_field(payload["acceptance"], "acceptance"))
-    _validate_abort_rules(payload["abort_rules"])
 
     estimated_train_tokens = _estimate_train_tokens(
         input_bundle_path=input_bundle_path,
@@ -443,8 +435,6 @@ def full_launch_blockers(
         modal_gpu=modal_gpu,
         approval_message="full Esme-214M-RL GRPO launch requires --approved",
         modal_gpu_env_var="RLVR_MODAL_GPU",
-        full_run_cap_usd=FULL_RUN_SPEND_CAP_USD,
-        cap_label=f"${FULL_RUN_SPEND_CAP_USD:.0f} cap",
     )
     if config.estimated_train_tokens > int(config.budgets["max_rollout_tokens"]):
         blockers.append("estimated rollout tokens exceed budgets.max_rollout_tokens")
@@ -696,23 +686,6 @@ def _validate_rl_manifest(manifest_path: Path, manifest: dict[str, Any]) -> Data
         split_counts=split_counts,
         details=(f"reward_definitions={len(reward_names)}",),
     )
-
-
-def _validate_approval_gate(payload: dict[str, Any]) -> None:
-    require_keys(
-        payload, {"requires_adam_approval", "approved", "blocked_actions"}, "approval_gate"
-    )
-    if payload["requires_adam_approval"] is not True:
-        raise LaunchError("approval_gate.requires_adam_approval must be true")
-    if payload["approved"] is not True:
-        raise LaunchError("approval_gate.approved must be true for this approved mission config")
-    blocked_actions = payload["blocked_actions"]
-    if not isinstance(blocked_actions, list):
-        raise LaunchError("approval_gate.blocked_actions must be a list")
-    missing = REQUIRED_BLOCKED_ACTIONS - {str(item) for item in blocked_actions}
-    if missing:
-        names = ", ".join(sorted(missing))
-        raise LaunchError(f"approval_gate.blocked_actions is missing: {names}")
 
 
 def _validate_budgets(payload: dict[str, Any], dataset: DatasetSummary) -> dict[str, Any]:
@@ -1081,15 +1054,6 @@ def _validate_acceptance(payload: dict[str, Any]) -> None:
         value = payload[key]
         if isinstance(value, bool) or not isinstance(value, int | float) or not 0 <= value <= 1:
             raise LaunchError(f"acceptance.{key} must be a rate in [0, 1]")
-
-
-def _validate_abort_rules(value: Any) -> None:
-    if not isinstance(value, list) or len(value) < 6:
-        raise LaunchError("abort_rules must list the launch and runtime stop rules")
-    joined = " ".join(str(item).lower() for item in value)
-    for phrase in ("approved", "$25", "countdown-lite", "gsm8k", "rollout", "modal"):
-        if phrase not in joined:
-            raise LaunchError(f"abort_rules must include {phrase}")
 
 
 def _estimate_train_tokens(

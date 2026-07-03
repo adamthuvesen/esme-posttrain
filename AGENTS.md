@@ -29,7 +29,7 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
   - `run_cards/esme-214m-sft-multiturn.md` for the multi-turn SFT foundation.
   - `run_cards/esme-214m-chat-dpo.md` for chat DPO.
   - `run_cards/esme-214m-rl.md` for RLVR prep.
-- Check `configs/` and `schemas/` together when editing config shape, validation, fixtures, or CLI dry-run payloads.
+- When editing config shape, fixtures, or CLI dry-run payloads, update the matching stage launch validator (`sft/launch_instruct.py`, `sft/launch_multiturn.py`, `dpo/launch.py`, `rl/launch.py`) and its tests together — the validators are the single source of truth for config shape.
 
 ## Scope
 

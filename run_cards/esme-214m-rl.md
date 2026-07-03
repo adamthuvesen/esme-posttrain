@@ -30,8 +30,7 @@ Esme-214M-Base -> Esme-214M-Instruct -> Esme-214M-Chat -> Esme-214M-RL
 - Produces: `Esme-214M-RL`
 - Starts from: `Esme-214M-Chat`
 - Config: `configs/esme-214m-rl.json`
-- Dataset manifest schema: `schemas/rl-task-manifest.schema.json`
-- Launch config schema: `schemas/rlvr-grpo-config.schema.json`
+- Config and dataset-manifest validation: `src/esme_posttrain/rl/launch.py`
 - Launcher: `scripts/modal_rlvr_grpo.py`
 - Public result summary: `docs/rlvr-countdown-lite-grpo.md`
 - Operator provenance, training-shape verdict, incident record:

@@ -181,7 +181,14 @@
         "best_response_loss": 1.8084324924117876,
         "best_arm_id": "sweep-20260627T214722Z-lr5e-5-mb2-ga8-eb16",
         "best_learning_rate": 5e-05,
-        "interval_eval_steps": [20, 40, 60, 80, 100, 120],
+        "interval_eval_steps": [
+          20,
+          40,
+          60,
+          80,
+          100,
+          120
+        ],
         "evidence_uri": "runs/esme-214m-sft-multiturn/sweep-evidence/sweep-20260627T214722Z-evidence/interval-eval-sweep.json"
       }
     }
@@ -190,15 +197,5 @@
     "heldout_response_loss_required": true,
     "sft_must_beat_base": true,
     "eval_dataset": "weighted matched multi-turn SmolTalk + single-turn Tulu with no_robots OOD guardrail"
-  },
-  "abort_rules": [
-    "The exact command and the approved $2 Modal smoke cap have not been approved.",
-    "The full Esme-214M-Instruct multi-turn SFT launch requires explicit approval, the --approved flag, and bounded matched-sweep learning-gate evidence where eval/matched/response_loss improves versus step 0.",
-    "Runtime spend reaches $2 for smoke, $40 for the approved full-run runaway cap, or projected spend exceeds either cap.",
-    "Training data source, revision, license, or no_robots eval-only status differs from this config.",
-    "HuggingFaceH4/no_robots is non-commercial and must remain eval-only unless explicit non-commercial training approval is recorded.",
-    "Multi-turn assistant-only masking is not asserted or response loss cannot be computed.",
-    "Weighted matched response loss does not beat Base, no_robots crosses its catastrophic-regression threshold, loss becomes NaN/inf, or checkpoint save/load fails.",
-    "Required artifacts cannot be written to the Modal Volume and local evidence mirror."
-  ]
+  }
 }

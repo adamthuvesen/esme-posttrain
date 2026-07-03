@@ -21,17 +21,6 @@
     "remote_download_allowed": false,
     "train_on_gsm8k_lite": false
   },
-  "approval_gate": {
-    "requires_adam_approval": true,
-    "approved": true,
-    "blocked_actions": [
-      "dataset_download",
-      "modal",
-      "gpu",
-      "paid_api",
-      "full_training"
-    ]
-  },
   "budgets": {
     "dataset_sample_budget": 2,
     "train_task_budget": 1,
@@ -177,15 +166,5 @@
     "baseline_pass_at_8": 0.0,
     "baseline_pass_at_32": 0.0,
     "record_no_improvement": true
-  },
-  "abort_rules": [
-    "requires --approved and Adam's mission approval before any Modal/GPU/full_training action",
-    "stop before the $25 Countdown-Lite mission cap or the configured $3 fixture runtime hard stop",
-    "train only on local Countdown-Lite train split",
-    "do not train on GSM8K-lite or use it as a reward source",
-    "refuse if estimated rollout tokens exceed the rollout token budget",
-    "refuse if RLVR_MODAL_GPU does not match runtime.selected_gpu Modal accounting",
-    "run the no-spend pipeline_smoke gate before any renewed Modal spend",
-    "no paid API use and no remote dataset download"
-  ]
+  }
 }
