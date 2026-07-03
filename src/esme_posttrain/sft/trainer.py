@@ -57,7 +57,7 @@ from esme_posttrain.training.collate import (
 from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import append_metric, train_metric_payload
 from esme_posttrain.training.runtime import (
-    lr_lambda as _lr_lambda,
+    lr_lambda_factory as _lr_lambda_factory,
 )
 from esme_posttrain.training.runtime import (
     precision_context as _precision_context,
@@ -226,7 +226,14 @@ def build_full_finetune_optimizer(
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
     )
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=_lr_lambda(config))
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer,
+        lr_lambda=_lr_lambda_factory(
+            scheduler=config.scheduler,
+            warmup_steps=config.warmup_steps,
+            max_steps=config.max_steps,
+        ),
+    )
     return optimizer, scheduler
 
 

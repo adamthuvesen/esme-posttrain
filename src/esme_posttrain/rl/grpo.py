@@ -24,7 +24,7 @@ from esme_posttrain.training.checkpointing import save_training_checkpoint
 from esme_posttrain.training.collate import IGNORE_INDEX
 from esme_posttrain.training.metrics import append_metric
 from esme_posttrain.training.runtime import (
-    lr_lambda,
+    lr_lambda_factory,
     precision_context,
     resolve_torch_device,
     set_reproducible_seed,
@@ -269,7 +269,14 @@ def run_countdown_lite_grpo(
     optimizer = torch.optim.AdamW(
         policy.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
     )
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda(config))
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer,
+        lr_lambda=lr_lambda_factory(
+            scheduler=config.scheduler,
+            warmup_steps=config.warmup_steps,
+            max_steps=config.max_steps,
+        ),
+    )
 
     write_json(output_dir / "config.json", _config_payload(config))
     write_json(output_dir / "data-report.json", _data_report(train_rows, config))

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -26,29 +28,41 @@ def resolve_torch_device(device: torch.device | str) -> torch.device:
     return resolved
 
 
-def lr_lambda(config: Any) -> Any:
-    if config.scheduler == "constant":
-        return lambda _step: 1.0
+def constant_lr(step: int) -> float:
+    """Flat multiplier: the optimizer's base learning rate at every step."""
+    del step
+    return 1.0
 
-    if config.scheduler == "cosine_decay":
 
-        def cosine_warmup_decay(step: int) -> float:
-            if config.warmup_steps and step < config.warmup_steps:
-                return max(1e-8, float(step + 1) / float(config.warmup_steps))
-            decay_steps = max(1, config.max_steps - config.warmup_steps)
-            progress = min(1.0, max(0.0, float(step - config.warmup_steps) / decay_steps))
-            return max(1e-8, 0.5 * (1.0 + np.cos(np.pi * progress)))
+def cosine_decay_lr(step: int, *, warmup_steps: int, max_steps: int) -> float:
+    """Linear warmup, then cosine decay of the LR multiplier toward ~0 by ``max_steps``."""
+    if warmup_steps and step < warmup_steps:
+        return max(1e-8, float(step + 1) / float(warmup_steps))
+    decay_steps = max(1, max_steps - warmup_steps)
+    progress = min(1.0, max(0.0, float(step - warmup_steps) / decay_steps))
+    return max(1e-8, 0.5 * (1.0 + np.cos(np.pi * progress)))
 
-        return cosine_warmup_decay
 
-    def linear_warmup_decay(step: int) -> float:
-        if config.warmup_steps and step < config.warmup_steps:
-            return max(1e-8, float(step + 1) / float(config.warmup_steps))
-        decay_steps = max(1, config.max_steps - config.warmup_steps)
-        progress = min(1.0, max(0.0, float(step - config.warmup_steps) / decay_steps))
-        return max(1e-8, 1.0 - progress)
+def linear_warmup_decay_lr(step: int, *, warmup_steps: int, max_steps: int) -> float:
+    """Linear warmup, then linear decay of the LR multiplier toward ~0 by ``max_steps``."""
+    if warmup_steps and step < warmup_steps:
+        return max(1e-8, float(step + 1) / float(warmup_steps))
+    decay_steps = max(1, max_steps - warmup_steps)
+    progress = min(1.0, max(0.0, float(step - warmup_steps) / decay_steps))
+    return max(1e-8, 1.0 - progress)
 
-    return linear_warmup_decay
+
+def lr_lambda_factory(
+    *, scheduler: str, warmup_steps: int, max_steps: int
+) -> Callable[[int], float]:
+    """Map a config's scheduler name onto the matching multiplier for ``LambdaLR``."""
+    if scheduler == "constant":
+        return constant_lr
+    if scheduler == "cosine_decay":
+        return partial(cosine_decay_lr, warmup_steps=warmup_steps, max_steps=max_steps)
+    if scheduler == "linear_warmup_decay":
+        return partial(linear_warmup_decay_lr, warmup_steps=warmup_steps, max_steps=max_steps)
+    raise TrainerError(f"unknown scheduler: {scheduler}")
 
 
 def validate_precision(precision: str, device: torch.device) -> None:
