@@ -15,11 +15,15 @@ RLVR uses GRPO on the current Countdown-Lite verifier task.
 
 ## Stage Summary
 
-1. **SFT** starts from `Esme-214M-Base` and produces `Esme-214M-Instruct`. It teaches chat format, turn-taking, and basic instruction following with the multi-turn SFT foundation.
+| Stage | Starts from | Produces | Accepted signal |
+| --- | --- | --- | --- |
+| SFT | `Esme-214M-Base` | `Esme-214M-Instruct` | Held-out response loss bottoms at `1.36` on step `6300`. |
+| DPO | `Esme-214M-Instruct` | `Esme-214M-Chat` | Held-out preference accuracy peaks at `67.4%` on step `600`. |
+| RLVR | `Esme-214M-Chat` | `Esme-214M-RL` | Best GRPO reward is `0.71` on step `234`; acceptance exact-solve rate is `16.35%`. |
 
-2. **DPO** starts from `Esme-214M-Instruct` and produces `Esme-214M-Chat`. It trains the model to pick chosen answers over rejected ones from preference pairs, without on-policy RL. Chat export bundles are generated locally for downstream inference work.
-
-3. **RLVR** starts from `Esme-214M-Chat` and produces `Esme-214M-RL`. It trains against verifier-backed rewards on one task. Countdown-Lite GRPO is complete, with valid-expression rate at 99.38% and pass@1 at 16.67%.
+SFT teaches chat format, turn-taking, and basic instruction following. DPO
+trains the model to prefer chosen answers over rejected answers, without
+on-policy RL. RLVR then trains against verifier-backed rewards on one task.
 
 The current RLVR target is Countdown-Lite: generate a short arithmetic expression that uses each supplied number exactly once and reaches the target. The reward is verifier-backed. Style rewards are intentionally out of scope.
 
@@ -64,30 +68,34 @@ uv run python scripts/modal_chat_sft.py --config configs/esme-214m-sft-multiturn
 
 ## Training Telemetry
 
-Static cards rendered from the accepted runs' Modal artifacts, one per
-post-training stage: multi-turn SFT stops at the held-out loss bottom, DPO's
-preference margin climbs while held-out accuracy picks the checkpoint, and
-GRPO reward rises steadily over 240 steps with no collapse — the best and
-final `Esme-214M-RL` checkpoints score identically.
+Static cards rendered from the accepted runs' Modal artifacts. The README keeps
+one visual per post-training stage: SFT and DPO show checkpoint selection, and
+RLVR shows verifier-scored behavior before and after RL. The GRPO reward curve
+is still generated for run-level debugging, but the README leaves that detail
+to the RL docs.
 
 **Reading note:** These charts show training stability and checkpoint selection,
 not broad capability. `Esme-214M` is intentionally small, so absolute gains are
 capped by the base model; the key signal is improvement without collapse.
 
 <p>
-  <img src="assets/fig-sft-training-dynamics.svg" width="49%" alt="Multi-turn SFT training" />
-  <img src="assets/fig-dpo-training-dynamics.svg" width="49%" alt="DPO preference training" />
+  <img src="assets/fig-sft-training-dynamics.svg" width="100%" alt="Multi-turn SFT training" />
 </p>
 <p>
-  <img src="assets/fig-grpo-training-dynamics.svg" width="49%" alt="GRPO training dynamics" />
-  <img src="assets/fig-grpo-countdown-evidence.svg" width="49%" alt="Countdown-Lite evidence: acceptance and unseen-task transfer" />
+  <img src="assets/fig-dpo-training-dynamics.svg" width="100%" alt="DPO preference training" />
+</p>
+<p>
+  <img src="assets/fig-grpo-countdown-evidence.svg" width="100%" alt="Countdown-Lite evidence: acceptance and unseen-task transfer" />
 </p>
 
 The cards are rendered by `scripts/plot_run_telemetry.py` from the runs'
 `rollouts.jsonl`, `metrics.jsonl`, and `best-checkpoint.json`, cross-checking
 the derived curves against every logged metric record before rendering. The
-evidence card's bars are transcribed from the tables in
-`docs/rlvr-countdown-lite-grpo.md` and `docs/rlvr-countdown-heldout-transfer.md`.
+script also exports `assets/fig-grpo-training-dynamics.svg` for the RL docs.
+The RL evidence card uses sample-level valid-expression and exact-solve rates
+transcribed from `docs/rlvr-countdown-lite-grpo.md` and
+`docs/rlvr-countdown-heldout-transfer.md`; task-level pass@k metrics stay in
+those detailed reports.
 
 ## Repository Layout
 
@@ -111,10 +119,16 @@ Stage-specific code belongs in the stage package. Keep the package root small.
 
 These repositories exchange artifacts, not imports:
 
-- [esme-pretrain](../esme-pretrain): trains base checkpoints from scratch.
-- `esme-posttrain`: adapts base checkpoints with SFT, DPO, and RLVR.
-- [llm-infer](../llm-infer): serves and benchmarks adapted checkpoints.
-- `grpo-decomp`: studies where RLVR and GRPO gains come from.
+- [`esme-pretrain`](https://github.com/adamthuvesen/esme-pretrain): trains
+  `Esme-214M-Base` from scratch.
+- [`esme-posttrain`](https://github.com/adamthuvesen/esme-posttrain): adapts
+  the base checkpoint with SFT, DPO, and verifier-backed RLVR.
+- [`llm-infer`](https://github.com/adamthuvesen/llm-infer): loads, serves, and
+  benchmarks exported Esme checkpoints.
+- [`llm-rlvr`](https://github.com/adamthuvesen/llm-rlvr): provides a reusable
+  RLVR harness with text-to-SQL as the reference task.
+- [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp): measures where
+  GRPO gains come from, separating reliability from new capability.
 
 ## References
 

@@ -15,12 +15,12 @@ read-only from the run Modal volumes) and exports four static SVG cards into
 
 - fig-sft-training-dynamics.svg: train loss and held-out response loss over the
   7500 SFT steps, accepted (early-stopped) checkpoint marked.
-- fig-dpo-training-dynamics.svg: train preference accuracy and margin over the
-  960 DPO steps, accepted checkpoint marked.
+- fig-dpo-training-dynamics.svg: train and held-out preference accuracy over
+  the 960 DPO steps, accepted checkpoint marked.
 - fig-grpo-training-dynamics.svg: reward mean +-1 std, valid-expression and
   exact-solve rates over the 240 GRPO steps, best checkpoint marked.
-- fig-grpo-countdown-evidence.svg: Chat-vs-RL acceptance metrics and the
-  unseen-2-number transfer panel (bars from the tracked evidence docs).
+- fig-grpo-countdown-evidence.svg: Chat-vs-RL sample-level acceptance metrics
+  and the unseen-2-number transfer panel (bars from the tracked evidence docs).
 
     uv run scripts/plot_run_telemetry.py --output-dir assets --json
 
@@ -81,7 +81,6 @@ ACCEPTANCE_METRICS = [
     # (metric label, Esme-214M-Chat %, Esme-214M-RL %)
     ("valid-expression", 5.83, 99.38),
     ("exact-solve", 0.73, 16.35),
-    ("pass@32", 13.33, 16.67),
 ]
 HELDOUT_WIDTH2_METRICS = [
     # 2-number stratum, held-out fresh set (5 tasks), same acceptance protocol.
@@ -106,7 +105,8 @@ class GrpoTelemetry:
 class DpoTelemetry:
     train_steps: list[int]
     preference_accuracy: list[float]
-    margin: list[float]
+    eval_steps: list[int]
+    eval_preference_accuracy: list[float]
     accepted_step: int
     accepted_eval_accuracy: float
     train_rows: int
@@ -214,14 +214,12 @@ def load_dpo_telemetry(run_dir: Path) -> DpoTelemetry:
 
     train_steps: list[int] = []
     accuracy: list[float] = []
-    margin: list[float] = []
     eval_accuracy_by_step: dict[int, float] = {}
     for line_number, line in enumerate(metrics_path.read_text().splitlines(), start=1):
         record = json.loads(line)
         if record["event"] == "train":
             train_steps.append(record["step"])
             accuracy.append(record["train/preference_accuracy"])
-            margin.append(record["train/margin"])
         elif record["event"] == "eval":
             eval_accuracy_by_step[record["step"]] = record["eval/preference_accuracy"]
         else:
@@ -244,10 +242,13 @@ def load_dpo_telemetry(run_dir: Path) -> DpoTelemetry:
             f" metrics.jsonl eval {eval_accuracy_by_step[accepted_step]:.6f}"
         )
 
+    eval_steps = [step for step in sorted(eval_accuracy_by_step) if step > 0]
+
     return DpoTelemetry(
         train_steps=train_steps,
         preference_accuracy=accuracy,
-        margin=margin,
+        eval_steps=eval_steps,
+        eval_preference_accuracy=[eval_accuracy_by_step[s] for s in eval_steps],
         accepted_step=accepted_step,
         accepted_eval_accuracy=accepted_value,
         train_rows=len(train_steps),
@@ -611,13 +612,12 @@ def build_dpo_training_figure(telemetry: DpoTelemetry) -> go.Figure:
         layout=card_layout(
             title="Esme-214M-Chat: DPO preference training",
             subtitle=(
-                f"Train preference accuracy and margin over {total_steps} steps -"
+                f"Train and held-out preference accuracy over {total_steps} steps -"
                 " UltraFeedback-binarized pairs, beta 0.5"
             ),
             conclusion=(
-                "Conclusion: the preference margin climbs steadily while train accuracy"
-                f" saturates; the accepted checkpoint<br>is step {telemetry.accepted_step},"
-                " where held-out preference accuracy peaks at"
+                "Conclusion: train preference accuracy rises, while held-out accuracy picks"
+                f" the accepted checkpoint<br>at step {telemetry.accepted_step}, where it peaks at"
                 f" {telemetry.accepted_eval_accuracy * 100:.1f}%."
             ),
         )
@@ -628,17 +628,18 @@ def build_dpo_training_figure(telemetry: DpoTelemetry) -> go.Figure:
             y=telemetry.preference_accuracy,
             mode="lines",
             name="train preference accuracy",
-            line={"color": BLUE, "width": 2.4},
+            line={"color": BLUE, "width": 1.8},
+            opacity=0.45,
         )
     )
     figure.add_trace(
         go.Scatter(
-            x=telemetry.train_steps,
-            y=telemetry.margin,
-            yaxis="y2",
-            mode="lines",
-            name="train margin",
-            line={"color": GREEN, "width": 2},
+            x=telemetry.eval_steps,
+            y=telemetry.eval_preference_accuracy,
+            mode="lines+markers",
+            name="held-out preference accuracy",
+            line={"color": GREEN, "width": 2.6},
+            marker={"size": 7},
         )
     )
     figure.update_layout(
@@ -647,14 +648,6 @@ def build_dpo_training_figure(telemetry: DpoTelemetry) -> go.Figure:
             title={"text": "preference accuracy"},
             range=[0.4, 1.05],
             tickvals=[0.4, 0.6, 0.8, 1.0],
-        ),
-        yaxis2=styled_axis(
-            title={"text": "margin"},
-            overlaying="y",
-            side="right",
-            range=[0, 2.1],
-            tickvals=[0, 0.5, 1.0, 1.5, 2.0],
-            showgrid=False,
         ),
     )
     figure.add_shape(
@@ -683,7 +676,9 @@ def build_dpo_training_figure(telemetry: DpoTelemetry) -> go.Figure:
         }
     )
     figure.add_annotation(trace_label("train preference accuracy", total_steps * 0.03, 0.98, BLUE))
-    figure.add_annotation(trace_label("train margin (right axis)", total_steps * 0.45, 0.6, GREEN))
+    figure.add_annotation(
+        trace_label("held-out preference accuracy", total_steps * 0.44, 0.63, GREEN)
+    )
     return figure
 
 
