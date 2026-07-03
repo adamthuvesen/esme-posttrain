@@ -66,7 +66,8 @@ from esme_posttrain.sft.sweep_multiturn import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BASE_BUNDLE_LOCAL = Path("/Users/adamthuvesen/dev/menti/esme-pretrain/exports/esme-214m-base")
+BASE_BUNDLE_ENV = "ESME_BASE_BUNDLE_LOCAL"
+DEFAULT_BASE_BUNDLE_LOCAL = REPO_ROOT.parent / "esme-pretrain" / "exports" / "esme-214m-base"
 BASE_BUNDLE_REMOTE = Path("/root/esme-214m-base")
 SFT_MODAL_GPU = os.environ.get("SFT_MODAL_GPU", "A100")
 SFT_TIMEOUT_HOURS = int(float(os.environ.get("SFT_TIMEOUT_HOURS", "1")))
@@ -100,12 +101,21 @@ run_modal_throughput_probe = None
 run_modal_resample_evidence = None
 
 
+def _resolve_base_bundle_local() -> Path:
+    return Path(os.environ.get(BASE_BUNDLE_ENV, DEFAULT_BASE_BUNDLE_LOCAL)).expanduser()
+
+
+BASE_BUNDLE_LOCAL = _resolve_base_bundle_local()
+
+
 def _base_bundle_blocker() -> str | None:
     if BASE_BUNDLE_LOCAL.is_dir():
         return None
     return (
-        f"base bundle missing at {BASE_BUNDLE_LOCAL}; "
-        "re-export Esme-214M-Base from esme-pretrain before a training launch"
+        f"base bundle missing at {BASE_BUNDLE_LOCAL}; set {BASE_BUNDLE_ENV} to the local "
+        "Esme-214M-Base export or place it at the sibling-repo fallback "
+        f"{DEFAULT_BASE_BUNDLE_LOCAL}; re-export Esme-214M-Base from esme-pretrain "
+        "before a training launch"
     )
 
 

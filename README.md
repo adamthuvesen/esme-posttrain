@@ -44,6 +44,16 @@ make check
 
 Use `uv run ...` for Python commands. Default local commands do not download remote datasets, start Modal jobs, or spend money.
 
+Modal SFT training launchers need a local `Esme-214M-Base` export bundle before
+they can start a job. Set `ESME_BASE_BUNDLE_LOCAL` to the bundle directory, or
+place the sibling `esme-pretrain` checkout next to this repo so the fallback
+`../esme-pretrain/exports/esme-214m-base` exists.
+
+```bash
+export ESME_BASE_BUNDLE_LOCAL=/path/to/esme-214m-base
+uv run python scripts/modal_chat_sft.py --config configs/esme-214m-sft-multiturn.json --dry-run --json
+```
+
 ## Current Artifacts
 
 - `docs/rlvr-countdown-lite.md` describes the RLVR task, baseline, and result.

@@ -729,16 +729,51 @@ def test_cli_multi_turn_cpu_fixture_writes_evidence(
 FULL_OUTPUT_STEM = "esme-214m-sft-multiturn-full"
 
 
-def test_training_launches_block_when_base_bundle_missing(
+def test_multi_turn_base_bundle_resolves_env_or_sibling_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(modal_chat_sft, "BASE_BUNDLE_LOCAL", tmp_path / "missing-base")
+    env_bundle = tmp_path / "base-bundle"
+    monkeypatch.setenv(modal_chat_sft.BASE_BUNDLE_ENV, str(env_bundle))
+    assert modal_chat_sft._resolve_base_bundle_local() == env_bundle
+
+    monkeypatch.delenv(modal_chat_sft.BASE_BUNDLE_ENV, raising=False)
+    assert modal_chat_sft._resolve_base_bundle_local() == (
+        REPO_ROOT.parent / "esme-pretrain" / "exports" / "esme-214m-base"
+    )
+
+
+def test_training_launches_block_when_base_bundle_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing_bundle = tmp_path / "missing-base"
+    monkeypatch.setattr(modal_chat_sft, "BASE_BUNDLE_LOCAL", missing_bundle)
     blocker = modal_chat_sft._base_bundle_blocker()
     assert blocker is not None
+    assert str(missing_bundle) in blocker
+    assert modal_chat_sft.BASE_BUNDLE_ENV in blocker
+    assert "sibling-repo fallback" in blocker
     assert "re-export Esme-214M-Base" in blocker
 
     monkeypatch.setattr(modal_chat_sft, "BASE_BUNDLE_LOCAL", tmp_path)
     assert modal_chat_sft._base_bundle_blocker() is None
+
+    monkeypatch.setattr(modal_chat_sft, "BASE_BUNDLE_LOCAL", missing_bundle)
+    monkeypatch.setattr(modal_chat_sft, "SFT_MODAL_GPU", "A100")
+    monkeypatch.setattr(modal_chat_sft, "modal", object())
+    monkeypatch.setattr(modal_chat_sft, "run_modal_full_sft", _RefusingRunner())
+
+    assert (
+        modal_chat_sft.launch(["--config", str(CONFIG_PATH), "--full-run", "--approved", "--json"])
+        == 2
+    )
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["will_start_modal_job"] is False
+    assert any(
+        str(missing_bundle) in blocker and modal_chat_sft.BASE_BUNDLE_ENV in blocker
+        for blocker in refused["full_launch_blockers"]
+    )
 
 
 def test_resample_evidence_preflight_never_launches_and_fits_cap() -> None:

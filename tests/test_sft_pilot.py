@@ -300,6 +300,57 @@ def test_instruct_release_docs_keep_approval_history_internal() -> None:
     assert "Adam approved the full A100 launch" not in public_text
 
 
+def test_instruct_base_bundle_resolves_env_or_sibling_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env_bundle = tmp_path / "base-bundle"
+    monkeypatch.setenv(modal_instruct_sft.BASE_BUNDLE_ENV, str(env_bundle))
+    assert modal_instruct_sft._resolve_base_bundle_local() == env_bundle
+
+    monkeypatch.delenv(modal_instruct_sft.BASE_BUNDLE_ENV, raising=False)
+    assert modal_instruct_sft._resolve_base_bundle_local() == (
+        REPO_ROOT.parent / "esme-pretrain" / "exports" / "esme-214m-base"
+    )
+
+
+def test_instruct_training_launches_block_when_base_bundle_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing_bundle = tmp_path / "missing-base"
+
+    class RefusingRunner:
+        def spawn(self, *args: object) -> object:
+            del args
+            raise AssertionError("missing base bundle must block before Modal spawn")
+
+    monkeypatch.setattr(modal_instruct_sft, "BASE_BUNDLE_LOCAL", missing_bundle)
+    blocker = modal_instruct_sft._base_bundle_blocker()
+    assert blocker is not None
+    assert str(missing_bundle) in blocker
+    assert modal_instruct_sft.BASE_BUNDLE_ENV in blocker
+    assert "sibling-repo fallback" in blocker
+    assert "re-export Esme-214M-Base" in blocker
+
+    monkeypatch.setattr(modal_instruct_sft, "SFT_MODAL_GPU", "A100")
+    monkeypatch.setattr(modal_instruct_sft, "modal", object())
+    monkeypatch.setattr(modal_instruct_sft, "run_modal_full_sft", RefusingRunner())
+
+    assert (
+        modal_instruct_sft.launch(
+            ["--config", str(CONFIG_PATH), "--full-run", "--approved", "--json"]
+        )
+        == 2
+    )
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["will_start_modal_job"] is False
+    assert any(
+        str(missing_bundle) in blocker and modal_instruct_sft.BASE_BUNDLE_ENV in blocker
+        for blocker in refused["full_launch_blockers"]
+    )
+
+
 def test_full_run_refuses_without_approval_and_preflight_never_spawns(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -353,6 +404,7 @@ def test_full_run_output_stem_override_updates_dry_run_and_launch_receipt(
 
     monkeypatch.setattr(modal_instruct_sft, "SFT_MODAL_GPU", "A100")
     monkeypatch.setattr(modal_instruct_sft, "MODAL_FULL_OUTPUT_STEM", fresh_stem)
+    monkeypatch.setattr(modal_instruct_sft, "BASE_BUNDLE_LOCAL", tmp_path)
 
     assert (
         modal_instruct_sft.launch(
@@ -477,6 +529,7 @@ def test_modal_sweep_dry_run_and_mode_conflict_never_spawn(
 
 
 def test_modal_sweep_launch_passes_gpu_and_timeout_into_container(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -495,6 +548,7 @@ def test_modal_sweep_launch_passes_gpu_and_timeout_into_container(
 
     monkeypatch.setattr(modal_instruct_sft, "SFT_MODAL_GPU", "A100")
     monkeypatch.setattr(modal_instruct_sft, "SFT_SWEEP_TIMEOUT_HOURS", 2)
+    monkeypatch.setattr(modal_instruct_sft, "BASE_BUNDLE_LOCAL", tmp_path)
     monkeypatch.setattr(modal_instruct_sft, "modal", object())
     monkeypatch.setattr(modal_instruct_sft, "run_modal_sweep", FakeRunner())
 

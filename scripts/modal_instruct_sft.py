@@ -49,7 +49,8 @@ from esme_posttrain.sft.sweep_instruct import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BASE_BUNDLE_LOCAL = Path("/Users/adamthuvesen/dev/menti/esme-pretrain/exports/esme-214m-base")
+BASE_BUNDLE_ENV = "ESME_BASE_BUNDLE_LOCAL"
+DEFAULT_BASE_BUNDLE_LOCAL = REPO_ROOT.parent / "esme-pretrain" / "exports" / "esme-214m-base"
 BASE_BUNDLE_REMOTE = Path("/root/esme-214m-base")
 SFT_MODAL_GPU = os.environ.get("SFT_MODAL_GPU", "L4")
 SFT_TIMEOUT_HOURS = int(float(os.environ.get("SFT_TIMEOUT_HOURS", "1")))
@@ -76,14 +77,35 @@ run_modal_sweep = None
 run_modal_throughput_probe = None
 
 
+def _resolve_base_bundle_local() -> Path:
+    return Path(os.environ.get(BASE_BUNDLE_ENV, DEFAULT_BASE_BUNDLE_LOCAL)).expanduser()
+
+
+BASE_BUNDLE_LOCAL = _resolve_base_bundle_local()
+
+
+def _base_bundle_blocker() -> str | None:
+    if BASE_BUNDLE_LOCAL.is_dir():
+        return None
+    return (
+        f"base bundle missing at {BASE_BUNDLE_LOCAL}; set {BASE_BUNDLE_ENV} to the local "
+        "Esme-214M-Base export or place it at the sibling-repo fallback "
+        f"{DEFAULT_BASE_BUNDLE_LOCAL}; re-export Esme-214M-Base from esme-pretrain "
+        "before a training launch"
+    )
+
+
 if modal is not None:  # pragma: no cover - exercised by Modal, not local unit tests.
     image = (
         modal.Image.debian_slim(python_version="3.12")
         .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
         .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
         .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
-        .add_local_dir(str(BASE_BUNDLE_LOCAL), remote_path=str(BASE_BUNDLE_REMOTE))
     )
+    # The base bundle is regenerable esme-pretrain output. Training modes need
+    # it in the image and are guarded loudly at launch if it is absent.
+    if BASE_BUNDLE_LOCAL.is_dir():
+        image = image.add_local_dir(str(BASE_BUNDLE_LOCAL), remote_path=str(BASE_BUNDLE_REMOTE))
     posttrain_volume = modal.Volume.from_name(
         "esme-posttrain-esme-instruct-sft-pilot", create_if_missing=True
     )
@@ -354,6 +376,9 @@ def launch(argv: list[str] | None = None) -> int:
         )
         return 2
     blockers = smoke_launch_blockers(config)
+    bundle_blocker = _base_bundle_blocker()
+    if bundle_blocker:
+        blockers = [*blockers, bundle_blocker]
     if blockers:
         print("instruct SFT Modal smoke refused: " + "; ".join(blockers), file=sys.stderr)
         return 2
@@ -396,6 +421,9 @@ def _launch_modal_sweep(config: Any, *, approved: bool, json_output: bool) -> in
         timeout_hours=SFT_SWEEP_TIMEOUT_HOURS,
         modal_gpu=SFT_MODAL_GPU,
     )
+    bundle_blocker = _base_bundle_blocker()
+    if bundle_blocker:
+        blockers = [*blockers, bundle_blocker]
     if blockers:
         payload = {**preflight, "status": "modal_sweep_refused", "launch_blockers": blockers}
         print(_format_payload(payload, json_output=json_output))
@@ -445,6 +473,9 @@ def _launch_throughput_probe(config: Any, *, approved: bool, json_output: bool) 
         modal_gpu=SFT_MODAL_GPU,
         timeout_hours=SFT_PROBE_TIMEOUT_HOURS,
     )
+    bundle_blocker = _base_bundle_blocker()
+    if bundle_blocker:
+        blockers = [*blockers, bundle_blocker]
     if blockers:
         payload = {**preflight, "status": "throughput_probe_refused", "launch_blockers": blockers}
         print(_format_payload(payload, json_output=json_output))
@@ -483,14 +514,18 @@ def _launch_full_run(
 ) -> int:
     full_launch_command = _full_launch_command(config, output_stem)
     if not approved:
+        blockers = full_launch_blockers(
+            config,
+            approved=False,
+            modal_gpu=SFT_MODAL_GPU,
+        )
+        bundle_blocker = _base_bundle_blocker()
+        if bundle_blocker:
+            blockers = [*blockers, bundle_blocker]
         payload = {
             "status": "full_run_refused",
             "will_start_modal_job": False,
-            "full_launch_blockers": full_launch_blockers(
-                config,
-                approved=False,
-                modal_gpu=SFT_MODAL_GPU,
-            ),
+            "full_launch_blockers": blockers,
             "full_launch_command": full_launch_command,
             "volume_output_dir": str(VOLUME_MOUNT / output_stem),
             "resume": resume,
@@ -498,6 +533,9 @@ def _launch_full_run(
         print(_format_payload(payload, json_output=json_output))
         return 2
     blockers = full_launch_blockers(config, approved=True, modal_gpu=SFT_MODAL_GPU)
+    bundle_blocker = _base_bundle_blocker()
+    if bundle_blocker:
+        blockers = [*blockers, bundle_blocker]
     if blockers:
         payload = {
             "status": "full_run_refused",
