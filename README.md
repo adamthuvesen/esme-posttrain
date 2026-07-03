@@ -79,7 +79,7 @@ evidence card's bars are transcribed from the tables in
 
 ```text
 src/esme_posttrain/
-  cli.py              command-line entry point
+  cli/                command-line entry point (parser + one module per command group)
   bundle.py           dense backbone bundle loading and hashing
   modeling.py         shared dense model primitives
   run_artifacts.py    shared JSON/environment/manifest artifact writers

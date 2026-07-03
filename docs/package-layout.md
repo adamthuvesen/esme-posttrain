@@ -6,7 +6,10 @@ This repo keeps stage-specific implementation code out of the package root. When
 
 `src/esme_posttrain/` should stay small:
 
-- `cli.py` owns the `esme-posttrain` command surface.
+- `cli/` owns the `esme-posttrain` command surface: `parser.py` assembles the
+  subparsers, one module per command group (`rl.py`, `sft.py`, `dpo.py`,
+  `export.py`), and `output.py` holds payload emission and error exits.
+  Handlers take an `argparse.Namespace` and return an int exit code.
 - `bundle.py` owns dense backbone bundle loading and hashing.
 - `modeling.py` owns the shared dense model primitives.
 - `run_artifacts.py` owns shared JSON, environment, and manifest artifact writers.
