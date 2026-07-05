@@ -19,13 +19,23 @@ RLVR uses GRPO on the current Countdown-Lite verifier task.
 | --- | --- | --- | --- |
 | SFT | `Esme-214M-Base` | `Esme-214M-Instruct` | Held-out response loss bottoms cleanly, no collapse ([run card](run_cards/esme-214m-sft-multiturn.md)). |
 | DPO | `Esme-214M-Instruct` | `Esme-214M-Chat` | Held-out preference accuracy climbs then plateaus ([run card](run_cards/esme-214m-chat-dpo.md)). |
-| RLVR | `Esme-214M-Chat` | `Esme-214M-RL` | Verifier reward and exact-solve rate rise, no reward collapse ([run card](run_cards/esme-214m-rl.md)). |
+| RLVR | `Esme-214M-Chat` | `Esme-214M-RL` | Verifier reward makes Countdown outputs valid much more often, with a smaller exact-solve lift ([run card](run_cards/esme-214m-rl.md)). |
 
 SFT teaches chat format, turn-taking, and basic instruction following. DPO
 trains the model to prefer chosen answers over rejected answers, without
 on-policy RL. RLVR then trains against verifier-backed rewards on one task.
 
-The current RLVR target is Countdown-Lite: generate a short arithmetic expression that uses each supplied number exactly once and reaches the target. The reward is verifier-backed. Style rewards are intentionally out of scope.
+The current RLVR target is Countdown-Lite: generate a short arithmetic
+expression that uses each supplied number exactly once and reaches the target.
+The reward is verifier-backed. Style rewards are intentionally out of scope.
+
+The RLVR result is narrow and useful. In the paired
+[`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp) study, six
+real-reward seeds beat six same-budget random-reward placebo seeds on held-out
+valid-expression rate: **85.4% vs 0.8%** (`+84.7 pp`, 95% CI
+`[+54.6, +114.7]`). Exact solving improves too, more modestly (`+8.9 pp`, 95%
+CI `[+6.0, +11.7]`). For this 214M model, the main gain is better Countdown
+form.
 
 ## Why 214M?
 
@@ -35,7 +45,8 @@ Esme-214M is intentionally small for learning purposes. That makes the full LLM 
 
 - Stage code for SFT, DPO, RLVR, launch validation, dense-bundle export, and shared artifact writing.
 - Configs for the current Esme-214M post-training path, validated in code by the stage launch modules.
-- Evidence docs for SFT, DPO, and completed Countdown-Lite GRPO.
+- Evidence docs for SFT, DPO, completed Countdown-Lite GRPO, and the
+  six-seed RLVR decomposition.
 - Export tooling for `Esme-214M-Chat` bundles.
 
 ## Quickstart
@@ -55,8 +66,8 @@ remote datasets, start private training jobs, or spend money.
 - `docs/rlvr-countdown-lite-grpo.md` summarizes the completed Countdown-Lite GRPO run.
 - `docs/rlvr-countdown-heldout-transfer.md` scores the RL and pre-RL checkpoints on held-out Countdown sets.
 - `run_cards/esme-214m-rl.md` records a placebo-controlled decomposition (via
-  [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp)) showing the RL gain is real reward
-  signal, not a training-dynamics artifact.
+  [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp)) comparing the
+  six-seed real-reward gain with a same-budget random-reward placebo.
 - Generated export bundles are written under gitignored `exports/`.
 - Generated run reports are written under gitignored `artifacts/`.
 

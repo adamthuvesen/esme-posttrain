@@ -109,18 +109,16 @@ comparing three arms on the held-out `heldout_fresh` Countdown set:
   {invalid, valid, exact}, independent of the completion. Any gain it shows is
   training-process placebo, not reward signal.
 
-The placebo is the only new run. It uses `configs/esme-214m-rl-placebo.json`, which is the
-accepted config with `reward_mode: random`, `skip_acceptance_eval: true`, and distinct
-`runs/` + report/doc paths, so it never overwrites the accepted run. The real verifier path
-and the accepted run are unchanged (`reward_mode` defaults to `"verifier"`,
-`skip_acceptance_eval` defaults to `false`).
+The first strict slice added a seed-214 placebo via `configs/esme-214m-rl-placebo.json`.
+The 2026-07-05 multiseed follow-up adds seed 215-219 real-verifier and random-reward
+pairs (`configs/esme-214m-rl{-placebo,}-seed{215,216,217,218,219}.json`) so the claim can be
+made over training seeds instead of one run.
 
-`skip_acceptance_eval` makes the placebo run just-training: load base bundle → 240 GRPO
-steps → export the best-by-`train/reward_mean` bundle, with no before/after acceptance eval.
-The decomposition does not use those evals (completions come from the emitter, checkpoint
-selection is by `train/reward_mean`), and skipping them removes the ~4h eval phases that
-dominated — and repeatedly timed out — the placebo run. It should now finish in
-well under an hour.
+For the multiseed arms, `skip_acceptance_eval` keeps each run just-training: load base
+bundle → 240 GRPO steps → export the best-by-`train/reward_mean` bundle, with no
+before/after acceptance eval. The decomposition does not use those evals; completions come
+from the emitter, checkpoint selection is by `train/reward_mean`, and all scoring happens
+offline in `grpo-decomp`.
 
 Completions for each arm are exported as `grpo-decomp` `CompletionSet` artifacts
 (`provenance.json` + `completions.jsonl`) with the emitter:
@@ -171,34 +169,39 @@ sparsest, lowest-power slice available for a 214M model on Countdown (the whole 
 headline is the sampled result. Artifacts: `grpo-decomp
 results/esme-countdown/{summary,decomposition}`.
 
-### Sampled result (2026-07-04) — the corrected headline
+### Sampled multiseed result (2026-07-05) — supported headline
 
-Re-measured the same three arms on the same 30 held-out problems, but **sampled (n=16,
-temperature 1.0)** and scored on **two axes**: valid-expression rate (the rung the reward's
-graded ladder actually pays for — invalid 0.0 < valid 0.3 < exact 1.0) and exact-solve pass@k.
-No new training or private compute spend — pure local inference over the three existing bundles, plus a
-CPU analysis (`grpo-decomp scripts/esme_sampled_decomp.py`).
+Re-measured the same held-out problems with **n=16, temperature 1.0** and aggregated over
+six training seeds. New Modal spend for the seed215-219 multiseed pairs was **$8.96**:
+seed215 real/placebo `$0.9999`/`$0.7507`, seed216 `$1.1223`/`$0.7447`, and seed217
+`$0.9952`/`$0.7547`, seed218 `$1.0612`/`$0.7908`, and seed219 `$0.9910`/`$0.7473`.
+The prior seed214 placebo receipt was about `$0.83`.
+
+Seed-level result, each seed on the same 30 held-out problems with 16 samples/problem:
+
+| Seed | correct valid | random valid | Δ valid | correct any-exact | random any-exact |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 214 | 27.1% | 0.8% | +26.2pp | 4/30 | 0/30 |
+| 215 | 97.7% | 0.4% | +97.3pp | 3/30 | 0/30 |
+| 216 | 97.1% | 0.8% | +96.2pp | 3/30 | 1/30 |
+| 217 | 97.1% | 0.6% | +96.5pp | 3/30 | 0/30 |
+| 218 | 96.7% | 0.6% | +96.0pp | 3/30 | 1/30 |
+| 219 | 96.9% | 1.2% | +95.6pp | 3/30 | 1/30 |
+
+Aggregate arm means:
 
 | Arm | valid-expr rate | pass@1 | pass@8 | pass@16 | any-exact solved |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | base (Esme-214M-Chat) | 0.8% | 0.2% | 1.7% | 3.3% | 1/30 |
-| correct (Esme-214M-RL, real reward) | 27.1% | 5.6% | 11.5% | 13.3% | 4/30 |
-| random (placebo, random reward) | 0.8% | 0.0% | 0.0% | 0.0% | 0/30 |
+| correct (Esme-214M-RL, real reward) | 85.4% | 9.0% | 10.3% | 10.6% | 3.17/30 |
+| random (placebo, random reward) | 0.8% | 0.1% | 0.8% | 1.7% | 0.50/30 |
 
-Paired per-problem tests (n=30): valid-expr rate **correct − random = +26.2 pp, 95% CI
-[+17.3, +36.0] pp** (paired bootstrap); correct − base = +26.2 pp, CI [+17.5, +35.8] pp.
-Exact-solve any-of-16 correct vs random = +13.3 pp, exact-binomial p = 0.125, n_discordant = 4
-(all four favor correct).
+Seed-level tests (unit = training seed, n=6): valid-expression separation is **+84.7 pp,
+95% CI [+54.6, +114.7]**. Any-exact separation is **+8.9 pp, 95% CI [+6.0, +11.7]**.
 
-**Reading:** on the axis the reward actually shapes, real reward is **cleanly and significantly
-separable** from the placebo. Real verifier reward lifts valid-expression rate 0.8% → 27.1%
-(+26 pp, CI far from zero); the random-reward placebo stays at **0.8%, identical to base** —
-it reproduces none of the reward's effect on well-formedness. Exact-solve moves the same way
-(pass@16 13.3% vs 0.0% vs 3.3%) with all discordant problems favoring correct, but is
-underpowered at n=30 (p=0.125); the significance lives on the validity axis. Same direction as
-the accepted acceptance eval and its "RL sharpened form, did not create new reasoning
-capability" finding — greedy-exact simply could not see it. **Still single-seed:** CIs are
-eval-sampling noise only; the +26 pp validity gap is far too large for seed noise to erase, but
-a ≥3-seed placebo (`grpo-decomp report-control-seeds`) remains the bar for a fully headline
-claim, now cheap to run on the validity axis. Artifacts: `grpo-decomp
-results/esme-countdown/{sampled_decomposition.md,sampled_summary.json}`.
+**Reading:** real verifier reward is now separable from random-reward placebo across seeds
+on sampled held-out Countdown validity. Seed 214 was the low-validity outlier; seeds 215-219
+all land near 97% validity while the placebos stay near base. Exact solving is smaller but
+also positive across seeds. The supported claim is "RL sharpened form first, exact solving
+second," not "214M learned broad new Countdown reasoning." Artifacts: `grpo-decomp
+results/esme-countdown/{sampled_decomposition.md,sampled_multiseed_summary.json}`.
