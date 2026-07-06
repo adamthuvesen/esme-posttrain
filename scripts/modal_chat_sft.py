@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Approval-gated Modal launcher for the multi-turn SFT foundation.
 
-Mirrors the Instruct launch contract (``scripts/modal_instruct_sft.py``): the
-dry-run never starts Modal, the smoke is capped at $2 with no ``SFT_MODAL_GPU``
+Dry-run never starts Modal, the smoke is capped at $2 with no ``SFT_MODAL_GPU``
 spend bypass, the full run refuses without ``--approved`` and bounded-matched
-learning-gate evidence, and everything writes to a separate Volume and output
-stem (``esme-214m-sft-multiturn``).
+learning-gate evidence, and outputs land in the multi-turn Volume and output
+stem.
 """
 
 from __future__ import annotations

@@ -423,7 +423,7 @@ def _spawn_modal_grpo(
         raise RuntimeError(
             "Modal function is not hydrated; use the checked-in "
             "`modal run --detach scripts/modal_rlvr_grpo.py ...` launch command. "
-            "Refusing the old app.run() fallback."
+            "Refusing the unsupported app.run() fallback."
         ) from error
 
 

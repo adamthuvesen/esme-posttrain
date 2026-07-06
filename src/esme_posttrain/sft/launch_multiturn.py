@@ -1,9 +1,8 @@
 """Approval-gated launch validation for the multi-turn SFT foundation.
 
-This mirrors the Instruct ``sft_launch`` contract (dry-run never starts Modal,
-spend/GPU guards, learning gate) but pins the multi-turn run: its own run_id,
-Volume, output stem, 1024 sequence length, and a one-or-two-source train mix.
-The accepted single-turn Instruct path in ``sft_launch`` is left untouched.
+Dry-run never starts Modal. Spend/GPU guards and the learning gate pin the
+multi-turn run to its run_id, Volume, output stem, sequence length, and train
+mix.
 """
 
 from __future__ import annotations
@@ -59,9 +58,7 @@ from esme_posttrain.sft.launch_shared import (
     validate_sft_monitoring as _validate_sft_monitoring,
 )
 
-# The multi-turn foundation run is approved at a higher runaway cap than the
-# single-turn Instruct path; this constant is multi-turn-only and intentionally
-# does not change ``sft_launch.FULL_RUN_SPEND_CAP_USD`` (the $25 Instruct cap).
+# Hard cap for the approved multi-turn foundation run.
 MULTITURN_FULL_RUN_SPEND_CAP_USD = 40.0
 
 RUN_ID = "esme_214m_sft_multiturn"

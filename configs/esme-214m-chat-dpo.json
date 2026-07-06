@@ -89,7 +89,7 @@
         "usd_per_hour": 0.8,
         "projected_tokens_per_second": 3000,
         "rationale": "L4 is the smallest approved CUDA profile for a bounded DPO smoke; DPO scores chosen+rejected+reference per step so per-token throughput is below the SFT single-pass rate.",
-        "projection_source": "conservative placeholder; not measured for the DPO triple-forward path",
+        "projection_source": "conservative estimate; not measured for the DPO triple-forward path",
         "measured": false
       },
       "A100": {

@@ -113,7 +113,7 @@
         "measured_smoke_tokens_per_second": null,
         "expected_smoke_duration_minutes": 6,
         "rationale": "L4 is the smallest approved CUDA profile for a bounded multi-turn SFT smoke.",
-        "projection_source": "conservative full-run placeholder; not measured for the 1024-len multi-turn recipe",
+        "projection_source": "conservative full-run estimate; not measured for the 1024-len multi-turn recipe",
         "measured": false
       },
       "A100": {

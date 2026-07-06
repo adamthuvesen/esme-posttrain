@@ -910,7 +910,9 @@ def test_launcher_resample_evidence_spawn_returns_receipt_without_get(
     assert receipt["timeout_cost_ceiling_usd"] <= receipt["spend_cap_usd"] == 1.0
 
 
-def test_resample_multi_turn_evidence_writes_v2_and_preserves_original(tmp_path: Path) -> None:
+def test_resample_multi_turn_evidence_writes_resample_artifact(
+    tmp_path: Path,
+) -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     out = tmp_path / "full-run"
     run_multi_turn_cpu_fixture(config, output_dir=out)
@@ -946,7 +948,7 @@ def test_resample_multi_turn_evidence_writes_v2_and_preserves_original(tmp_path:
     assert result["original_samples_preserved"] is True
     assert result["resampled_samples_path"] == str(out / "multi-turn-samples-v2.md")
     assert result["estimated_cost_usd"] <= result["spend_cap_usd"] == 1.0
-    # The original buggy evidence is untouched byte for byte.
+    # Existing sample evidence is untouched byte for byte.
     assert (out / "multi-turn-samples.md").read_text(encoding="utf-8") == original_text
 
     text = (out / "multi-turn-samples-v2.md").read_text(encoding="utf-8")

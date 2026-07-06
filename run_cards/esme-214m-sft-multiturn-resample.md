@@ -66,8 +66,8 @@ that checkpoint with the fixed truncation.
 
 - `multi-turn-samples-v2.md` written next to the original in the private run
   artifact directory.
-- The original `multi-turn-samples.md` is never modified, so the buggy evidence
-  stays inspectable beside the corrected artifact.
+- The existing `multi-turn-samples.md` is never modified; the resample writes a
+  separate markdown artifact.
 - Local mirrors are copied from the private artifact store by the operator.
 
 ## Launch

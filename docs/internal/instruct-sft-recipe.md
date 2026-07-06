@@ -23,6 +23,6 @@ The accepted local Esme-214M-Instruct SFT run selects step 6400 by matched eval.
 
 ## Rerun Rule
 
-Each full-data launch still needs explicit approval. Fresh full runs must write to a fresh output directory; resume runs must find a valid latest checkpoint in the target directory. Checkpoints written at format v3 also carry RNG state and data position, and resume restores them so a resumed run continues the uninterrupted run's stream; older v1/v2 checkpoints still load and resume from the fresh seed as before.
+Each full-data launch still needs explicit approval. Fresh full runs must write to a fresh output directory; resume runs must find a valid latest checkpoint in the target directory. Checkpoints written at format v3 carry RNG state and data position, and resume restores them so a resumed run continues the uninterrupted run's stream. Checkpoints without those fields still load and resume from the fresh seed.
 
 The selected optimizer recipe is learning rate `3e-5`, microbatch size 2, gradient accumulation 8, effective batch size 16, cosine decay, and 700 warmup steps on A100.

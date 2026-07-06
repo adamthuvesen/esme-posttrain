@@ -45,7 +45,7 @@ def test_v3_checkpoint_round_trips_rng_state_and_data_position(tmp_path: Path) -
     assert resumed == expected
 
 
-def test_old_shape_payload_without_rng_keys_still_loads(tmp_path: Path) -> None:
+def test_checkpoint_payload_without_rng_keys_still_loads(tmp_path: Path) -> None:
     model = _tiny_model()
     for version in (1, 2):
         path = tmp_path / f"checkpoint-v{version}.pt"

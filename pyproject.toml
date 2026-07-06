@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "esme-posttrain"
 version = "0.0.0"
-description = "Post-training: SFT cold-start -> chat SFT -> simple-task RLVR."
+description = "Post-training: SFT -> DPO -> RLVR for Esme-214M."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
