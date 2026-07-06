@@ -1,10 +1,9 @@
 """Real full-run path for the multi-turn SFT foundation (Modal/GPU only).
 
-Mirrors ``sft_full`` but builds multi-turn conversations, supervises every
-assistant turn, evaluates a matched held-out covering both single-turn
-instruction (tulu) and multi-turn chat (smol-smoltalk), and writes the extra
-``multi-turn-samples.md`` artifact. Guarded by the runtime spend tracker and
-refused unless the learning gate has passed (enforced in the launcher).
+Builds multi-turn conversations, supervises every assistant turn, evaluates a
+matched held-out covering single-turn instruction (tulu) and multi-turn chat
+(smol-smoltalk), and writes ``multi-turn-samples.md``. Guarded by the runtime
+spend tracker and refused unless the learning gate has passed.
 """
 
 from __future__ import annotations
@@ -64,10 +63,8 @@ from esme_posttrain.sft.trainer import (
 )
 from esme_posttrain.training.checkpointing import latest_checkpoint_path
 
-# Bounded evidence-resample job: regenerate ``multi-turn-samples-v2.md`` from the
-# completed full-run checkpoint after the first-turn truncation fix (commit
-# 78f2094). Generation-only, so the spend cap is a hard $1; the 0.25h timeout
-# holds the worst case at 0.25h x $2.0988/h ~= $0.52 on the pinned A100.
+# Bounded generation-only evidence resample from the completed full-run
+# checkpoint. The $1 cap keeps the 0.25h pinned-A100 timeout below the limit.
 RESAMPLE_SPEND_CAP_USD = 1.0
 RESAMPLE_TIMEOUT_HOURS = 0.25
 ORIGINAL_SAMPLES_ARTIFACT = "multi-turn-samples.md"
@@ -430,10 +427,9 @@ def resample_multi_turn_evidence(
     Loads ``best-checkpoint.pt`` and ``tokenizer.json`` from ``output_dir``,
     rebuilds the matched held-out eval examples exactly like the full run
     (skip counts come from the persisted ``data-report.json``), and writes the
-    fixed-truncation samples to ``multi-turn-samples-v2.md``. The original
-    ``multi-turn-samples.md`` is never touched, so the buggy evidence stays
-    inspectable next to the corrected artifact. ``sample_pool`` bypasses the
-    dataset rebuild for the no-download CPU fixture path.
+    resampled markdown without modifying ``multi-turn-samples.md``.
+    ``sample_pool`` bypasses the dataset rebuild for the no-download CPU fixture
+    path.
     """
     started = started or time.perf_counter()
     output_dir = output_dir.expanduser().resolve()

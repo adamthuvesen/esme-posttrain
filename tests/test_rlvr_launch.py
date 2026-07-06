@@ -332,7 +332,7 @@ def test_modal_launcher_unhydrated_spawn_fails_loudly_without_app_run(
     monkeypatch.setattr(modal_rlvr_grpo, "run_modal_grpo", FakeRunner())
     monkeypatch.setattr(modal_rlvr_grpo, "app", FakeApp())
 
-    with pytest.raises(RuntimeError, match="Refusing the old app.run\\(\\) fallback"):
+    with pytest.raises(RuntimeError, match="Refusing the unsupported app.run\\(\\) fallback"):
         modal_rlvr_grpo._spawn_modal_grpo(config, "esme-214m-rlvr-countdown-grpo")
 
 

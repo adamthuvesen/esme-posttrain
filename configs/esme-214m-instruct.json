@@ -108,7 +108,7 @@
         "measured_smoke_tokens_per_second": 74.65,
         "expected_smoke_duration_minutes": 6,
         "rationale": "L4 is the smallest approved CUDA profile for a bounded SFT smoke; batch 1 is a microbatch, not the optimizer batch.",
-        "projection_source": "conservative full-run placeholder; smoke throughput measured on the tiny fixture path 2026-06-27",
+        "projection_source": "conservative full-run estimate; smoke throughput measured on the tiny fixture path 2026-06-27",
         "measured": false
       },
       "A10G": {
@@ -180,17 +180,17 @@
       "stopped_run_reconciliation": {
         "kind": "stopped_run_reconciliation",
         "showcase_metrics_uri": "/posttrain/esme-instruct-sft-showcase-full/metrics.jsonl",
-        "older_full_metrics_uri": "/posttrain/esme-instruct-sft-full/metrics.jsonl",
+        "stopped_full_metrics_uri": "/posttrain/esme-instruct-sft-full/metrics.jsonl",
         "showcase_eval_rows": 98,
         "showcase_best_step": 600,
         "showcase_best_no_robots_response_loss": 2.617136564552844,
         "showcase_latest_step": 19400,
         "showcase_latest_no_robots_response_loss": 2.6772786582507764,
-        "older_full_eval_rows": 2,
-        "older_full_final_step": 48828,
-        "older_full_final_no_robots_response_loss": 3.4976762224550835,
+        "stopped_full_eval_rows": 2,
+        "stopped_full_final_step": 48828,
+        "stopped_full_final_no_robots_response_loss": 3.4976762224550835,
         "local_mirror_dir": "runs/esme-214m-instruct-sft-pilot/stopped-run-evidence",
-        "notes": "Stopped A100 showcase-full interval metrics are the correction signal; older esme-instruct-sft-full evidence is separate and must not be conflated."
+        "notes": "Stopped A100 showcase-full interval metrics are the correction signal; stopped esme-instruct-sft-full evidence is separate and must not be conflated."
       },
       "bounded_matched_interval_eval_sweep": {
         "kind": "bounded_matched_interval_eval_sweep",

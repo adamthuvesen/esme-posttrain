@@ -497,11 +497,11 @@ def _complete_learning_gate_evidence() -> dict[str, object]:
         "stopped_run_reconciliation": {
             "kind": "stopped_run_reconciliation",
             "showcase_metrics_uri": "/posttrain/esme-instruct-sft-showcase-full/metrics.jsonl",
-            "older_full_metrics_uri": "/posttrain/esme-instruct-sft-full/metrics.jsonl",
+            "stopped_full_metrics_uri": "/posttrain/esme-instruct-sft-full/metrics.jsonl",
             "showcase_eval_rows": 98,
             "showcase_best_step": 600,
             "showcase_latest_step": 19400,
-            "notes": "showcase-full and older full metrics are distinct",
+            "notes": "showcase-full and stopped full metrics are distinct",
         },
         "bounded_matched_interval_eval_sweep": _bounded_interval_eval_sweep_evidence(),
     }

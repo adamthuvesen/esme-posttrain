@@ -81,8 +81,7 @@ _TOKEN_PATTERN = re.compile(r"\s*(\d+|[()+\-*])")
 
 
 def render_chat_prompt(prompt: str) -> str:
-    # Must match the single-turn chat rendering the model was trained on
-    # (sft/data.py) and the template exported for inference (export/dense_bundle.py).
+    # Must match the repo newline chat template used by SFT and dense export.
     return f"user\n{prompt}\nassistant\n"
 
 

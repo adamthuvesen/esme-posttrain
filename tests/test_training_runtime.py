@@ -15,14 +15,14 @@ from esme_posttrain.training.runtime import (
 
 
 @dataclass(frozen=True)
-class _LegacyScheduleConfig:
+class _ReferenceScheduleConfig:
     scheduler: str
     warmup_steps: int
     max_steps: int
 
 
-def _legacy_lr_lambda(config: _LegacyScheduleConfig):
-    """The pre-refactor config-driven implementation, kept verbatim as the oracle."""
+def _reference_lr_lambda(config: _ReferenceScheduleConfig):
+    """Independent schedule oracle used to check the public factory."""
     if config.scheduler == "constant":
         return lambda _step: 1.0
 
@@ -49,15 +49,19 @@ def _legacy_lr_lambda(config: _LegacyScheduleConfig):
 
 @pytest.mark.parametrize("scheduler", ["constant", "cosine_decay", "linear_warmup_decay"])
 @pytest.mark.parametrize(("warmup_steps", "max_steps"), [(0, 40), (5, 40), (40, 40), (3, 4)])
-def test_lr_factory_matches_legacy_schedule_exactly(
+def test_lr_factory_matches_reference_schedule_exactly(
     scheduler: str, warmup_steps: int, max_steps: int
 ) -> None:
-    legacy = _legacy_lr_lambda(
-        _LegacyScheduleConfig(scheduler=scheduler, warmup_steps=warmup_steps, max_steps=max_steps)
+    reference = _reference_lr_lambda(
+        _ReferenceScheduleConfig(
+            scheduler=scheduler,
+            warmup_steps=warmup_steps,
+            max_steps=max_steps,
+        )
     )
     current = lr_lambda_factory(scheduler=scheduler, warmup_steps=warmup_steps, max_steps=max_steps)
     for step in range(max_steps + 10):
-        assert current(step) == legacy(step), f"{scheduler} diverged at step {step}"
+        assert current(step) == reference(step), f"{scheduler} diverged at step {step}"
 
 
 def test_named_schedule_functions_cover_warmup_and_decay() -> None:

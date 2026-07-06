@@ -1,4 +1,4 @@
-# RLVR Countdown-Lite GRPO — seed217 random reward
+# RLVR Countdown-Lite GRPO: seed217 random reward
 
 - Result: `complete`
 - Role: multiseed `random` placebo arm for `grpo-decomp` Esme held-out sampled decomposition.

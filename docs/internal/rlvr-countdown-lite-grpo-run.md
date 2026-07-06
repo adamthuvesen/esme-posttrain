@@ -49,7 +49,7 @@ matches the expectation that 214M does not master exact-solve.
 
 Success criteria checked against
 `runs/esme-214m-rlvr-countdown-grpo-v2-ccb6287-1/metrics.jsonl` (240 train
-records, steps 1–240):
+records, steps 1-240):
 
 | Criterion | Verdict | Evidence |
 | --- | --- | --- |
@@ -64,10 +64,10 @@ Supporting facts (verified from artifacts, not assumed):
 - `valid_expression_rate` at step 240: 0.969 (mean of last 10 steps 0.967);
   `invalid_rate` 0.0. Eval-side valid rate 99.38%.
 - Token entropy declined smoothly 2.02 → 0.35 with only 5 single-step
-  increases > 0.1 — controlled convergence, also the cause of the late-run
+  increases > 0.1. That is controlled convergence, and it also causes late-run
   zero-variance ties.
 - Replay buffer filled to 295 cached successes with **zero** injections.
-  All-failed groups did occur — 113, all in steps 1–42 — but none of those
+  All-failed groups did occur: 113, all in steps 1-42. None of those
   tasks had a fresh (<= 40-step-old) prior success the buffer could inject, so
   the ARPO path correctly stayed silent; after step 42 no group was ever
   all-failed.
@@ -83,7 +83,7 @@ The detached private training job executed twice:
 
 - **First attempt** (`esme-214m-rlvr-countdown-grpo-v2-ccb6287`):
   completed the before-eval and all 240 training steps, wrote
-  `best-checkpoint.json`, then died mid-after-eval — last progress record is
+  `best-checkpoint.json`, then died mid-after-eval. The last progress record is
   sample 352/960, task `countdown_lite_eval_medium_0000`, at monotonic
   ~6,507 s. Forensics verdict: infrastructure preemption (SIGTERM; the training
   logger closed the run as "finished"; the launcher configures no retries, so a
@@ -94,7 +94,7 @@ The detached private training job executed twice:
   `return_serialization` at monotonic ~15,790 s. **This is the canonical run.**
 
 The first attempt's `metrics.jsonl` is byte-identical to the second's (same seed
-214, deterministic trainer — the requeue replayed the same trajectory), its
+214, deterministic trainer; the requeue replayed the same trajectory), its
 `eval-before.json` is byte-identical too, and its volume dir has no
 `cost.json`/`eval-after.json` (the process died before writing them). The app
 is stopped with 0 running tasks. Spend impact: the preemption cost roughly one
@@ -131,4 +131,4 @@ at the last checkpoint), and `metrics.jsonl` (append, not truncate). The
 preempted attempt died 352 samples into an after-eval it never got credit for;
 a resume path would have turned the requeue into ~75 minutes of remaining eval
 instead of a full 4.4-hour rerun, roughly the $3.79 the preemption cost.
-Recommendation only — not implemented.
+Recommendation only. This is not implemented.

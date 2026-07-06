@@ -13,9 +13,9 @@ import torch
 
 from esme_posttrain.modeling import BackboneConfig, DenseBackbone
 
-# v3 adds optional rng_state + data_position for faithful resume; v1/v2
-# payloads without them still load (accepted checkpoints on Modal volumes
-# must stay loadable).
+# Format 3 carries rng_state + data_position for faithful resume. Checkpoints
+# without those fields still load because accepted Modal artifacts are persisted
+# data.
 TRAINING_CHECKPOINT_FORMAT = 3
 _CHECKPOINT_RE = re.compile(r"step-(\d{6,})$")
 
@@ -32,10 +32,9 @@ class LoadedTrainingCheckpoint:
     metrics: dict[str, Any]
     optimizer_state: dict[str, Any] | None
     scheduler_state: dict[str, Any] | None
-    # None for v1/v2 payloads written before RNG/data-position capture existed.
+    # None when the checkpoint payload did not capture RNG/data-position fields.
     rng_state: dict[str, Any] | None = None
-    # Batches consumed from the cyclic train stream when the checkpoint was
-    # written (the next train batch index); None for pre-v3 payloads.
+    # Batches consumed from the cyclic train stream; None when the payload omitted it.
     data_position: int | None = None
 
 
@@ -157,7 +156,7 @@ def latest_checkpoint_path(output_dir: Path) -> Path | None:
         except CheckpointError as error:
             raise CheckpointError(
                 f"final checkpoint is unreadable; refusing to silently resume "
-                f"from an older step: {final}: {error}"
+                f"from a lower step: {final}: {error}"
             ) from error
         candidates.append((loaded.step, final))
     if not candidates:

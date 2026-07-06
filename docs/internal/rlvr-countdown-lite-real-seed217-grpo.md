@@ -1,4 +1,4 @@
-# RLVR Countdown-Lite GRPO — seed217 real reward
+# RLVR Countdown-Lite GRPO: seed217 real reward
 
 - Result: `complete`
 - Role: multiseed `correct` arm for `grpo-decomp` Esme held-out sampled decomposition.
@@ -33,4 +33,3 @@ On `heldout_fresh` with `n=16`, `temperature=1.0`, `max_new_tokens=12`:
 | pass@8 | 10.0% |
 | pass@16 | 10.0% |
 | Any-exact solved | 3/30 |
-

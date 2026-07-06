@@ -264,7 +264,7 @@ def run_full_instruct_sft(
                 ),
                 group=config.run_id,
                 job_type="full-sft",
-                notes="Full supervised cold-start SFT; no RL, chat stage, LoRA, or QLoRA.",
+                notes="Full supervised cold-start SFT; no downstream DPO/RLVR, LoRA, or QLoRA.",
                 extra_config={
                     "model": config.artifact_name,
                     "stage": "sft_cold_start",

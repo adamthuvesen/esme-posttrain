@@ -467,7 +467,7 @@ def _stopped_run_reconciliation_blockers(evidence: Any) -> list[str]:
         {
             "kind",
             "showcase_metrics_uri",
-            "older_full_metrics_uri",
+            "stopped_full_metrics_uri",
             "showcase_eval_rows",
             "showcase_best_step",
             "showcase_latest_step",
@@ -486,7 +486,7 @@ def _stopped_run_reconciliation_blockers(evidence: Any) -> list[str]:
             "learning_gate.evidence.stopped_run_reconciliation.kind must be "
             "stopped_run_reconciliation"
         )
-    for key in ("showcase_metrics_uri", "older_full_metrics_uri", "notes"):
+    for key in ("showcase_metrics_uri", "stopped_full_metrics_uri", "notes"):
         if not isinstance(evidence[key], str) or not evidence[key]:
             blockers.append(
                 f"learning_gate.evidence.stopped_run_reconciliation.{key} must be "

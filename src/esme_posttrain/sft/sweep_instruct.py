@@ -594,7 +594,7 @@ def _run_sweep_arm(
                 job_type="sweep",
                 notes=(
                     "Bounded real-Esme interval-eval SFT sweep; no full-data launch, "
-                    "no chat SFT, no RL."
+                    "no downstream DPO or RLVR."
                 ),
                 extra_config={
                     "model": config.artifact_name,

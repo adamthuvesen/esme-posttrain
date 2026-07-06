@@ -75,7 +75,7 @@ Training reward rose from 0.03 to a last-20-step mean of 0.51 (best 0.71 at
 step 234) with no collapse; zero of 240 steps logged `reward_mean == 0`. GRPO
 takes the valid-expression rate from 5.83% to 99.38% and lifts exact solves on
 the easy band; all 5 solved tasks are easy-band, and medium/hard stay at 0%
-pass — 214M does not master exact-solve.
+pass. 214M does not master exact-solve.
 
 ## Acceptance
 
@@ -102,9 +102,9 @@ uv run esme-posttrain rlvr-countdown-lite-build-data --repo-root . --json
 The accepted `Esme-214M-RL` gain is decomposed with the `grpo-decomp` harness by
 comparing three arms on the held-out `heldout_fresh` Countdown set:
 
-- **base** — `exports/esme-214m-chat` (pre-RL).
-- **correct** — `exports/esme-214m-rl-caff0a1` (real verifier reward).
-- **random** — the same recipe/budget with `grpo.reward_mode = "random"`: the reward is
+- **base**: `exports/esme-214m-chat` (pre-RL).
+- **correct**: `exports/esme-214m-rl-caff0a1` (real verifier reward).
+- **random**: the same recipe/budget with `grpo.reward_mode = "random"`: the reward is
   drawn (seeded via `random_reward_seed`) uniformly over the same three-level support
   {invalid, valid, exact}, independent of the completion. Any gain it shows is
   training-process placebo, not reward signal.
@@ -114,7 +114,7 @@ The 2026-07-05 multiseed follow-up adds seed 215-219 real-verifier and random-re
 pairs (`configs/esme-214m-rl{-placebo,}-seed{215,216,217,218,219}.json`) so the claim can be
 made over training seeds instead of one run.
 
-For the multiseed arms, `skip_acceptance_eval` keeps each run just-training: load base
+For the multiseed arms, `skip_acceptance_eval` keeps each run training-only: load base
 bundle → 240 GRPO steps → export the best-by-`train/reward_mean` bundle, with no
 before/after acceptance eval. The decomposition does not use those evals; completions come
 from the emitter, checkpoint selection is by `train/reward_mean`, and all scoring happens
@@ -137,11 +137,11 @@ produced by `grpo-decomp report --task-set esme-countdown` in the `grpo-decomp` 
 CPU-fixture proof (no private compute): `tests/test_rlvr_decomp.py` here, plus
 `tests/test_esme_countdown_decomp.py` in `grpo-decomp`.
 
-### Result (2026-07-03, PRELIMINARY — 1 seed)
+### Result (2026-07-03, preliminary 1-seed read)
 
 Placebo run: private training job, 240 steps, ~24 min, ~$0.83. Its
 `train/reward_mean` stayed flat (~0.42, the random-draw average) with no climb
-— confirming the reward carried no task signal. Two earlier attempts on A100
+and confirmed the reward carried no task signal. Two earlier attempts on A100
 spot failed first to worker preemption (step 156) and then to a before-eval
 wall-timeout (928/960); adding `skip_acceptance_eval` removed the eval phases
 and the run completed clean on the third try. Sunk spend on the two failed
@@ -155,21 +155,21 @@ Greedy pass@1 on `heldout_fresh` (n=30), graded by the `esme-countdown` verifier
 | correct (Esme-214M-RL, real reward) | 2/30 | 6.67% |
 | random (placebo, random reward) | 1/30 | 3.33% |
 
-Pre-registered confirmatory test — placebo `correct − random`: **+3.3 pp, exact-binomial
+Pre-registered confirmatory test, placebo `correct − random`: **+3.3 pp, exact-binomial
 p = 1.0, n_discordant = 1, 95% CI [0.0, +10.0] pp**. The real-reward model's edge over the
 random-reward placebo rests on a **single** discordant problem (2 vs 1 solved) and is not
 statistically distinguishable from zero at this scale. Format sensitivity (lenient vs strict
 extraction) was +0.0 pp.
 
 **Reading:** on a held-out set with **greedy decoding and exact-solve only**, RL's contribution
-beyond a same-budget placebo is not separable — but that is a measurement artifact, not a null
+beyond a same-budget placebo is not separable. That is a measurement artifact, not a null
 result, and the sampled re-measurement below overturns it. Greedy pass@1 on exact-solve is the
 sparsest, lowest-power slice available for a 214M model on Countdown (the whole dynamic range is
 1-2 problems), so it cannot see the effect. Kept here as the strict-slice footnote; the honest
 headline is the sampled result. Artifacts: `grpo-decomp
 results/esme-countdown/{summary,decomposition}`.
 
-### Sampled multiseed result (2026-07-05) — supported headline
+### Sampled multiseed result (2026-07-05)
 
 Re-measured the same held-out problems with **n=16, temperature 1.0** and aggregated over
 six training seeds. New Modal spend for the seed215-219 multiseed pairs was **$8.96**:
