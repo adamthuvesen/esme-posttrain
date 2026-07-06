@@ -1,4 +1,4 @@
-# RLVR Countdown-Lite GRPO — seed216 random reward
+# RLVR Countdown-Lite GRPO: seed216 random reward
 
 - Result: `complete`
 - Role: multiseed `random` placebo arm for `grpo-decomp` Esme held-out sampled decomposition.
@@ -33,4 +33,3 @@ On `heldout_fresh` with `n=16`, `temperature=1.0`, `max_new_tokens=12`:
 | pass@8 | 1.7% |
 | pass@16 | 3.3% |
 | Any-exact solved | 1/30 |
-

@@ -27,7 +27,7 @@ on-policy RL. RLVR then trains against verifier-backed rewards on one task.
 
 The current RLVR target is Countdown-Lite: generate a short arithmetic
 expression that uses each supplied number exactly once and reaches the target.
-The reward is verifier-backed. Style rewards are intentionally out of scope.
+The reward is verifier-backed. Style rewards are out of scope.
 
 The RLVR result is narrow and useful. In the paired
 [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp) study, six
@@ -39,7 +39,7 @@ form.
 
 ## Why 214M?
 
-Esme-214M is intentionally small for learning purposes. That makes the full LLM lifecycle easier to build, keeps iteration fast and costs low, and makes failures easier to diagnose, while still going through real training, evaluation, export, post-training, and inference.
+Esme-214M is small enough to make the full LLM lifecycle practical to build and inspect. Iteration stays cheaper, failures are easier to diagnose, and the project still goes through real training, evaluation, export, post-training, and inference.
 
 ## What Is Here
 
@@ -74,8 +74,8 @@ remote datasets, start private training jobs, or spend money.
 ## Training Telemetry
 
 **Reading note:** These charts show training stability and checkpoint selection,
-not broad capability. `Esme-214M` is intentionally small, so absolute gains are
-capped by the base model; the key signal is improvement without collapse.
+not broad capability. `Esme-214M` is small, so absolute gains are capped by the
+base model; the key signal is improvement without collapse.
 
 <p>
   <img src="assets/fig-sft-training-dynamics.svg" width="100%" alt="Multi-turn SFT training" />

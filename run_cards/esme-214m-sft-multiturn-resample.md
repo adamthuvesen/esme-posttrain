@@ -72,8 +72,8 @@ that checkpoint with the fixed truncation.
 
 ## Launch
 
-Dry-run preflights and approved launches are private operator actions and are
-intentionally not documented as copy-paste commands.
+Dry-run preflights and approved launches are private operator actions. This run
+card does not include copy-paste launch commands.
 
 ## Abort Rules
 

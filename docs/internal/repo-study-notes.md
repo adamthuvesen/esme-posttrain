@@ -6,10 +6,10 @@ onboarding notes; the authoritative details live in the linked code and docs.
 
 ## The One-Sentence Version
 
-This repo takes a 214M-param from-scratch base model and pushes it through three
-training stages — imitate (SFT), prefer (DPO), explore (GRPO) — under strict spend
-controls, leaving a hashed evidence trail at every step, and ships the result as a
-self-describing four-file bundle to `llm-infer`.
+This repo takes a 214M-param from-scratch base model through three training
+stages: imitate (SFT), prefer (DPO), and explore (GRPO). Each stage runs under
+strict spend controls, leaves a hashed evidence trail, and ships the result as a
+self-describing four-file bundle for `llm-infer`.
 
 ```mermaid
 flowchart LR
@@ -53,18 +53,18 @@ SFT is next-token prediction with a mask. Core: `tokenize_multi_turn` in
 
 ```mermaid
 flowchart LR
-    subgraph input_ids [input_ids — model reads all]
+    subgraph input_ids [input_ids: model reads all]
         U1[user turn] --> A1[assistant turn + eos] --> U2[user turn] --> A2[assistant turn + eos]
     end
-    subgraph labels [labels — loss sees only assistant]
+    subgraph labels [labels: loss sees only assistant]
         M1[-100 -100] --> L1[same tokens] --> M2[-100 -100] --> L2[same tokens]
     end
 ```
 
-- Assistant tokens get real labels; user/system tokens get `-100` (`IGNORE_INDEX`) —
-  read as context, excluded from loss. The model learns one role: produce a good
+- Assistant tokens get real labels; user/system tokens get `-100` (`IGNORE_INDEX`).
+  They are read as context and excluded from loss. The model learns one role: produce a good
   assistant turn.
-- The appended `eos` per assistant turn teaches stopping — half of what "chat
+- The appended `eos` per assistant turn teaches stopping, half of what "chat
   format" means.
 - Train loss trains; held-out loss selects. `best-checkpoint.pt` (lowest eval
   selector loss) is what ships, not the final step. The `no_robots` split is an
@@ -84,8 +84,8 @@ loss = -log sigmoid( beta * [ (logp_pi(chosen) - logp_pi(rejected))
 
 ```mermaid
 flowchart TD
-    P[Policy — weights move] --> M[margin = beta x pi gap minus ref gap]
-    F[Reference — frozen SFT copy] --> M
+    P[Policy: weights move] --> M[margin = beta x pi gap minus ref gap]
+    F[Reference: frozen SFT copy] --> M
     M --> S[loss = -logsigmoid margin]
 ```
 
@@ -112,7 +112,7 @@ flowchart TD
     A --> U[loss = -advantage x logp + kl_beta x KL to reference]
 ```
 
-- The verifier is a plain deterministic Python function — extract candidate, parse
+- The verifier is a plain deterministic Python function: extract candidate, parse
   with a hand-written parser (`Fraction` math, never `eval`), check each number used
   exactly once and the integer result. It outputs facts; the config maps facts to
   rewards. No judgment call exists at runtime.
@@ -120,10 +120,10 @@ flowchart TD
   (`weight * exp(-|value - target| / target)`, max 0.3), exact solve 1.0. The rungs
   keep gradients alive when exact solves are rare.
 - GRPO's trick: the group is the critic. `advantage = reward - group mean`
-  (Dr. GRPO, no std division — std normalization blows up exactly when a group is
+  (Dr. GRPO, no std division; std normalization blows up exactly when a group is
   uniform and uninformative). No value network.
 - One gradient step per rollout batch, so the update is REINFORCE-with-baseline
-  plus a KL leash to a frozen reference — the code comment says so plainly.
+  plus a KL leash to a frozen reference. The code comment says so plainly.
 - Zero-signal countermeasures: zero-variance resampling, a success replay buffer
   (splice a recent success into all-failed groups), stratified difficulty sampling.
 - Result (run `caff0a1`): valid-expression rate 2.7% -> 99.4%, pass@1 3.3% -> 16.7%.
@@ -145,14 +145,14 @@ flowchart LR
 ```
 
 - Four files: `weights.pt`, `config.json`, `tokenizer.json`, `manifest.json`. The
-  manifest carries the chat template (`esme_newline_v1`) and `eos_token_ids` — the
+  manifest carries the chat template (`esme_newline_v1`) and `eos_token_ids`, the
   operating instructions SFT baked in. Format prompts differently downstream and
   the model silently degrades.
 - Export refuses incomplete inputs (no eval report, no export), writes atomically,
   hashes every file, then reloads its own output and generates before declaring
   success.
 - Provenance nests: the RL manifest embeds the Chat manifest, which points to DPO
-  step 600 and its training run — full ancestry, verifiable offline from one JSON
+  step 600 and its training run. Full ancestry is verifiable offline from one JSON
   file.
 - Sibling repos exchange artifacts, never imports; `llm_pretrain_dense_v1` is the
   API version between them.
@@ -160,7 +160,7 @@ flowchart LR
 ## Cross-Cutting Themes
 
 1. **One primitive underneath everything**: a next-token predictor. The stages
-   differ only in which loss shapes the token probabilities — which is why
+   differ only in which loss shapes the token probabilities. That is why
    `sequence_logprob`, the `-100` masking, and the shared `training/` collate /
    checkpoint / runtime code appear in all three stage packages.
 2. **Two recurring leashes**: a frozen reference model (DPO structurally, GRPO via
@@ -168,7 +168,7 @@ flowchart LR
 3. **Nothing spends by accident**: run cards, approval gates, hardcoded caps,
    dry-runs that price the worst case.
 4. **Evidence over vibes**: `metrics.jsonl`, data reports, survivor counts, failure
-   reports, manifests with hashes — every run can be audited without having
+   reports, manifests with hashes. Every run can be audited without having
    watched it.
 5. **Structure mirrors the pipeline**: stage packages (`sft/`, `dpo/`, `rl/`) with
    identical skeletons (data -> trainer -> launch -> smoke -> full) on shared infra
@@ -185,7 +185,7 @@ flowchart LR
 
 ## Related Docs
 
-- `README.md` — current stage summary and telemetry cards.
-- `docs/package-layout.md` — canonical package and import rules.
-- `docs/internal/instruct-sft-recipe.md` — the Instruct SFT recipe in full.
-- `docs/rlvr-countdown-lite-grpo.md` — the accepted GRPO run evidence.
+- `README.md`: current stage summary and telemetry cards.
+- `docs/package-layout.md`: canonical package and import rules.
+- `docs/internal/instruct-sft-recipe.md`: the Instruct SFT recipe in full.
+- `docs/rlvr-countdown-lite-grpo.md`: the accepted GRPO run evidence.

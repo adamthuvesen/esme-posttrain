@@ -23,7 +23,7 @@ Do not add root compatibility aliases.
 - `src/esme_posttrain/dpo/`: preference data, DPO trainer, launch validation, checkpoint evaluation, and chat-quality comparison.
 - `src/esme_posttrain/rl/`: verifier-backed RLVR data, Countdown-Lite baseline, GRPO training, launch validation, and result reports.
 - `src/esme_posttrain/launch/`: shared config validation, spend/blocker helpers, command construction, and launch utilities.
-- `src/esme_posttrain/training/`: shared training runtime — collation, metrics, checkpointing, seeding/precision, and W&B setup — consumed by the stage packages.
+- `src/esme_posttrain/training/`: shared training runtime used by the stage packages: collation, metrics, checkpointing, seeding/precision, and W&B setup.
 - `src/esme_posttrain/export/`: export code for adapted dense bundles handed to downstream inference repos.
 
 ## Import Rules

@@ -11,7 +11,7 @@ temperature 0.8.
 ## Verdict
 
 **Real 3-operand wall, not truncation.** Giving the RL model 2x or 4x the rollout
-budget does not lift 3-number exact-solve above the 12-token floor — it stays at
+budget does not lift 3-number exact-solve above the 12-token floor. It stays at
 **0.00%** on both held-out 3-number cells at 24 and 48 tokens, versus 4.00% (fresh)
 and 0.00% (shift) at 12. More budget makes 3-operand performance *worse on the
 metric that matters for training signal*: valid-expression rate craters from ~99%
@@ -29,7 +29,7 @@ budget-insensitive (pass@32 holds at 40% across 12/24/48), confirming the
   Same as the prior held-out eval.
 - 8 eval cells ran on this machine: both bundles x {`heldout_fresh`,
   `heldout_shift`} x {24, 48} tokens. The 12-token numbers are reused from the
-  committed `artifacts/heldout-transfer-new/` reports (not rerun — they reproduce
+  committed `artifacts/heldout-transfer-new/` reports (not rerun; they reproduce
   the transfer doc's table exactly).
 - Per-cell command (bundle, split, budget vary):
 
@@ -47,7 +47,7 @@ budget-insensitive (pass@32 holds at 40% across 12/24/48), confirming the
   so this report is the self-contained, reproducible record. Rerun the commands
   above to regenerate the per-cell `baseline-report.json` files.
 
-## 3-number cells — the load-bearing comparison
+## 3-number cells
 
 Held-out fresh reports its 25 three-number tasks (the fresh set also has 5
 two-number tasks, tabulated separately below). Held-out shift is all 30 three-number.
@@ -69,13 +69,13 @@ two-number tasks, tabulated separately below). Held-out shift is all 30 three-nu
 
 Exact-solve on the 3-number cells is flat at the floor across the whole budget
 sweep. The only movement is the RL model's valid-expression rate collapsing as the
-budget grows — the opposite of what a truncation artifact would show. The 12-token
+budget grows, the opposite of what a truncation artifact would show. The 12-token
 fresh 3.99% -> 4.00% was already the model's ceiling here; extra tokens buy no new
 solves.
 
 ## 2-number control (fresh split, 5 tasks)
 
-The 2-operand skill should be — and is — budget-insensitive.
+The 2-operand skill is budget-insensitive.
 
 | Model | Budget | pass@32 | Valid expr | Exact solve |
 | --- | ---: | ---: | ---: | ---: |
@@ -88,9 +88,9 @@ The 2-operand skill should be — and is — budget-insensitive.
 
 RL 2-number pass@32 is a flat 40% at every budget; its per-sample exact-solve dips
 slightly (38.75% -> 33.12%) for the same rambling reason, but the harder pass@k
-signal is unchanged. The control behaves exactly as a genuine, budget-independent
-2-operand skill should. If the 3-number floor were a truncation artifact, we would
-expect it to lift like a capability that just needed room — it does not.
+signal is unchanged. The control behaves like a genuine, budget-independent
+2-operand skill. A truncation artifact would lift with more room; this floor does
+not.
 
 ## Early-stop / EOS interplay
 
@@ -112,7 +112,7 @@ shorter one stopped early on `<eos>`.
 | Esme-214M-Chat | shift (3-num) | 48 | 48 | 61.8% | 38.2% |
 
 This is the crux. At 12 tokens the RL model runs to the cap on ~99% of 3-number
-samples — it is genuinely truncated and almost never reaches `<eos>`, which is the
+samples. It is genuinely truncated and almost never reaches `<eos>`, which is the
 strongest case the truncation hypothesis could ask for. Give it 24 or 48 tokens and
 it *does* start terminating on `<eos>` on its own (20% -> 37% of samples stop
 before the cap), so the extra budget is being used and generation is no longer
@@ -127,14 +127,14 @@ cliff exactly when truncation is relieved.
 
 - **Settles:** for `Esme-214M-RL` (214M params, this GRPO checkpoint), 3-operand
   Countdown exact-solve is a real capability wall on both the fresh and
-  target-shifted held-out sets — not an artifact of the 12-token training/eval
+  target-shifted held-out sets, not an artifact of the 12-token training/eval
   budget. This is consistent with the prior that Countdown 3-operand mastery needs
   a substantially larger model. The transfer story from
   `docs/rlvr-countdown-heldout-transfer.md` stands: GRPO taught a transferable
   answer format plus real 2-operand skill; 3-operand solving stays at the floor,
   and giving it more tokens does not move it.
 - **Doesn't touch:** the accepted caff0a1 run artifacts, the held-out sets, the
-  manifest, or the original transfer doc — all unchanged. This is a new,
+  manifest, or the original transfer doc. Those are unchanged. This is a new,
   additive diagnostic.
 
 ## Follow-ups (not run)
@@ -144,5 +144,5 @@ cliff exactly when truncation is relieved.
   so a larger budget only extends the rambling regime. Flagged, not executed.
 - A stop-at-first-expression decode (truncate generation at the first complete
   expression) would recover the format transfer story at large budgets by cutting
-  the corrupting tail — but that changes the decode contract, not the arithmetic,
+  the corrupting tail. That changes the decode contract, not the arithmetic,
   and would not produce new correct 3-operand solves. Out of scope here.

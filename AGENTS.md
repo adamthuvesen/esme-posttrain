@@ -12,7 +12,7 @@ Local instructions for `esme-posttrain`. The global agent rules still apply; thi
 ## Commands
 
 ```bash
-make check        # the gate: ruff lint + format-check + unit tests — green before any commit
+make check        # the gate: ruff lint + format-check + unit tests; green before any commit
 make fmt          # auto-format + safe lint fixes
 uv run pytest     # unit tests
 ```
@@ -29,12 +29,12 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
   - `run_cards/esme-214m-sft-multiturn.md` for the multi-turn SFT foundation.
   - `run_cards/esme-214m-chat-dpo.md` for chat DPO.
   - `run_cards/esme-214m-rl.md` for RLVR prep.
-- When editing config shape, fixtures, or CLI dry-run payloads, update the matching stage launch validator (`sft/launch_instruct.py`, `sft/launch_multiturn.py`, `dpo/launch.py`, `rl/launch.py`) and its tests together — the validators are the single source of truth for config shape.
+- When editing config shape, fixtures, or CLI dry-run payloads, update the matching stage launch validator (`sft/launch_instruct.py`, `sft/launch_multiturn.py`, `dpo/launch.py`, `rl/launch.py`) and its tests together. The validators are the single source of truth for config shape.
 
 ## Scope
 
 - This is the post-training stage: take the from-scratch base model exported by `esme-pretrain`, run an SFT cold-start, then simple-task RLVR, and hand the adapted model to `llm-infer`.
-- Sibling repos (`esme-pretrain`, `llm-infer`, `grpo-decomp`) are related but independent — exchange artifacts (checkpoints, eval results), never code imports.
+- Sibling repos (`esme-pretrain`, `llm-infer`, `grpo-decomp`) are related but independent. Exchange artifacts (checkpoints, eval results), never code imports.
 - Prefer CPU-first, deterministic, inspectable code until the tiny end-to-end path is proven.
 - Keep changes small and evidence-backed: configs, fixtures, launch guards, and trainer code should move with their matching tests.
 - Do not start or expand training infrastructure without the matching run card and approval.
