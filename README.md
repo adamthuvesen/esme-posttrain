@@ -1,6 +1,6 @@
 # esme-posttrain
 
-Esme is a 214M-parameter language model trained from scratch. `esme-posttrain` adapts an `Esme-214M-Base` checkpoint from `esme-pretrain` into instruction-following, preference-tuned, and verifier-trained model artifacts.
+Esme is a 214M-parameter language model built from scratch in [`esme-pretrain`](https://github.com/adamthuvesen/esme-pretrain). `esme-posttrain` adapts an `Esme-214M-Base` checkpoint into instruction-following, preference-tuned, and verifier-trained model artifacts.
 
 The standard post-training path has three stages:
 
@@ -12,6 +12,11 @@ Esme-214M-Base
 ```
 
 RLVR uses GRPO on the current Countdown-Lite verifier task.
+
+The training code uses the repo's dense `torch` backbone directly, without `trl`
+or a `transformers` trainer in the loop. The stage objectives are small enough
+to inspect in the repo: SFT for chat format, DPO against a frozen SFT reference,
+and GRPO against verifier rewards.
 
 ## Stage Summary
 
