@@ -12,6 +12,7 @@ build/
 runs/
 artifacts/
 exports/
+openspec/
 checkpoints/
 payloads/
 generated_payloads/
