@@ -1,5 +1,7 @@
 # esme-posttrain
 
+![License](https://img.shields.io/github/license/adamthuvesen/esme-posttrain) ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+
 Esme is a 214M-parameter language model built from scratch in [`esme-pretrain`](https://github.com/adamthuvesen/esme-pretrain). `esme-posttrain` adapts an `Esme-214M-Base` checkpoint into instruction-following, preference-tuned, and verifier-trained model artifacts.
 
 The standard post-training path has three stages:
