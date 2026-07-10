@@ -50,11 +50,15 @@ Esme-214M is small enough to make the full LLM lifecycle practical to build and 
 
 ## What Is Here
 
-- Stage code for SFT, DPO, RLVR, launch validation, dense-bundle export, and shared artifact writing.
+- Stage code for SFT, DPO, RLVR, launch validation, versioned dense-bundle export,
+  and shared artifact writing.
 - Configs for the current Esme-214M post-training path, validated in code by the stage launch modules.
 - Evidence docs for SFT, DPO, completed Countdown-Lite GRPO, and the
   six-seed RLVR decomposition.
 - Export tooling for `Esme-214M-Chat` bundles.
+- Hashed study specifications that rebuild accepted JSON and Markdown reports.
+- A no-spend CPU acceptance path across SFT, DPO resume, RLVR, export, load,
+  generation, and verifier scoring.
 
 ## Quickstart
 
@@ -67,6 +71,15 @@ make check
 Use `uv run ...` for Python commands. Default local commands do not download
 remote datasets, start private training jobs, or spend money.
 
+Check a bundle without creating a model, rebuild the accepted placebo report,
+or run the full local stage chain:
+
+```bash
+uv run esme-posttrain bundle-check --bundle-dir fixtures/tiny_bundle --json
+uv run esme-posttrain study-report --study studies/rlvr-placebo.json
+uv run esme-posttrain full-path-cpu-smoke --output-dir runs/full-path-cpu-smoke --json
+```
+
 ## Current Artifacts
 
 - `docs/rlvr-countdown-lite.md` describes the RLVR task, baseline, and result.
@@ -77,6 +90,8 @@ remote datasets, start private training jobs, or spend money.
   six-seed real-reward gain with a same-budget random-reward placebo.
 - Generated export bundles are written under gitignored `exports/`.
 - Generated run reports are written under gitignored `artifacts/`.
+- `studies/rlvr-placebo.json` pins the six-seed study inputs by hash; its
+  generated JSON and Markdown reports are checked in beside it.
 
 ## Verifier Evidence
 
@@ -95,18 +110,21 @@ artifacts.
 ```text
 src/esme_posttrain/
   cli/                command-line entry point (parser + one module per command group)
+  studies/            hashed study specifications and report generation
   bundle.py           dense backbone bundle loading and hashing
   modeling.py         shared dense model primitives
   run_artifacts.py    shared JSON/environment/manifest artifact writers
   sft/                supervised fine-tuning stage
   dpo/                preference-tuning stage
   rl/                 verifier-reward RL stage
-  launch/             shared launch validation
+  launch/             shared launch validation and cross-stage CPU acceptance
   training/           shared training runtime (collate, metrics, checkpointing)
   export/             dense bundle export
 ```
 
 Stage-specific code belongs in the stage package. Keep the package root small.
+The canonical cross-repo bundle contract and compatibility policy live in
+[`esme-pretrain/docs/bundle-format.md`](https://github.com/adamthuvesen/esme-pretrain/blob/main/docs/bundle-format.md).
 
 ## Related Repositories
 
