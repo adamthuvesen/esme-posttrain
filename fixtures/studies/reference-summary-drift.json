@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "fixture",
+    "path": "fixtures/studies/reference-summary-drift.json"
+  },
+  "report_projection": {
+    "seeds": [1, 2],
+    "arms": {
+      "treatment": {
+        "mean_metrics": {
+          "valid_expression_rate": 0.1
+        }
+      }
+    }
+  }
+}

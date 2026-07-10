@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "grpo-decomp",
+    "path": "results/esme-countdown/sampled_multiseed_summary.json",
+    "sha256": "027731ce3ee0056a1c708ab6e7ff055f958c45e65255b592134073cadd4ecada"
+  },
+  "report_projection": {
+    "seeds": [214, 215, 216, 217, 218, 219],
+    "arms": {
+      "chat_baseline": {
+        "mean_metrics": {
+          "valid_expression_rate": 0.008333333333333333,
+          "any_exact_solve_rate": 0.03333333333333333
+        }
+      },
+      "real_reward": {
+        "mean_metrics": {
+          "valid_expression_rate": 0.8541666666666666,
+          "any_exact_solve_rate": 0.10555555555555556
+        },
+        "per_seed": {
+          "214": {"valid_expression_rate": 0.2708333333333333, "any_exact_solve_rate": 0.13333333333333333},
+          "215": {"valid_expression_rate": 0.9770833333333333, "any_exact_solve_rate": 0.1},
+          "216": {"valid_expression_rate": 0.9708333333333333, "any_exact_solve_rate": 0.1},
+          "217": {"valid_expression_rate": 0.9708333333333333, "any_exact_solve_rate": 0.1},
+          "218": {"valid_expression_rate": 0.9666666666666667, "any_exact_solve_rate": 0.1},
+          "219": {"valid_expression_rate": 0.96875, "any_exact_solve_rate": 0.1}
+        }
+      },
+      "random_reward": {
+        "mean_metrics": {
+          "valid_expression_rate": 0.0076388888888888895,
+          "any_exact_solve_rate": 0.016666666666666666
+        },
+        "per_seed": {
+          "214": {"valid_expression_rate": 0.008333333333333333, "any_exact_solve_rate": 0.0},
+          "215": {"valid_expression_rate": 0.004166666666666667, "any_exact_solve_rate": 0.0},
+          "216": {"valid_expression_rate": 0.008333333333333333, "any_exact_solve_rate": 0.03333333333333333},
+          "217": {"valid_expression_rate": 0.00625, "any_exact_solve_rate": 0.0},
+          "218": {"valid_expression_rate": 0.00625, "any_exact_solve_rate": 0.03333333333333333},
+          "219": {"valid_expression_rate": 0.0125, "any_exact_solve_rate": 0.03333333333333333}
+        }
+      }
+    },
+    "comparisons": {
+      "real-vs-random-validity": {
+        "mean_effect": 0.8465277777777778,
+        "confidence_interval_95": {
+          "lower": 0.5462135063357911,
+          "upper": 1.1468420492197644
+        }
+      },
+      "real-vs-random-exact": {
+        "mean_effect": 0.08888888888888889,
+        "confidence_interval_95": {
+          "lower": 0.06032686849292984,
+          "upper": 0.11745090928484794
+        }
+      }
+    }
+  }
+}

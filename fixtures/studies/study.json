@@ -1,0 +1,154 @@
+{
+  "acceptance_rule": {
+    "comparison_id": "treatment-vs-control-validity",
+    "minimum_effect": 0.0,
+    "require_ci_lower_above": 0.0
+  },
+  "allowed_claims": [
+    "The treatment improves fixture validity over the control."
+  ],
+  "arms": [
+    {
+      "name": "treatment",
+      "role": "treatment",
+      "runs": [
+        {
+          "completions": {
+            "path": "fixtures/studies/treatment-seed1.jsonl",
+            "sha256": "a1437db85aeb864cb278460fcdbf2e799cefe871d7cd8ed81869678c95a57ff8"
+          },
+          "cost": {
+            "path": "fixtures/studies/cost.json",
+            "sha256": "afab91a55ac9fc053a6a43a80e6dee64236c7d383e0e2c8439c41040ac0339c1"
+          },
+          "provenance": {
+            "path": "fixtures/studies/provenance.json",
+            "sha256": "8a6276bf3797ffca3fa77dcb52c98a807c90a0dc4cfa2b349cfa23b242abe2bf"
+          },
+          "seed": 1,
+          "training_manifest": {
+            "path": "fixtures/studies/training-manifest.json",
+            "sha256": "804eba203bd75aad372bc1cfdcbcc580481bd8ee4c3ed950624ddc7332734da0"
+          },
+          "training_token_budget": 100
+        },
+        {
+          "completions": {
+            "path": "fixtures/studies/treatment-seed2.jsonl",
+            "sha256": "85096c79ebfb41a82a535ce08455f1ccd32cea839a6310a12536c7e6cafa3656"
+          },
+          "cost": {
+            "path": "fixtures/studies/cost.json",
+            "sha256": "afab91a55ac9fc053a6a43a80e6dee64236c7d383e0e2c8439c41040ac0339c1"
+          },
+          "provenance": {
+            "path": "fixtures/studies/provenance.json",
+            "sha256": "8a6276bf3797ffca3fa77dcb52c98a807c90a0dc4cfa2b349cfa23b242abe2bf"
+          },
+          "seed": 2,
+          "training_manifest": {
+            "path": "fixtures/studies/training-manifest.json",
+            "sha256": "804eba203bd75aad372bc1cfdcbcc580481bd8ee4c3ed950624ddc7332734da0"
+          },
+          "training_token_budget": 100
+        }
+      ]
+    },
+    {
+      "name": "control",
+      "role": "control",
+      "runs": [
+        {
+          "completions": {
+            "path": "fixtures/studies/control-seed1.jsonl",
+            "sha256": "4c937714fb369f21f3aea974b2e84a1153e2041288019408b91ea090397c3100"
+          },
+          "provenance": {
+            "path": "fixtures/studies/provenance.json",
+            "sha256": "8a6276bf3797ffca3fa77dcb52c98a807c90a0dc4cfa2b349cfa23b242abe2bf"
+          },
+          "seed": 1
+        },
+        {
+          "completions": {
+            "path": "fixtures/studies/control-seed2.jsonl",
+            "sha256": "cfada65c66bd67952fc555e826dd52be1aa91414931554b0fdf487d39da80943"
+          },
+          "provenance": {
+            "path": "fixtures/studies/provenance.json",
+            "sha256": "8a6276bf3797ffca3fa77dcb52c98a807c90a0dc4cfa2b349cfa23b242abe2bf"
+          },
+          "seed": 2
+        }
+      ]
+    },
+    {
+      "name": "baseline",
+      "role": "baseline",
+      "runs": [
+        {
+          "completions": {
+            "path": "fixtures/studies/baseline.jsonl",
+            "sha256": "9f76d76059de2deb2f90675b43c65713a48e1ccd292a37eac4bb1511f1535a6f"
+          },
+          "provenance": {
+            "path": "fixtures/studies/provenance.json",
+            "sha256": "8a6276bf3797ffca3fa77dcb52c98a807c90a0dc4cfa2b349cfa23b242abe2bf"
+          },
+          "seed": 1
+        }
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "comparison_id": "treatment-vs-control-validity",
+      "metric": "valid_expression_rate",
+      "reference_arm": "control",
+      "treatment_arm": "treatment"
+    },
+    {
+      "comparison_id": "treatment-vs-control-exact",
+      "metric": "any_exact_solve_rate",
+      "reference_arm": "control",
+      "treatment_arm": "treatment"
+    },
+    {
+      "comparison_id": "treatment-vs-baseline-validity",
+      "metric": "valid_expression_rate",
+      "reference_arm": "baseline",
+      "treatment_arm": "treatment"
+    }
+  ],
+  "confidence_interval_method": "paired_student_t_95",
+  "decoding": {
+    "max_new_tokens": 12,
+    "n": 2,
+    "seed": 0,
+    "temperature": 1.0,
+    "top_p": 1.0
+  },
+  "excluded_runs": [
+    {
+      "reason": "Pre-registered fixture exclusion.",
+      "run_id": "fixture-preempted"
+    }
+  ],
+  "hypothesis": "Verifier reward improves valid Countdown expressions over random reward.",
+  "included_seeds": [
+    1,
+    2
+  ],
+  "primary_metric": "valid_expression_rate",
+  "reference_summary": {
+    "path": "fixtures/studies/reference-summary.json",
+    "sha256": "dfde949053cd0624f1071c31201561224fd029f0ca9f86ac4719be395b708db8"
+  },
+  "sample_budget": 4,
+  "schema_version": 1,
+  "study_id": "fixture-placebo",
+  "task_manifest_ids": [
+    "fixture-manifest-v1"
+  ],
+  "title": "Fixture placebo study"
+}
