@@ -33,8 +33,6 @@ Esme-214M-Base -> Esme-214M-Instruct -> Esme-214M-Chat -> Esme-214M-RL
 - Config and dataset-manifest validation: `src/esme_posttrain/rl/launch.py`
 - Launcher: private operator module.
 - Public result summary: `docs/rlvr-countdown-lite-grpo.md`
-- Operator provenance, training-shape verdict, incident record:
-  `docs/internal/rlvr-countdown-lite-grpo-run.md`
 
 ## Task
 

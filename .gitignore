@@ -28,3 +28,6 @@ modal_logs/
 *.bin
 *.safetensors
 *.ckpt
+
+# Local planning notes that must not be published.
+docs/internal/

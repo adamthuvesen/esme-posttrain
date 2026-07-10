@@ -88,8 +88,7 @@ transfer; exact solving improves too, but more modestly.
 </p>
 
 This figure is rendered by `scripts/plot_run_telemetry.py` from the accepted run
-artifacts. The full figure set, including SFT, DPO, and GRPO training curves, is
-linked from `docs/internal/repo-study-notes.md`.
+artifacts.
 
 ## Repository Layout
 

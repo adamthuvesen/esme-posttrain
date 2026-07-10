@@ -37,5 +37,3 @@ band; medium and hard tasks stay unsolved at this model size.
 - Dataset: `data/manifests/esme-214m-rl.tasks.json`
 - Task overview: `docs/rlvr-countdown-lite.md`
 - Held-out transfer: `docs/rlvr-countdown-heldout-transfer.md`
-- Operator provenance and training-shape verdict:
-  `docs/internal/rlvr-countdown-lite-grpo-run.md`
