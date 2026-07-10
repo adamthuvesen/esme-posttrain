@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+from contextlib import nullcontext, redirect_stdout
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -28,6 +30,7 @@ def run_rlvr_pipeline_smoke(
     doc_path: Path | None = None,
     repo_root: Path | None = None,
     launch_command: str | None = None,
+    emit_milestones_to_stdout: bool = True,
 ) -> dict[str, Any]:
     repo_root = (repo_root or config.config_path.parent.parent).resolve()
     smoke_config = replace(
@@ -37,18 +40,20 @@ def run_rlvr_pipeline_smoke(
         doc_path=(doc_path or config.pipeline_smoke_doc_path).expanduser().resolve(),
     )
     milestones: list[tuple[str, dict[str, Any]]] = []
-    payload = run_countdown_lite_grpo_job(
-        smoke_config,
-        output_dir=smoke_config.output_dir,
-        require_cuda=False,
-        commit=local_git_commit(repo_root),
-        dirty=local_git_dirty(repo_root),
-        milestone_callback=lambda stage, fields: milestones.append((stage, fields)),
-        wandb_enabled=False,
-        wandb_mode="disabled",
-        pipeline_smoke=True,
-        paid_compute=False,
-    )
+    stdout_context = nullcontext() if emit_milestones_to_stdout else redirect_stdout(io.StringIO())
+    with stdout_context:
+        payload = run_countdown_lite_grpo_job(
+            smoke_config,
+            output_dir=smoke_config.output_dir,
+            require_cuda=False,
+            commit=local_git_commit(repo_root),
+            dirty=local_git_dirty(repo_root),
+            milestone_callback=lambda stage, fields: milestones.append((stage, fields)),
+            wandb_enabled=False,
+            wandb_mode="disabled",
+            pipeline_smoke=True,
+            paid_compute=False,
+        )
     stages = tuple(stage for stage, _fields in milestones)
     missing = [stage for stage in REQUIRED_PIPELINE_SMOKE_STAGES if stage not in stages]
     if missing:

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "run_id": "full_path_cpu_smoke",
+  "base_bundle_path": "../tiny_bundle",
+  "sft": {
+    "config_path": "../../configs/esme-214m-sft-multiturn.json",
+    "max_steps": 2
+  },
+  "dpo": {
+    "config_path": "../../configs/esme-214m-chat-dpo.json",
+    "max_steps": 2,
+    "interrupt_after_step": 1
+  },
+  "rlvr": {
+    "config_path": "esme-214m-rl.fixture.json",
+    "max_steps": 2,
+    "max_rollout_tokens": 512
+  },
+  "evaluation": {
+    "manifest_path": "../manifests/rl_tasks_tiny.json",
+    "task_budget": 1,
+    "samples_per_task": 1
+  },
+  "execution": {
+    "paid_compute": false,
+    "remote_dataset_download": false,
+    "wandb_enabled": false
+  }
+}

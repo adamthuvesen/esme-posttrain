@@ -15,6 +15,7 @@ from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
 from tokenizers.pre_tokenizers import Whitespace
 
+from esme_posttrain.bundle import load_dense_backbone_bundle
 from esme_posttrain.modeling import BackboneConfig, DenseBackbone
 from esme_posttrain.run_artifacts import (
     refresh_manifest_files,
@@ -46,11 +47,25 @@ def run_multi_turn_cpu_fixture(
     *,
     output_dir: Path | None = None,
     wandb_enabled: bool = False,
+    input_bundle_path: Path | None = None,
+    max_steps: int | None = None,
 ) -> dict[str, Any]:
     evidence_dir = _prepare_evidence_dir(config.output_dir, output_dir)
+    fixture_steps = int(config.payload["optimizer"]["smoke_max_steps"])
+    if max_steps is not None:
+        if max_steps <= 0:
+            raise ValueError("max_steps must be positive")
+        fixture_steps = max_steps
 
-    tokenizer = tiny_chat_tokenizer()
-    model = DenseBackbone(tiny_backbone_config())
+    if input_bundle_path is None:
+        tokenizer = tiny_chat_tokenizer()
+        model = DenseBackbone(tiny_backbone_config())
+        base_bundle_manifest = {"mode": "local_cpu_fixture_multi_turn_tiny_base"}
+    else:
+        loaded = load_dense_backbone_bundle(input_bundle_path, map_location="cpu")
+        tokenizer = loaded.tokenizer
+        model = loaded.model
+        base_bundle_manifest = loaded.bundle.manifest
     train_examples = tuple(
         tokenize_multi_turn(tokenizer, example, max_sequence_tokens=model.config.context_length)
         for example in _tiny_train_examples()
@@ -110,20 +125,24 @@ def run_multi_turn_cpu_fixture(
         train_examples,
         eval_examples,
         SFTTrainerConfig(
-            max_steps=int(config.payload["optimizer"]["smoke_max_steps"]),
+            max_steps=fixture_steps,
             micro_batch_size=1,
             gradient_accumulation_steps=2,
             learning_rate=0.05,
             scheduler=str(config.payload["optimizer"]["scheduler"]),
-            warmup_steps=min(2, int(config.payload["optimizer"]["warmup_steps"])),
+            warmup_steps=min(
+                fixture_steps,
+                2,
+                int(config.payload["optimizer"]["warmup_steps"]),
+            ),
             weight_decay=float(config.payload["optimizer"]["weight_decay"]),
             precision="fp32",
             pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
             seed=int(config.payload["optimizer"]["seed"]),
             output_dir=evidence_dir,
             artifact_name=config.artifact_name,
-            eval_interval=10,
-            checkpoint_interval=20,
+            eval_interval=min(10, fixture_steps),
+            checkpoint_interval=min(20, fixture_steps),
             log_interval=5,
             sample_new_tokens=6,
             wandb=WandbConfig(
@@ -147,7 +166,7 @@ def run_multi_turn_cpu_fixture(
             ),
         ),
         eval_splits=_fixture_eval_splits(eval_examples),
-        base_bundle_manifest={"mode": "local_cpu_fixture_multi_turn_tiny_base"},
+        base_bundle_manifest=base_bundle_manifest,
     )
 
     write_multi_turn_samples(
