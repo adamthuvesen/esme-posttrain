@@ -141,6 +141,9 @@ These repositories exchange artifacts, not imports:
 - [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp): measures where
   GRPO gains come from, separating reliability from new capability.
 
+The [full-lifecycle retrospective](https://github.com/adamthuvesen/esme-pretrain/blob/main/docs/retrospective.md)
+walks the whole chain, with every claim linked to a committed artifact.
+
 ## References
 
 - Lambert et al., [_Tulu 3: Pushing Frontiers in Open Language Model Post-Training_](https://arxiv.org/abs/2411.15124), 2025.
