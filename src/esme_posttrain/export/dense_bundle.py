@@ -9,7 +9,14 @@ from typing import Any
 import torch
 from tokenizers import Tokenizer
 
-from esme_posttrain.bundle import BUNDLE_FORMAT, file_sha256, load_dense_backbone_bundle
+from esme_posttrain.bundle import (
+    BUNDLE_FORMAT,
+    BUNDLE_SCHEMA_VERSION,
+    canonical_model_config,
+    file_sha256,
+    llm_infer_model_config,
+    load_dense_backbone_bundle,
+)
 from esme_posttrain.training.checkpointing import load_training_checkpoint
 
 CHAT_TEMPLATE_ID = "esme_newline_v1"
@@ -53,28 +60,38 @@ def export_dense_bundle(request: ExportRequest) -> dict[str, Any]:
     _copy_file_atomically(artifact_dir / "tokenizer.json", output_dir / "tokenizer.json")
 
     checkpoint = load_training_checkpoint(artifact_dir / "best-checkpoint.pt", map_location="cpu")
+    model_config = canonical_model_config(checkpoint.config)
     (output_dir / "config.json").write_text(
-        json.dumps(checkpoint.config.to_dict(), indent=2, sort_keys=True) + "\n",
+        json.dumps(model_config, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 
     weights_payload = {
-        "format_version": 1,
+        "format_version": BUNDLE_SCHEMA_VERSION,
         "format": BUNDLE_FORMAT,
         "key_format": BUNDLE_FORMAT,
+        "metadata": {"key_format": BUNDLE_FORMAT, "state_dict_key": "state_dict"},
         "state_dict_key": "state_dict",
-        "model_config": checkpoint.config.to_dict(),
+        "model_config": model_config,
+        "llm_infer_config": llm_infer_model_config(model_config),
         "state_dict": checkpoint.model.state_dict(),
+        "checkpoint_step": checkpoint.step,
+        "source_checkpoint": f"{request.source_path}/best-checkpoint.pt",
+        "source_checkpoint_sha256": file_sha256(artifact_dir / "best-checkpoint.pt"),
     }
     _save_torch_payload_atomically(weights_payload, output_dir / "weights.pt")
 
     tokenizer = Tokenizer.from_file(str(output_dir / "tokenizer.json"))
     eos_token_ids = _eos_token_ids(tokenizer)
+    (output_dir / "README.md").write_text(
+        _readme(request=request, checkpoint_step=checkpoint.step, eos_token_ids=eos_token_ids),
+        encoding="utf-8",
+    )
     manifest = _manifest(
         request=request,
         artifact_dir=artifact_dir,
         output_dir=output_dir,
-        model_config=checkpoint.config.to_dict(),
+        model_config=model_config,
         checkpoint_step=checkpoint.step,
         eos_token_ids=eos_token_ids,
     )
@@ -90,13 +107,6 @@ def export_dense_bundle(request: ExportRequest) -> dict[str, Any]:
         eos_token_ids=eos_token_ids,
         output_dir=output_dir,
         checkpoint_step=checkpoint.step,
-    )
-    (output_dir / "smoke.json").write_text(
-        json.dumps(smoke, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    (output_dir / "README.md").write_text(
-        _readme(request=request, checkpoint_step=checkpoint.step, eos_token_ids=eos_token_ids),
-        encoding="utf-8",
     )
     return smoke
 
@@ -132,8 +142,10 @@ def _manifest(
         or _hash_from(source_manifest)
         or file_sha256(artifact_dir / "config.json")
     )
+    source_checkpoint = f"{request.source_path}/best-checkpoint.pt"
+    source_checkpoint_sha256 = file_sha256(artifact_dir / "best-checkpoint.pt")
     return {
-        "schema_version": 1,
+        "schema_version": BUNDLE_SCHEMA_VERSION,
         "format": BUNDLE_FORMAT,
         "weights_format": BUNDLE_FORMAT,
         "model_family": "DenseBackbone",
@@ -143,20 +155,29 @@ def _manifest(
             "stage": "dpo",
         },
         "model_config": model_config,
+        "llm_infer_config": llm_infer_model_config(model_config),
+        "checkpoint_step": checkpoint_step,
+        "source_checkpoint": source_checkpoint,
+        "source_checkpoint_sha256": source_checkpoint_sha256,
         "files": {
-            "config": {"path": "config.json", "sha256": file_sha256(output_dir / "config.json")},
+            "config": {
+                "path": "config.json",
+                "sha256": file_sha256(output_dir / "config.json"),
+            },
             "tokenizer": {
                 "path": "tokenizer.json",
                 "sha256": file_sha256(output_dir / "tokenizer.json"),
             },
-            "weights": {"path": "weights.pt", "sha256": file_sha256(output_dir / "weights.pt")},
+            "weights": {
+                "path": "weights.pt",
+                "sha256": file_sha256(output_dir / "weights.pt"),
+            },
+            "readme": {
+                "path": "README.md",
+                "sha256": file_sha256(output_dir / "README.md"),
+            },
         },
-        "tokenizer": {
-            "path": "tokenizer.json",
-            "format": "tokenizers-json",
-            "add_special_tokens": False,
-            "chat_template": DEFAULT_CHAT_TEMPLATE,
-        },
+        "tokenizer": {"path": "tokenizer.json", "format": "tokenizers-json"},
         "chat_template": DEFAULT_CHAT_TEMPLATE,
         "eos_token_ids": eos_token_ids,
         "decoding": {
@@ -168,7 +189,7 @@ def _manifest(
             "modal_volume": request.source_volume,
             "modal_path": request.source_path,
             "checkpoint_file": "best-checkpoint.pt",
-            "checkpoint_sha256": file_sha256(artifact_dir / "best-checkpoint.pt"),
+            "checkpoint_sha256": source_checkpoint_sha256,
             "checkpoint_step": checkpoint_step,
             "dpo_step": request.dpo_step,
             "wandb_run": request.wandb_run,

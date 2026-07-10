@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from esme_posttrain import __version__
+from esme_posttrain.cli.artifacts import add_artifact_parsers
 from esme_posttrain.cli.dpo import add_dpo_parsers
 from esme_posttrain.cli.export import add_export_parsers
 from esme_posttrain.cli.rl import add_rl_parsers
@@ -18,5 +19,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_sft_parsers(subparsers)
     add_dpo_parsers(subparsers)
     add_export_parsers(subparsers)
+    add_artifact_parsers(subparsers)
 
     return parser
