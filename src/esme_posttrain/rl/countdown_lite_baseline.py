@@ -11,10 +11,19 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from pydantic import ValidationError
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.evals.records import (
+    CountdownEvalResumeLine,
+    CountdownEvalSummary,
+    CountdownSampleScore,
+    CountdownTaskResult,
+    CountdownTaskRow,
+    EvalRecordError,
+    dump_record,
+)
 from esme_posttrain.rl.countdown_lite import (
-    BaselineSample,
     load_countdown_lite_rows,
     render_chat_prompt,
     verify_countdown_lite_expression,
@@ -75,7 +84,9 @@ def run_countdown_lite_baseline(request: CountdownBaselineRequest) -> dict[str, 
     if request.no_progress_timeout_seconds is not None and request.no_progress_timeout_seconds <= 0:
         raise ValueError("no_progress_timeout_seconds must be positive when set")
 
-    rows = list(load_countdown_lite_rows(request.manifest_path, split=request.split))
+    rows = _validated_task_rows(
+        load_countdown_lite_rows(request.manifest_path, split=request.split)
+    )
     if request.max_tasks is not None:
         rows = rows[: request.max_tasks]
     if not rows:
@@ -113,7 +124,7 @@ def run_countdown_lite_baseline(request: CountdownBaselineRequest) -> dict[str, 
 
     torch.manual_seed(request.seed)
     for task_index, row in enumerate(rows):
-        task_id = str(row["task_id"])
+        task_id = row.task_id
         if task_id in completed_task_ids:
             progress.maybe_emit(
                 tasks_completed=task_index + 1,
@@ -127,10 +138,10 @@ def run_countdown_lite_baseline(request: CountdownBaselineRequest) -> dict[str, 
             samples_completed=samples_completed,
             task_id=task_id,
         )
-        prompt = render_chat_prompt(str(row["prompt"]))
+        prompt = render_chat_prompt(row.prompt)
         prompt_ids = tokenizer.encode(prompt, add_special_tokens=False).ids
         if not prompt_ids:
-            raise ValueError(f"task {row['task_id']} produced an empty prompt")
+            raise ValueError(f"task {row.task_id} produced an empty prompt")
         samples = []
         greedy_input = torch.tensor([prompt_ids], dtype=torch.long, device=device)
         torch.manual_seed(request.seed + task_index * 10_000)
@@ -188,7 +199,7 @@ def run_countdown_lite_baseline(request: CountdownBaselineRequest) -> dict[str, 
                 task_id=task_id,
             )
         task_result = _task_result(row, samples)
-        all_results.append(task_result)
+        all_results.append(dump_record(task_result))
         _append_partial_result(
             partial_path,
             task_result,
@@ -208,7 +219,7 @@ def run_countdown_lite_baseline(request: CountdownBaselineRequest) -> dict[str, 
         "generation_finish",
         tasks_completed=len(rows),
         samples_completed=samples_completed,
-        task_id=str(rows[-1]["task_id"]),
+        task_id=rows[-1].task_id,
     )
     report = _summarize(request, rows, all_results)
     json_path = request.output_dir / "baseline-report.json"
@@ -228,6 +239,21 @@ def run_countdown_lite_baseline(request: CountdownBaselineRequest) -> dict[str, 
     }
 
 
+def _validated_task_rows(rows: tuple[dict[str, Any], ...]) -> list[CountdownTaskRow]:
+    validated: list[CountdownTaskRow] = []
+    seen_task_ids: set[str] = set()
+    for index, row in enumerate(rows):
+        try:
+            task_row = CountdownTaskRow.model_validate(row)
+        except ValidationError as error:
+            raise EvalRecordError(f"malformed Countdown-Lite task row {index}: {error}") from error
+        if task_row.task_id in seen_task_ids:
+            raise EvalRecordError(f"duplicate Countdown-Lite task_id: {task_row.task_id}")
+        seen_task_ids.add(task_row.task_id)
+        validated.append(task_row)
+    return validated
+
+
 def _load_partial_results(path: Path, request: CountdownBaselineRequest) -> list[dict[str, object]]:
     if not path.exists():
         return []
@@ -236,39 +262,42 @@ def _load_partial_results(path: Path, request: CountdownBaselineRequest) -> list
         if not line.strip():
             continue
         try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as error:
+            resume_line = CountdownEvalResumeLine.model_validate_json(line)
+        except ValidationError as error:
             raise CountdownBaselineProgressError(
                 f"cannot resume from malformed partial eval line {line_number}: {error}"
             ) from error
-        if not _partial_matches_request(payload, request):
+        if not _partial_matches_request(resume_line, request):
             raise CountdownBaselineProgressError(
                 "cannot resume partial eval: profile/config/model/sample metadata mismatch"
             )
-        task_result = payload.get("task_result")
-        if not isinstance(task_result, dict):
+        recorded_samples = len(resume_line.task_result.samples)
+        if recorded_samples != request.samples_per_task:
             raise CountdownBaselineProgressError(
-                f"cannot resume partial eval line {line_number}: missing task_result"
+                f"cannot resume partial eval: task {resume_line.task_id} recorded "
+                f"{recorded_samples} samples, budget is {request.samples_per_task}"
             )
-        results.append(task_result)
+        results.append(dump_record(resume_line.task_result))
     return results
 
 
-def _partial_matches_request(payload: dict[str, Any], request: CountdownBaselineRequest) -> bool:
+def _partial_matches_request(
+    resume_line: CountdownEvalResumeLine, request: CountdownBaselineRequest
+) -> bool:
     return (
-        payload.get("phase") == request.progress_label
-        and payload.get("eval_profile") == request.eval_profile
-        and payload.get("config_hash") == request.config_hash
-        and payload.get("model_id") == request.model_id
-        and payload.get("samples_per_task") == request.samples_per_task
-        and payload.get("max_new_tokens") == request.max_new_tokens
-        and payload.get("split") == request.split
+        resume_line.phase == request.progress_label
+        and resume_line.eval_profile == request.eval_profile
+        and resume_line.config_hash == request.config_hash
+        and resume_line.model_id == request.model_id
+        and resume_line.samples_per_task == request.samples_per_task
+        and resume_line.max_new_tokens == request.max_new_tokens
+        and resume_line.split == request.split
     )
 
 
 def _append_partial_result(
     path: Path,
-    task_result: dict[str, object],
+    task_result: CountdownTaskResult,
     request: CountdownBaselineRequest,
     *,
     task_index: int,
@@ -276,30 +305,30 @@ def _append_partial_result(
     samples_completed: int,
     total_samples: int,
 ) -> None:
-    payload = {
-        "schema_version": 1,
-        "event": "countdown_lite_eval_task_complete",
-        "phase": request.progress_label,
-        "eval_profile": request.eval_profile,
-        "config_hash": request.config_hash,
-        "model_id": request.model_id,
-        "split": request.split,
-        "task_index": task_index,
-        "task_start": task_index,
-        "task_end": task_index + 1,
-        "tasks_completed": task_index + 1,
-        "tasks_total": task_count,
-        "sample_start": samples_completed - request.samples_per_task,
-        "sample_end": samples_completed,
-        "samples_completed": samples_completed,
-        "samples_total": total_samples,
-        "samples_per_task": request.samples_per_task,
-        "max_new_tokens": request.max_new_tokens,
-        "task_id": task_result.get("task_id"),
-        "task_result": task_result,
-    }
+    resume_line = CountdownEvalResumeLine(
+        schema_version=1,
+        event="countdown_lite_eval_task_complete",
+        phase=request.progress_label,
+        eval_profile=request.eval_profile,
+        config_hash=request.config_hash,
+        model_id=request.model_id,
+        split=request.split,
+        task_index=task_index,
+        task_start=task_index,
+        task_end=task_index + 1,
+        tasks_completed=task_index + 1,
+        tasks_total=task_count,
+        sample_start=samples_completed - request.samples_per_task,
+        sample_end=samples_completed,
+        samples_completed=samples_completed,
+        samples_total=total_samples,
+        samples_per_task=request.samples_per_task,
+        max_new_tokens=request.max_new_tokens,
+        task_id=task_result.task_id,
+        task_result=task_result,
+    )
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+        handle.write(json.dumps(dump_record(resume_line), sort_keys=True) + "\n")
 
 
 class _BaselineProgress:
@@ -423,27 +452,28 @@ def _decode_batch(
     max_new_tokens: int,
     temperature: float,
     eos_token_id: int | None,
-    row: dict[str, Any],
-) -> list[BaselineSample]:
+    row: CountdownTaskRow,
+) -> list[CountdownSampleScore]:
     generated = model.generate(
         input_tensor,
         max_new_tokens=max_new_tokens,
         temperature=temperature,
         eos_token_id=eos_token_id,
     )
-    samples: list[BaselineSample] = []
+    samples: list[CountdownSampleScore] = []
     for generated_row in generated.detach().cpu().tolist():
         generated_ids = _truncate_at_eos(generated_row[prompt_tokens:], eos_token_id)
         output = tokenizer.decode(generated_ids, skip_special_tokens=False)
         verification = verify_countdown_lite_expression(
             output,
-            numbers=_as_int_tuple(row["numbers"]),
-            target=int(row["target"]),
+            numbers=row.numbers,
+            target=row.target,
         )
         samples.append(
-            BaselineSample(
+            CountdownSampleScore(
                 output=output,
                 extracted_expression=verification.expression,
+                is_well_formed=verification.is_well_formed,
                 is_valid_expression=verification.is_valid_expression,
                 is_exact_solve=verification.is_exact_solve,
                 value=verification.value,
@@ -463,48 +493,39 @@ def _truncate_at_eos(token_ids: list[int], eos_token_id: int | None) -> list[int
     return token_ids[:eos_index]
 
 
-def _as_int_tuple(value: object) -> tuple[int, ...]:
-    if not isinstance(value, list):
-        raise ValueError("row.numbers must be a list")
-    return tuple(int(number) for number in value)
-
-
-def _task_result(row: dict[str, Any], samples: list[BaselineSample]) -> dict[str, object]:
+def _task_result(row: CountdownTaskRow, samples: list[CountdownSampleScore]) -> CountdownTaskResult:
     pass_at = {}
     for k in PASS_AT_KS:
         if k > len(samples):
             continue
         prefix = samples[:k]
-        pass_at[f"pass@{k}"] = any(sample.is_exact_solve for sample in prefix)
-    return {
-        "task_id": row["task_id"],
-        "split": row["split"],
-        "difficulty": row["difficulty"],
-        "numbers": row["numbers"],
-        "target": row["target"],
-        "solution": row["solution"],
+        pass_at[f"pass_at_{k}"] = any(sample.is_exact_solve for sample in prefix)
+    return CountdownTaskResult(
+        task_id=row.task_id,
+        split=row.split,
+        difficulty=row.difficulty,
+        numbers=row.numbers,
+        target=row.target,
+        solution=row.solution,
         **pass_at,
-        "valid_samples": sum(sample.is_valid_expression for sample in samples),
-        "exact_samples": sum(sample.is_exact_solve for sample in samples),
-        "samples": [
-            {
-                "output": sample.output,
-                "extracted_expression": sample.extracted_expression,
-                "is_valid_expression": sample.is_valid_expression,
-                "is_exact_solve": sample.is_exact_solve,
-                "value": sample.value,
-                "reason": sample.reason,
-            }
-            for sample in samples
-        ],
-    }
+        valid_samples=sum(sample.is_valid_expression for sample in samples),
+        exact_samples=sum(sample.is_exact_solve for sample in samples),
+        samples=tuple(samples),
+    )
 
 
 def _summarize(
     request: CountdownBaselineRequest,
-    rows: list[dict[str, Any]],
+    rows: list[CountdownTaskRow],
     all_results: list[dict[str, object]],
 ) -> dict[str, object]:
+    for result in all_results:
+        recorded_samples = len(result["samples"])
+        if recorded_samples != request.samples_per_task:
+            raise EvalRecordError(
+                f"incomplete sample budget: task {result['task_id']} recorded "
+                f"{recorded_samples} samples, budget is {request.samples_per_task}"
+            )
     sample_count = len(all_results) * request.samples_per_task
     valid_count = sum(int(result["valid_samples"]) for result in all_results)
     exact_count = sum(int(result["exact_samples"]) for result in all_results)
@@ -528,7 +549,11 @@ def _summarize(
         ),
         "tasks": all_results,
     }
-    return summary
+    try:
+        record = CountdownEvalSummary.model_validate(summary)
+    except ValidationError as error:
+        raise EvalRecordError(f"baseline summary failed record validation: {error}") from error
+    return dump_record(record)
 
 
 def _pass_rate(results: list[dict[str, object]], key: str) -> float:

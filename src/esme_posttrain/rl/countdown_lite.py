@@ -67,16 +67,6 @@ class VerificationResult:
     is_well_formed: bool = False
 
 
-@dataclass(frozen=True)
-class BaselineSample:
-    output: str
-    extracted_expression: str | None
-    is_valid_expression: bool
-    is_exact_solve: bool
-    value: int | None
-    reason: str
-
-
 _TOKEN_PATTERN = re.compile(r"\s*(\d+|[()+\-*])")
 
 

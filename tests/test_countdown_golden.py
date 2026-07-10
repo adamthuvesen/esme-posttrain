@@ -12,11 +12,14 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+import pytest
+
 from esme_posttrain.rl.countdown_lite import (
     load_countdown_lite_rows,
     verify_countdown_lite_expression,
 )
 from esme_posttrain.rl.countdown_lite_baseline import (
+    CountdownBaselineProgressError,
     CountdownBaselineRequest,
     run_countdown_lite_baseline,
 )
@@ -97,6 +100,57 @@ def test_baseline_partial_lines_match_golden(tmp_path: Path) -> None:
     ]
 
     assert_matches_golden(golden_lines, fresh_lines)
+
+
+def test_resume_rejects_partial_with_incomplete_sample_budget(tmp_path: Path) -> None:
+    first_request = CountdownBaselineRequest(
+        manifest_path=TINY_MANIFEST,
+        bundle_path=TINY_BUNDLE,
+        output_dir=tmp_path,
+        split="eval",
+        samples_per_task=2,
+        max_new_tokens=2,
+        seed=214,
+        device="cpu",
+        progress_label="budget_eval",
+        eval_profile="budget_fixture_2x2",
+        config_hash="budget-fixture-config",
+        model_id="tiny-bundle-fixture",
+    )
+    run_countdown_lite_baseline(first_request)
+
+    partial_path = tmp_path / "baseline-partial.jsonl"
+    line = json.loads(partial_path.read_text(encoding="utf-8").splitlines()[0])
+    # Truncate the recorded samples but keep the counts consistent, so the
+    # only defect left is the incomplete sample budget.
+    task_result = line["task_result"]
+    task_result["samples"] = task_result["samples"][:1]
+    task_result["valid_samples"] = sum(
+        sample["is_valid_expression"] for sample in task_result["samples"]
+    )
+    task_result["exact_samples"] = sum(
+        sample["is_exact_solve"] for sample in task_result["samples"]
+    )
+    partial_path.write_text(json.dumps(line) + "\n", encoding="utf-8")
+
+    with pytest.raises(CountdownBaselineProgressError, match="recorded 1 samples, budget is 2"):
+        run_countdown_lite_baseline(
+            CountdownBaselineRequest(
+                manifest_path=TINY_MANIFEST,
+                bundle_path=TINY_BUNDLE,
+                output_dir=tmp_path,
+                split="eval",
+                samples_per_task=2,
+                max_new_tokens=2,
+                seed=214,
+                device="cpu",
+                progress_label="budget_eval",
+                eval_profile="budget_fixture_2x2",
+                config_hash="budget-fixture-config",
+                model_id="tiny-bundle-fixture",
+                resume_from_partial=True,
+            )
+        )
 
 
 def test_verifier_scores_match_golden() -> None:

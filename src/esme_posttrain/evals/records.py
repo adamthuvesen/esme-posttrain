@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 COUNTDOWN_VERIFIER_NAME = "countdown_lite_exact_solve"
 COUNTDOWN_VERIFIER_VERSION = 1
@@ -64,6 +64,17 @@ class CountdownSampleScore(_EvalRecord):
     value: int | None
     reason: str
 
+    @model_validator(mode="after")
+    def check_score_tiers(self) -> CountdownSampleScore:
+        # The tiers nest: an exact solve is a valid expression, and a valid
+        # expression parsed as arithmetic. A verifier result outside this
+        # ladder is invalid output, not a gradable sample.
+        if self.is_exact_solve and not self.is_valid_expression:
+            raise ValueError("invalid verifier output: exact solve without a valid expression")
+        if self.is_valid_expression and not self.is_well_formed:
+            raise ValueError("invalid verifier output: valid expression that is not well-formed")
+        return self
+
 
 class CountdownTaskResult(_EvalRecord):
     """All scored samples for one task, with pass@k over the sample prefix."""
@@ -80,6 +91,18 @@ class CountdownTaskResult(_EvalRecord):
     valid_samples: int
     exact_samples: int
     samples: tuple[CountdownSampleScore, ...]
+
+    @model_validator(mode="after")
+    def check_counts_match_samples(self) -> CountdownTaskResult:
+        recomputed_valid = sum(sample.is_valid_expression for sample in self.samples)
+        recomputed_exact = sum(sample.is_exact_solve for sample in self.samples)
+        if self.valid_samples != recomputed_valid or self.exact_samples != recomputed_exact:
+            raise ValueError(
+                f"invalid verifier output for {self.task_id}: recorded counts "
+                f"(valid={self.valid_samples}, exact={self.exact_samples}) do not match "
+                f"samples (valid={recomputed_valid}, exact={recomputed_exact})"
+            )
+        return self
 
 
 class CountdownEvalResumeLine(_EvalRecord):
