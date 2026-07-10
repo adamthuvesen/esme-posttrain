@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import math
 import random
@@ -14,7 +16,13 @@ from typing import Any, Literal
 import torch
 from tokenizers import Tokenizer
 
-from esme_posttrain.bundle import BUNDLE_FORMAT, file_sha256
+from esme_posttrain.bundle import (
+    BUNDLE_FORMAT,
+    BUNDLE_SCHEMA_VERSION,
+    canonical_model_config,
+    file_sha256,
+    llm_infer_model_config,
+)
 from esme_posttrain.modeling import DenseBackbone, soft_cap_logits
 from esme_posttrain.rl.countdown_lite import (
     render_chat_prompt,
@@ -83,6 +91,8 @@ class CountdownGRPOTrainerConfig:
     bundle_model_id: str = "esme-214m-rl"
     pad_token_id: int = 0
     source_manifest: dict[str, Any] = field(default_factory=dict)
+    source_checkpoint: str = "in-memory-reference"
+    source_checkpoint_sha256: str | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -238,6 +248,11 @@ def run_countdown_lite_grpo(
     if policy.config != reference.config:
         raise CountdownGRPOTrainerError("policy and reference must share the same model config")
 
+    if config.source_checkpoint_sha256 is None:
+        config = replace(
+            config,
+            source_checkpoint_sha256=_state_dict_sha256(reference.state_dict()),
+        )
     set_reproducible_seed(config.seed)
     # The placebo reward stream is a dedicated RNG seeded independently of the rollout
     # RNG, so the random reward assigned to a rollout is statistically independent of the
@@ -964,6 +979,12 @@ def _clone_state_dict(model: DenseBackbone) -> dict[str, torch.Tensor]:
     return {name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()}
 
 
+def _state_dict_sha256(state_dict: dict[str, torch.Tensor]) -> str:
+    buffer = io.BytesIO()
+    torch.save(state_dict, buffer)
+    return hashlib.sha256(buffer.getvalue()).hexdigest()
+
+
 def _config_payload(config: CountdownGRPOTrainerConfig) -> dict[str, Any]:
     return {
         "mode": "countdown_lite_grpo",
@@ -1044,27 +1065,41 @@ def _write_bundle(
     checkpoint_step: int,
 ) -> None:
     bundle_dir.mkdir(parents=True, exist_ok=True)
+    model_config = canonical_model_config(model.config)
     (bundle_dir / "config.json").write_text(
-        json.dumps(model.config.to_dict(), indent=2, sort_keys=True) + "\n",
+        json.dumps(model_config, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     tokenizer.save(str(bundle_dir / "tokenizer.json"))
     weights_payload = {
-        "format_version": 1,
+        "format_version": BUNDLE_SCHEMA_VERSION,
         "format": BUNDLE_FORMAT,
         "key_format": BUNDLE_FORMAT,
-        "state_dict_key": "model_state",
-        "model_config": model.config.to_dict(),
+        "metadata": {"key_format": BUNDLE_FORMAT, "state_dict_key": "state_dict"},
+        "state_dict_key": "state_dict",
+        "model_config": model_config,
+        "llm_infer_config": llm_infer_model_config(model_config),
         "state_dict": model.state_dict(),
+        "checkpoint_step": checkpoint_step,
+        "source_checkpoint": config.source_checkpoint,
+        "source_checkpoint_sha256": config.source_checkpoint_sha256,
     }
     torch.save(weights_payload, bundle_dir / "weights.pt")
+    (bundle_dir / "README.md").write_text(
+        _bundle_readme(config, checkpoint_step=checkpoint_step),
+        encoding="utf-8",
+    )
     manifest = {
-        "schema_version": 1,
+        "schema_version": BUNDLE_SCHEMA_VERSION,
         "format": BUNDLE_FORMAT,
         "weights_format": BUNDLE_FORMAT,
         "model_family": "DenseBackbone",
         "model": {"id": config.bundle_model_id, "name": config.artifact_name, "stage": "rlvr"},
-        "model_config": model.config.to_dict(),
+        "model_config": model_config,
+        "llm_infer_config": llm_infer_model_config(model_config),
+        "checkpoint_step": checkpoint_step,
+        "source_checkpoint": config.source_checkpoint,
+        "source_checkpoint_sha256": config.source_checkpoint_sha256,
         "files": {
             "config": {
                 "path": "config.json",
@@ -1074,12 +1109,18 @@ def _write_bundle(
                 "path": "tokenizer.json",
                 "sha256": file_sha256(bundle_dir / "tokenizer.json"),
             },
-            "weights": {"path": "weights.pt", "sha256": file_sha256(bundle_dir / "weights.pt")},
+            "weights": {
+                "path": "weights.pt",
+                "sha256": file_sha256(bundle_dir / "weights.pt"),
+            },
+            "readme": {
+                "path": "README.md",
+                "sha256": file_sha256(bundle_dir / "README.md"),
+            },
         },
         "tokenizer": {
             "path": "tokenizer.json",
             "format": "tokenizers-json",
-            "add_special_tokens": False,
         },
         "eos_token_ids": _eos_token_ids(tokenizer),
         "decoding": {
@@ -1095,6 +1136,16 @@ def _write_bundle(
     }
     (bundle_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
+def _bundle_readme(config: CountdownGRPOTrainerConfig, *, checkpoint_step: int) -> str:
+    return (
+        f"# {config.artifact_name} DenseBackbone Bundle\n\n"
+        f"- Model id: `{config.bundle_model_id}`\n"
+        f"- Stage: `rlvr`; checkpoint step: `{checkpoint_step}`\n"
+        f"- Starts from: `{config.reference_artifact_name}`\n\n"
+        "Format contract: `llm_pretrain_dense_v1`.\n"
     )
 
 

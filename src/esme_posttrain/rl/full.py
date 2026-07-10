@@ -14,7 +14,7 @@ from typing import Any
 
 import torch
 
-from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.bundle import file_sha256, load_dense_backbone_bundle
 from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows
 from esme_posttrain.rl.countdown_lite_baseline import (
     PASS_AT_KS,
@@ -317,6 +317,8 @@ def run_countdown_lite_grpo_job(
                 artifact_name=config.artifact_name,
                 reference_artifact_name=str(config.payload["starts_from"]),
                 source_manifest=loaded.bundle.manifest,
+                source_checkpoint=str(loaded.bundle.weights_path),
+                source_checkpoint_sha256=file_sha256(loaded.bundle.weights_path),
             ),
             step_callback=check_spend,
             wandb_run=_RLVRWandbTrainLogger(wandb_run) if wandb_run is not None else None,

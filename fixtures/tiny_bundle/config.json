@@ -6,8 +6,6 @@
   "heads": 2,
   "kv_heads": 1,
   "layers": 1,
-  "logit_soft_cap": 0.0,
-  "mtp_predict_tokens": 0,
   "name": "tiny-multi-turn-sft-fixture",
   "qk_norm": true,
   "rms_norm_eps": 1e-06,

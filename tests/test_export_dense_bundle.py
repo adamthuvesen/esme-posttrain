@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from esme_posttrain.bundle import BUNDLE_FORMAT, validate_base_bundle
+from esme_posttrain.bundle import BUNDLE_FORMAT, canonical_model_config, validate_base_bundle
 from esme_posttrain.export.dense_bundle import (
     CHAT_TEMPLATE_ID,
     ExportError,
@@ -40,19 +40,23 @@ def test_export_dense_bundle_writes_validator_shape_and_chat_metadata(tmp_path: 
     manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
     weights = torch.load(output_dir / "weights.pt", weights_only=True)
 
+    assert manifest["schema_version"] == 1
     assert manifest["format"] == BUNDLE_FORMAT
     assert manifest["model"]["id"] == "esme-214m-chat"
-    assert manifest["provenance"]["modal_volume"] == "esme-posttrain-esme-chat-dpo"
-    assert manifest["provenance"]["wandb_run"] == "pgt1zlpq"
-    assert manifest["provenance"]["dpo_step"] == 600
-    assert manifest["provenance"]["dpo_config_hash"] == "cfg-hash"
-    assert manifest["eos_token_ids"] == [1]
-    assert manifest["chat_template"]["id"] == CHAT_TEMPLATE_ID
-    assert manifest["chat_template"]["example"] == "user\n...\nassistant\n"
-    assert manifest["chat_template"]["add_special_tokens"] is False
+    assert manifest["model"]["stage"] == "dpo"
+    provenance = manifest["provenance"]
+    assert provenance["modal_volume"] == "esme-posttrain-esme-chat-dpo"
+    assert provenance["wandb_run"] == "pgt1zlpq"
+    assert provenance["dpo_step"] == 600
+    assert provenance["dpo_config_hash"] == "cfg-hash"
+    assert manifest["decoding"]["eos_token_ids"] == [1]
+    chat_template = manifest["chat_template"]
+    assert chat_template["id"] == CHAT_TEMPLATE_ID
+    assert chat_template["example"] == "user\n...\nassistant\n"
+    assert chat_template["add_special_tokens"] is False
     assert weights["format"] == BUNDLE_FORMAT
     assert weights["key_format"] == BUNDLE_FORMAT
-    assert weights["model_config"] == tiny_backbone_config().to_dict()
+    assert weights["model_config"] == canonical_model_config(tiny_backbone_config())
     assert smoke["status"] == "ok"
     assert smoke["finish_reason"] in {"eos", "length"}
     assert (

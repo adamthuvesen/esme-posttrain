@@ -8,7 +8,11 @@ from typing import Any
 
 from tokenizers import Tokenizer
 
-from esme_posttrain.bundle import BundleError, validate_base_bundle
+from esme_posttrain.bundle import (
+    BundleError,
+    validate_base_bundle,
+    validate_bundle_compatibility,
+)
 from esme_posttrain.launch.config_guards import (
     IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
@@ -576,7 +580,7 @@ def _validate_input_bundle(payload: dict[str, Any], config_dir: Path) -> Path:
         raise LaunchError("input_bundle.read_only must be true")
     path = (config_dir / str_field(payload["path"], "input_bundle.path")).resolve()
     try:
-        validate_base_bundle(path)
+        validate_bundle_compatibility(path)
     except BundleError as error:
         raise LaunchError(str(error)) from error
     return path

@@ -1,8 +1,13 @@
 {
+  "checkpoint_step": 0,
   "files": {
     "config": {
       "path": "config.json",
-      "sha256": "30d7dbb056ef869da4b218e5492d8ef962ffed5df944724b0d78e5392f0d5b40"
+      "sha256": "968ea7d5da19e85add2a6f6541f966018ce0699ff7ba7f030f891ae683c8b75a"
+    },
+    "readme": {
+      "path": "README.md",
+      "sha256": "a57fdfe778ca3c71e61ef9fd20f71f36cff9381a6d4df3751981b16cfcd05e27"
     },
     "tokenizer": {
       "path": "tokenizer.json",
@@ -10,10 +15,27 @@
     },
     "weights": {
       "path": "weights.pt",
-      "sha256": "c1cd4dc03cbb89967860e30c6246618d6c8719f28cc9083b91bcdf413abca459"
+      "sha256": "dcd2954904409351b6e45af5b98ba69e3fe7914cd90b2f436186fbd3262d5503"
     }
   },
   "format": "llm_pretrain_dense_v1",
+  "llm_infer_config": {
+    "attention_kind": "gqa",
+    "context_length": 48,
+    "format": "llm_pretrain_dense_v1",
+    "hidden_size": 16,
+    "intermediate_size": 32,
+    "name": "tiny-multi-turn-sft-fixture",
+    "num_attention_heads": 2,
+    "num_hidden_layers": 1,
+    "num_key_value_heads": 1,
+    "qk_norm": true,
+    "rms_norm_eps": 1e-06,
+    "rope_theta": 10000.0,
+    "tie_word_embeddings": true,
+    "vocab_size": 32,
+    "z_loss_weight": 0.0
+  },
   "model": {
     "id": "fixture-chat",
     "name": "Fixture Chat",
@@ -27,8 +49,6 @@
     "heads": 2,
     "kv_heads": 1,
     "layers": 1,
-    "logit_soft_cap": 0.0,
-    "mtp_predict_tokens": 0,
     "name": "tiny-multi-turn-sft-fixture",
     "qk_norm": true,
     "rms_norm_eps": 1e-06,
@@ -39,5 +59,11 @@
   },
   "model_family": "DenseBackbone",
   "schema_version": 1,
+  "source_checkpoint": "legacy-fixture-weights.pt",
+  "source_checkpoint_sha256": "c1cd4dc03cbb89967860e30c6246618d6c8719f28cc9083b91bcdf413abca459",
+  "tokenizer": {
+    "format": "tokenizers-json",
+    "path": "tokenizer.json"
+  },
   "weights_format": "llm_pretrain_dense_v1"
 }
