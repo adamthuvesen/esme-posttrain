@@ -46,6 +46,22 @@ This is chat polish for a 214M model. Repetition, length, likelihood, and
 coherence proxies matter more here than benchmark claims meant for much larger
 models.
 
+## Accepted Result
+
+The accepted run is `esme-214m-chat-dpo-full`, selected on
+`eval/preference_accuracy`:
+
+- Selected checkpoint: step `600`, preference accuracy `0.67362` over `959`
+  held-out pairs.
+- Eval margin `0.38544`; eval DPO loss `0.61030`.
+- Chosen/rejected mean logp `-234.717` / `-238.552`; the
+  likelihood-displacement watch held (chosen stays above rejected).
+
+Source artifact: `runs/esme-214m-chat-dpo-full/best-checkpoint.json`
+(sha256 `146cc3239f3c5bf92a39cd1a9c196ac91a737956ca058d490729bab87c1412eb`).
+Run outputs are gitignored; the accepted numbers are quoted here so the
+result is citable from a fresh clone.
+
 ## Safe Local Commands
 
 ```bash
