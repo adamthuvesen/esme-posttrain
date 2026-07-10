@@ -5,8 +5,9 @@ Local instructions for `esme-posttrain`. The global agent rules still apply; thi
 ## Workflow
 
 - Work only inside this repo unless Adam explicitly says otherwise.
-- This repo is local-only: no remote, no branch, no push, no PR by default.
-- Commit accepted work directly to local `main` with small conventional commits.
+- This repo has a public GitHub remote (`adamthuvesen/esme-posttrain`). Never push without Adam's explicit approval; work on a branch and let Adam decide when it lands.
+- Nothing under `docs/internal/` may be committed or published; it is gitignored local working material.
+- Commit accepted work with small conventional commits.
 - Before committing, run the repo gates that match the change and leave `git status --short` clean.
 
 ## Commands
@@ -23,7 +24,7 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
 
 - Start with `README.md` for the current stage of the Esme post-training stack, active CLI commands, and launch prep overview.
 - Read `docs/package-layout.md` before moving modules, adding stage code, or changing imports.
-- Read `docs/internal/instruct-sft-recipe.md` before touching the single-turn Instruct SFT recipe, trainer loop, eval selection, checkpoint/resume behavior, Modal smoke, or full-run path.
+- If the local-only `docs/internal/instruct-sft-recipe.md` exists, read it before touching the single-turn Instruct SFT recipe, trainer loop, eval selection, checkpoint/resume behavior, Modal smoke, or full-run path.
 - Read the matching run card before changing a launch config, run budget, data source, acceptance gate, or artifact path:
   - `run_cards/esme-214m-instruct.md` for the original single-turn Instruct SFT path.
   - `run_cards/esme-214m-sft-multiturn.md` for the multi-turn SFT foundation.

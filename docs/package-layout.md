@@ -22,6 +22,7 @@ Do not add root compatibility aliases.
 - `src/esme_posttrain/sft/`: supervised fine-tuning data, trainers, launch validation, evaluation, sampling, and stage artifacts.
 - `src/esme_posttrain/dpo/`: preference data, DPO trainer, launch validation, checkpoint evaluation, and chat-quality comparison.
 - `src/esme_posttrain/rl/`: verifier-backed RLVR data, Countdown-Lite baseline, GRPO training, launch validation, and result reports.
+- `src/esme_posttrain/evals/`: typed records for the evaluation contract: task rows, per-sample scores, per-task results, resume lines, and aggregate summaries. Serialized shapes are pinned by the golden fixtures under `fixtures/outputs/`.
 - `src/esme_posttrain/launch/`: shared config validation, spend/blocker helpers, command construction, and launch utilities.
 - `src/esme_posttrain/training/`: shared training runtime used by the stage packages: collation, metrics, checkpointing, seeding/precision, and W&B setup.
 - `src/esme_posttrain/export/`: export code for adapted dense bundles handed to downstream inference repos.

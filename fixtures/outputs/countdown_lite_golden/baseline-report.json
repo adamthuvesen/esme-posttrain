@@ -1,0 +1,106 @@
+{
+  "bundle_path": "<repo>/fixtures/tiny_bundle",
+  "decision": "blocked-with-evidence",
+  "difficulty_breakdown": {
+    "easy": {
+      "exact_solve_rate": 0.0,
+      "pass@1": 0.0,
+      "pass@8": 0.0,
+      "tasks": 1,
+      "valid_expression_rate": 0.0
+    }
+  },
+  "exact_solve_rate": 0.0,
+  "manifest_path": "<repo>/fixtures/manifests/rl_tasks_tiny.json",
+  "max_new_tokens": 8,
+  "pass@1": 0.0,
+  "pass@8": 0.0,
+  "samples_per_task": 8,
+  "seed": 214,
+  "split": "eval",
+  "task_count": 1,
+  "tasks": [
+    {
+      "difficulty": "easy",
+      "exact_samples": 0,
+      "numbers": [
+        4,
+        5
+      ],
+      "pass@1": false,
+      "pass@8": false,
+      "samples": [
+        {
+          "extracted_expression": null,
+          "is_exact_solve": false,
+          "is_valid_expression": false,
+          "output": "assistant assistant assistant assistant assistant assistant assistant assistant",
+          "reason": "no candidate expression found",
+          "value": null
+        },
+        {
+          "extracted_expression": null,
+          "is_exact_solve": false,
+          "is_valid_expression": false,
+          "output": "assistant say green again",
+          "reason": "no candidate expression found",
+          "value": null
+        },
+        {
+          "extracted_expression": null,
+          "is_exact_solve": false,
+          "is_valid_expression": false,
+          "output": "repeat repeat say",
+          "reason": "no candidate expression found",
+          "value": null
+        },
+        {
+          "extracted_expression": null,
+          "is_exact_solve": false,
+          "is_valid_expression": false,
+          "output": "assistant two helpful",
+          "reason": "no candidate expression found",
+          "value": null
+        },
+        {
+          "extracted_expression": null,
+          "is_exact_solve": false,
+          "is_valid_expression": false,
+          "output": "assistant <unk> blue",
+          "reason": "no candidate expression found",
+          "value": null
+        },
+        {
+          "extracted_expression": null,
+          "is_exact_solve": false,
+          "is_valid_expression": false,
+          "output": "assistant repeat say green system",
+          "reason": "no candidate expression found",
+          "value": null
+        },
+        {
+          "extracted_expression": null,
+          "is_exact_solve": false,
+          "is_valid_expression": false,
+          "output": "again user say",
+          "reason": "no candidate expression found",
+          "value": null
+        },
+        {
+          "extracted_expression": null,
+          "is_exact_solve": false,
+          "is_valid_expression": false,
+          "output": "system two say two assistant",
+          "reason": "no candidate expression found",
+          "value": null
+        }
+      ],
+      "solution": "4 * 5",
+      "split": "eval",
+      "target": 20,
+      "task_id": "countdown_lite_fixture_eval_easy_0000",
+      "valid_samples": 0
+    }
+  ],
+  "valid_expression_rate": 0.0
+}

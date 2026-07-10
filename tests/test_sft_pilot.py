@@ -282,20 +282,15 @@ def test_full_run_learning_gate_rejects_wrong_stopped_run_path_counts(
     ]
 
 
-def test_instruct_release_docs_keep_approval_history_internal() -> None:
+def test_instruct_release_docs_exclude_approval_history() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     run_card = (REPO_ROOT / "run_cards" / "esme-214m-instruct.md").read_text(encoding="utf-8")
-    internal_recipe = (REPO_ROOT / "docs" / "internal" / "instruct-sft-recipe.md").read_text(
-        encoding="utf-8"
-    )
 
     required = "records stopped-run reconciliation and bounded matched interval-eval sweep evidence"
     public_text = " ".join(f"{readme}\n{run_card}".split())
-    internal_text = " ".join(internal_recipe.split())
 
     assert required not in " ".join(readme.split())
     assert required not in " ".join(run_card.split())
-    assert required in internal_text
     assert "new full-data rerun requires explicit chat approval" not in public_text
     assert "Adam approved the full A100 launch" not in public_text
 

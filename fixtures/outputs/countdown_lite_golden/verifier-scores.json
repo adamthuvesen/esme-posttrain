@@ -1,0 +1,242 @@
+[
+  {
+    "candidate": "2 + 3",
+    "result": {
+      "expression": "2 + 3",
+      "is_exact_solve": true,
+      "is_valid_expression": true,
+      "is_well_formed": true,
+      "reason": "exact_solve",
+      "value": 5
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "Expression: 2 + 3",
+    "result": {
+      "expression": "2 + 3",
+      "is_exact_solve": true,
+      "is_valid_expression": true,
+      "is_well_formed": true,
+      "reason": "exact_solve",
+      "value": 5
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "The answer might be\n2 + 3",
+    "result": {
+      "expression": "2 + 3",
+      "is_exact_solve": true,
+      "is_valid_expression": true,
+      "is_well_formed": true,
+      "reason": "exact_solve",
+      "value": 5
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "2 - 3",
+    "result": {
+      "expression": "2 - 3",
+      "is_exact_solve": false,
+      "is_valid_expression": true,
+      "is_well_formed": true,
+      "reason": "expression evaluated to -1, not target 5",
+      "value": -1
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "1 + 1",
+    "result": {
+      "expression": "1 + 1",
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": true,
+      "reason": "expression must use each supplied number exactly once",
+      "value": 2
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "2 + 3 + 3",
+    "result": {
+      "expression": "2 + 3 + 3",
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": true,
+      "reason": "expression must use each supplied number exactly once",
+      "value": 8
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "2 / 3",
+    "result": {
+      "expression": "2 / 3",
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": false,
+      "reason": "expression contains unsupported characters",
+      "value": null
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "(2 + 3",
+    "result": {
+      "expression": "(2 + 3",
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": false,
+      "reason": "missing closing parenthesis",
+      "value": null
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "no numbers here",
+    "result": {
+      "expression": null,
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": false,
+      "reason": "no candidate expression found",
+      "value": null
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "",
+    "result": {
+      "expression": null,
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": false,
+      "reason": "no candidate expression found",
+      "value": null
+    },
+    "task_id": "countdown_lite_fixture_train_easy_0000"
+  },
+  {
+    "candidate": "4 * 5",
+    "result": {
+      "expression": "4 * 5",
+      "is_exact_solve": true,
+      "is_valid_expression": true,
+      "is_well_formed": true,
+      "reason": "exact_solve",
+      "value": 20
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  },
+  {
+    "candidate": "Expression: 4 * 5",
+    "result": {
+      "expression": "4 * 5",
+      "is_exact_solve": true,
+      "is_valid_expression": true,
+      "is_well_formed": true,
+      "reason": "exact_solve",
+      "value": 20
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  },
+  {
+    "candidate": "The answer might be\n4 * 5",
+    "result": {
+      "expression": "4 * 5",
+      "is_exact_solve": true,
+      "is_valid_expression": true,
+      "is_well_formed": true,
+      "reason": "exact_solve",
+      "value": 20
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  },
+  {
+    "candidate": "4 - 5",
+    "result": {
+      "expression": "4 - 5",
+      "is_exact_solve": false,
+      "is_valid_expression": true,
+      "is_well_formed": true,
+      "reason": "expression evaluated to -1, not target 20",
+      "value": -1
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  },
+  {
+    "candidate": "1 + 1",
+    "result": {
+      "expression": "1 + 1",
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": true,
+      "reason": "expression must use each supplied number exactly once",
+      "value": 2
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  },
+  {
+    "candidate": "4 + 5 + 5",
+    "result": {
+      "expression": "4 + 5 + 5",
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": true,
+      "reason": "expression must use each supplied number exactly once",
+      "value": 14
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  },
+  {
+    "candidate": "4 / 5",
+    "result": {
+      "expression": "4 / 5",
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": false,
+      "reason": "expression contains unsupported characters",
+      "value": null
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  },
+  {
+    "candidate": "(4 + 5",
+    "result": {
+      "expression": "(4 + 5",
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": false,
+      "reason": "missing closing parenthesis",
+      "value": null
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  },
+  {
+    "candidate": "no numbers here",
+    "result": {
+      "expression": null,
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": false,
+      "reason": "no candidate expression found",
+      "value": null
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  },
+  {
+    "candidate": "",
+    "result": {
+      "expression": null,
+      "is_exact_solve": false,
+      "is_valid_expression": false,
+      "is_well_formed": false,
+      "reason": "no candidate expression found",
+      "value": null
+    },
+    "task_id": "countdown_lite_fixture_eval_easy_0000"
+  }
+]
