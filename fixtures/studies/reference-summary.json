@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "fixture",
+    "path": "fixtures/studies/reference-summary.json"
+  },
+  "report_projection": {
+    "seeds": [1, 2],
+    "arms": {
+      "treatment": {
+        "mean_metrics": {
+          "valid_expression_rate": 0.875,
+          "any_exact_solve_rate": 1.0
+        }
+      },
+      "control": {
+        "mean_metrics": {
+          "valid_expression_rate": 0.375,
+          "any_exact_solve_rate": 0.25
+        }
+      }
+    },
+    "comparisons": {
+      "treatment-vs-control-validity": {
+        "mean_effect": 0.5,
+        "confidence_interval_95": {
+          "lower": 0.5,
+          "upper": 0.5
+        }
+      }
+    }
+  }
+}

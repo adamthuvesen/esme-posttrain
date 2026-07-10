@@ -1,0 +1,5 @@
+{
+  "selected_metric_name": "train/reward_mean",
+  "selected_metric_value": 0.5,
+  "selected_step": 2
+}

@@ -1,0 +1,2 @@
+{"problem":{"gold_answer":"target=3;numbers=1,2","id":"p1","question":"fixture"},"samples":["1 + 2","2 - 1"]}
+{"problem":{"gold_answer":"target=2;numbers=1,2","id":"p2","question":"fixture"},"samples":["1","1 * 2"]}

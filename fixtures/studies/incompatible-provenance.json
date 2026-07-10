@@ -1,0 +1,17 @@
+{
+  "dataset": {
+    "config": "fixture",
+    "name": "esme-countdown",
+    "revision": "fixture-manifest-v1",
+    "split": "fixture"
+  },
+  "n_problems": 2,
+  "prompt_strategy": "esme_countdown_chat",
+  "sampling": {
+    "max_new_tokens": 12,
+    "n": 2,
+    "seed": 0,
+    "temperature": 0.5,
+    "top_p": 1.0
+  }
+}

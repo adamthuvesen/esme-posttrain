@@ -8,6 +8,7 @@ from esme_posttrain.cli.dpo import add_dpo_parsers
 from esme_posttrain.cli.export import add_export_parsers
 from esme_posttrain.cli.rl import add_rl_parsers
 from esme_posttrain.cli.sft import add_sft_parsers
+from esme_posttrain.cli.studies import add_study_parsers
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -20,5 +21,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_dpo_parsers(subparsers)
     add_export_parsers(subparsers)
     add_artifact_parsers(subparsers)
+    add_study_parsers(subparsers)
 
     return parser
