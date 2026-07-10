@@ -39,6 +39,8 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
 - Prefer CPU-first, deterministic, inspectable code until the tiny end-to-end path is proven.
 - Keep changes small and evidence-backed: configs, fixtures, launch guards, and trainer code should move with their matching tests.
 - Do not start or expand training infrastructure without the matching run card and approval.
+- Standing rules from the retired staff-level roadmap: no task registry or plugin framework beyond what real tasks need; no paid judges as a required eval dependency; no shared base trainer; test count and coverage are not headline measures.
+- Deferred until their triggers fire: eval breadth (a second symbolic verifier task plus one language-oriented eval on the shared contract) waits on wanting to claim posttraining capability beyond Countdown-Lite; module splits of `rl/grpo.py`, `rl/launch.py`, and `sft/trainer.py` wait until a new task forces edits inside them. The GPU acceptance run carries its own trigger in `run_cards/esme-214m-full-path-gpu-acceptance.md`.
 
 ## Spend And Data
 
