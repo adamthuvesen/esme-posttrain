@@ -78,24 +78,18 @@ remote datasets, start private training jobs, or spend money.
 - Generated export bundles are written under gitignored `exports/`.
 - Generated run reports are written under gitignored `artifacts/`.
 
-## Training Telemetry
+## Verifier Evidence
 
-**Reading note:** These charts show training stability and checkpoint selection,
-not broad capability. `Esme-214M` is small, so absolute gains are capped by the
-base model; the key signal is improvement without collapse.
-
-<p>
-  <img src="assets/fig-sft-training-dynamics.svg" width="100%" alt="Multi-turn SFT training" />
-</p>
-<p>
-  <img src="assets/fig-dpo-training-dynamics.svg" width="100%" alt="DPO preference training" />
-</p>
+**Reading note:** This chart shows narrow verifier-scored Countdown-Lite
+behavior, not broad capability. The strongest signal is valid-expression
+transfer; exact solving improves too, but more modestly.
 <p>
   <img src="assets/fig-grpo-countdown-evidence.svg" width="100%" alt="Countdown-Lite evidence: acceptance and unseen-task transfer" />
 </p>
 
-The cards are rendered by `scripts/plot_run_telemetry.py` from the accepted run
-artifacts; see its module docstring for inputs and the full figure set.
+This figure is rendered by `scripts/plot_run_telemetry.py` from the accepted run
+artifacts. The full figure set, including SFT, DPO, and GRPO training curves, is
+linked from `docs/internal/repo-study-notes.md`.
 
 ## Repository Layout
 

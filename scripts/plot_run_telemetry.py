@@ -69,6 +69,10 @@ REFERENCE_GREY = "#9aa1ad"
 BLUE_BAND = "rgba(99, 110, 250, 0.16)"
 CARD_WIDTH = 920
 CARD_HEIGHT = 560
+# The evidence card has two side-by-side panels plus a reader-facing conclusion,
+# so it needs more vertical air than the single-panel training cards.
+EVIDENCE_CARD_WIDTH = 1120
+EVIDENCE_CARD_HEIGHT = 700
 # The DPO card is a two-panel 1x2 (train | held-out zoomed), so it is wider.
 DPO_CARD_WIDTH = 1180
 DPO_CARD_HEIGHT = 600
@@ -321,8 +325,8 @@ def rounded_border_path(
     """Rounded-rect border in paper coordinates (plotly paths have no arc command)."""
     rx = radius_px / width
     ry = radius_px / height
-    x0, x1 = 0.5 / CARD_WIDTH, 1 - 0.5 / CARD_WIDTH
-    y0, y1 = 0.5 / CARD_HEIGHT, 1 - 0.5 / CARD_HEIGHT
+    x0, x1 = 0.5 / width, 1 - 0.5 / width
+    y0, y1 = 0.5 / height, 1 - 0.5 / height
     return (
         f"M {x0 + rx},{y0} L {x1 - rx},{y0} Q {x1},{y0} {x1},{y0 + ry} "
         f"L {x1},{y1 - ry} Q {x1},{y1} {x1 - rx},{y1} "
@@ -408,6 +412,64 @@ def card_layout(title: str, subtitle: str, conclusion: str) -> go.Layout:
                 "align": "left",
                 "showarrow": False,
                 "font": {"family": FONT_FAMILY, "size": 12, "color": SUBTITLE_COLOR},
+            },
+        ],
+    )
+
+
+def evidence_card_layout(title: str, subtitle: str, conclusion: str) -> go.Layout:
+    return go.Layout(
+        width=EVIDENCE_CARD_WIDTH,
+        height=EVIDENCE_CARD_HEIGHT,
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font={"family": FONT_FAMILY, "size": 13, "color": TICK_COLOR},
+        margin={"l": 104, "r": 72, "t": 166, "b": 154},
+        showlegend=False,
+        shapes=[
+            {
+                "type": "path",
+                "path": rounded_border_path(
+                    radius_px=8, width=EVIDENCE_CARD_WIDTH, height=EVIDENCE_CARD_HEIGHT
+                ),
+                "xref": "paper",
+                "yref": "paper",
+                "line": {"color": BORDER_COLOR, "width": 1},
+                "layer": "above",
+            }
+        ],
+        annotations=[
+            {
+                "text": f"<b>{title}</b>",
+                "xref": "paper",
+                "yref": "paper",
+                "x": -0.05,
+                "y": 1.27,
+                "xanchor": "left",
+                "showarrow": False,
+                "font": {"family": FONT_FAMILY, "size": 26, "color": TITLE_COLOR},
+            },
+            {
+                "text": subtitle,
+                "xref": "paper",
+                "yref": "paper",
+                "x": -0.05,
+                "y": 1.18,
+                "xanchor": "left",
+                "showarrow": False,
+                "font": {"family": FONT_FAMILY, "size": 16, "color": SUBTITLE_COLOR},
+            },
+            {
+                "text": conclusion,
+                "xref": "paper",
+                "yref": "paper",
+                "x": -0.05,
+                "y": -0.22,
+                "xanchor": "left",
+                "yanchor": "top",
+                "align": "left",
+                "showarrow": False,
+                "font": {"family": FONT_FAMILY, "size": 13.5, "color": SUBTITLE_COLOR},
             },
         ],
     )
@@ -537,7 +599,7 @@ def evidence_bar_pair(metrics: list[tuple[str, float, float]], xaxis: str) -> tu
     labels = [label for label, _, _ in metrics]
     chat = [chat_pct for _, chat_pct, _ in metrics]
     rl = [rl_pct for _, _, rl_pct in metrics]
-    text_font = {"family": FONT_FAMILY, "size": 12}
+    text_font = {"family": FONT_FAMILY, "size": 13}
     return (
         go.Bar(
             x=labels,
@@ -564,16 +626,17 @@ def evidence_bar_pair(metrics: list[tuple[str, float, float]], xaxis: str) -> tu
 
 def build_countdown_evidence_figure() -> go.Figure:
     figure = go.Figure(
-        layout=card_layout(
+        layout=evidence_card_layout(
             title="Esme-214M-RL vs Esme-214M-Chat: verifier-scored evidence",
             subtitle=(
-                "Acceptance eval (30 tasks x 32 samples) vs unseen 2-number tasks -"
-                " same protocol, max_new_tokens=12"
+                "Countdown-Lite acceptance eval (30 tasks x 32 samples) and unseen"
+                " 2-number transfer, same protocol, max_new_tokens=12"
             ),
             conclusion=(
-                "Conclusion: GRPO lifts valid expressions 5.83% -> 99.38% and exact solves"
-                " 0.73% -> 16.35% in-distribution,<br>and keeps nearly the whole gain on"
-                " never-seen 2-number tasks - transfer, not memorization."
+                "Conclusion: GRPO lifts valid expressions from 5.83% to 99.38%"
+                " in-distribution and preserves the gain on unseen 2-number tasks"
+                " (10.00% -> 98.75%).<br>Exact solves rise too: 0.73% -> 16.35%"
+                " in-distribution, 3.12% -> 38.75% on unseen 2-number tasks."
             ),
         )
     )
@@ -584,37 +647,39 @@ def build_countdown_evidence_figure() -> go.Figure:
     figure.add_trace(chat_bars2)
     figure.add_trace(rl_bars2)
 
-    panel_caption_font = {"family": FONT_FAMILY, "size": 13, "color": "#374151"}
+    panel_caption_font = {"family": FONT_FAMILY, "size": 15, "color": "#374151"}
     figure.update_layout(
         barmode="group",
-        bargap=0.32,
-        bargroupgap=0.08,
-        xaxis=styled_axis(domain=[0.0, 0.44], showgrid=False),
-        xaxis2=styled_axis(domain=[0.58, 1.0], showgrid=False),
+        bargap=0.36,
+        bargroupgap=0.1,
+        xaxis=styled_axis(domain=[0.0, 0.46], showgrid=False),
+        xaxis2=styled_axis(domain=[0.54, 1.0], showgrid=False),
         yaxis=styled_axis(
             title={"text": "% of samples"},
-            range=[0, 108],
+            title_standoff=16,
+            range=[0, 112],
             tickvals=[0, 25, 50, 75, 100],
+            tickfont={"family": FONT_FAMILY, "size": 13, "color": TICK_COLOR},
         ),
         annotations=list(figure.layout.annotations)
         + [
             {
-                "text": "<b>A - acceptance eval (in-distribution)</b>",
+                "text": "<b>A. Acceptance eval (in-distribution)</b>",
                 "xref": "paper",
                 "yref": "paper",
                 "x": 0.22,
-                "y": 1.02,
+                "y": 1.03,
                 "xanchor": "center",
                 "yanchor": "bottom",
                 "showarrow": False,
                 "font": panel_caption_font,
             },
             {
-                "text": "<b>B - unseen 2-number tasks</b>",
+                "text": "<b>B. Unseen 2-number tasks</b>",
                 "xref": "paper",
                 "yref": "paper",
                 "x": 0.79,
-                "y": 1.02,
+                "y": 1.03,
                 "xanchor": "center",
                 "yanchor": "bottom",
                 "showarrow": False,
@@ -628,13 +693,14 @@ def build_countdown_evidence_figure() -> go.Figure:
                 "xref": "paper",
                 "yref": "paper",
                 "x": 0.5,
-                "y": -0.115,
+                "y": -0.14,
                 "xanchor": "center",
                 "showarrow": False,
-                "font": {"family": FONT_FAMILY, "size": 12, "color": SUBTITLE_COLOR},
+                "font": {"family": FONT_FAMILY, "size": 13, "color": SUBTITLE_COLOR},
             },
         ],
     )
+    figure.update_xaxes(tickfont={"family": FONT_FAMILY, "size": 13, "color": TICK_COLOR})
     return figure
 
 
@@ -1047,7 +1113,10 @@ def main(argv: list[str] | None = None) -> int:
         outputs["grpo_training_dynamics"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
     )
     build_countdown_evidence_figure().write_image(
-        outputs["grpo_countdown_evidence"], format="svg", width=CARD_WIDTH, height=CARD_HEIGHT
+        outputs["grpo_countdown_evidence"],
+        format="svg",
+        width=EVIDENCE_CARD_WIDTH,
+        height=EVIDENCE_CARD_HEIGHT,
     )
 
     summary = {
