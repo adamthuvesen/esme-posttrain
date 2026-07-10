@@ -68,6 +68,23 @@ turns and role markers are masked with `-100`.
 - LLM-judge chat scores, when run, are reported with repeated-judge spread and
   are never the selector.
 
+## Accepted Result
+
+The accepted run is `esme-214m-sft-multiturn-full`, selected on
+`eval/matched/response_loss`:
+
+- Selected checkpoint: step `6300`, matched response loss `1.35637`.
+- Component eval losses at selection: smol-smoltalk `1.25840`,
+  tulu-3-personas `1.91151`, `no_robots` guardrail `2.69811`.
+- Tokens: `38,205,562` supervised / `54,630,414` trained, within the `60M`
+  target and `80M` hard cap.
+- Early stopping: patience `4` reached on the selector metric.
+
+Source artifact: `runs/esme-214m-sft-multiturn-full/best-checkpoint.json`
+(sha256 `a363d15226d6d9f783aa2e02c09e53b24505f06257bbd40e294766db33d3925d`).
+Run outputs are gitignored; the accepted numbers are quoted here so the
+result is citable from a fresh clone.
+
 ## Safe Local Commands
 
 ```bash
