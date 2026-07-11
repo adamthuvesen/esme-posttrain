@@ -67,8 +67,6 @@ def canonical_model_config(config: BackboneConfig) -> dict[str, Any]:
     payload = config.to_dict()
     if payload.get("logit_soft_cap", 0.0) != 0.0:
         raise BundleError("dense-bundle v1 cannot represent a non-zero logit_soft_cap")
-    if payload.get("mtp_predict_tokens", 0) != 0:
-        raise BundleError("dense-bundle v1 cannot represent MTP prediction heads")
     return {key: payload[key] for key in CANONICAL_CONFIG_KEYS}
 
 

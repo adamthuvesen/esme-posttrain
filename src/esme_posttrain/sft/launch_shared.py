@@ -106,7 +106,7 @@ def validate_sft_budgets(
     return payload
 
 
-def validate_sft_monitoring(payload: dict[str, Any], *, require_judge: bool = False) -> None:
+def validate_sft_monitoring(payload: dict[str, Any]) -> None:
     keys = {
         "log_interval",
         "eval_interval",
@@ -118,8 +118,6 @@ def validate_sft_monitoring(payload: dict[str, Any], *, require_judge: bool = Fa
         "wandb_project",
         "wandb_required_for_modal",
     }
-    if require_judge:
-        keys.add("judge_repeat_passes")
     require_keys(payload, keys, "monitoring")
     positive_int(payload["log_interval"], "monitoring.log_interval")
     positive_int(payload["eval_interval"], "monitoring.eval_interval")
@@ -135,9 +133,3 @@ def validate_sft_monitoring(payload: dict[str, Any], *, require_judge: bool = Fa
     str_field(payload["wandb_project"], "monitoring.wandb_project")
     if payload["wandb_required_for_modal"] is not True:
         raise LaunchError("monitoring.wandb_required_for_modal must be true")
-    if require_judge:
-        judge_passes = positive_int(
-            payload["judge_repeat_passes"], "monitoring.judge_repeat_passes"
-        )
-        if judge_passes < 5:
-            raise LaunchError("monitoring.judge_repeat_passes must be >= 5")

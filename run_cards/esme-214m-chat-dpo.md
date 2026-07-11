@@ -88,11 +88,6 @@ no degenerate length shift. Five truncation-at-token-cap flags were raised
 decoding; under nucleus decoding it is answered correctly by the DPO model,
 while the SFT model rambles to the cap.
 
-No LLM judge is configured, so no judge scores are carried in this record.
-Per the acceptance policy, any future judge scores are reported with
-repeated-judge spread (K>=5 passes over fixed generations) and are never the
-checkpoint selector.
-
 Source artifacts (gitignored under `runs/esme-214m-chat-dpo-full/`, also kept
 on the `esme-posttrain-esme-chat-dpo` volume):
 

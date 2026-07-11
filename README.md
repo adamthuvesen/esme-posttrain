@@ -31,6 +31,8 @@ and GRPO against verifier rewards.
 SFT teaches chat format, turn-taking, and basic instruction following. DPO
 trains the model to prefer chosen answers over rejected answers, without
 on-policy RL. RLVR then trains against verifier-backed rewards on one task.
+The SFT path handles both single-turn instruction rows and longer conversations
+through one conversation format; a single-turn row is simply a two-message chat.
 
 The current RLVR target is Countdown-Lite: generate a short arithmetic
 expression that uses each supplied number exactly once and reaches the target.

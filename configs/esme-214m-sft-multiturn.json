@@ -145,8 +145,7 @@
     "no_robots_catastrophic_regression_multiplier": 1.5,
     "sample_new_tokens": 256,
     "wandb_project": "esme-posttrain",
-    "wandb_required_for_modal": true,
-    "judge_repeat_passes": 5
+    "wandb_required_for_modal": true
   },
   "artifacts": {
     "output_dir": "runs/esme-214m-sft-multiturn/esme_214m_sft_multiturn",

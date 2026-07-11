@@ -4,14 +4,13 @@ Loads the accepted SFT foundation checkpoint from the SFT Modal Volume as BOTH
 the warm-started policy and the frozen reference, builds UltraFeedback preference
 data, runs the real decoding pre-check on that checkpoint, trains one vanilla DPO
 pass, and writes proxy-metric evidence (held-out preference accuracy, response
-length, n-gram repetition, chosen/rejected logps) plus chat samples and the K>=5
-judge. Guarded by the runtime spend tracker and refused unless the beta-sweep
+length, n-gram repetition, chosen/rejected logps) plus chat samples. Guarded by
+the runtime spend tracker and refused unless the beta-sweep
 learning gate passed (enforced in the launcher). CUDA-required.
 """
 
 from __future__ import annotations
 
-import json
 import time
 from functools import partial
 from pathlib import Path
@@ -20,6 +19,7 @@ from typing import Any
 import torch
 from tokenizers import Tokenizer
 
+from esme_posttrain.dpo.chat_eval import FIXED_MULTI_TURN_PROMPTS
 from esme_posttrain.dpo.data import build_preference_set
 from esme_posttrain.dpo.decoding_precheck import run_decoding_precheck
 from esme_posttrain.dpo.launch import EXPECTED_ARTIFACTS, DPOLaunchConfig
@@ -31,8 +31,8 @@ from esme_posttrain.run_artifacts import (
     refresh_manifest_files,
     write_environment,
     write_json,
+    write_selected_row_manifest,
 )
-from esme_posttrain.sft.multiturn_judge import FIXED_MULTI_TURN_PROMPTS, run_multi_turn_judge
 from esme_posttrain.training.checkpointing import load_training_checkpoint
 
 
@@ -133,14 +133,14 @@ def run_full_dpo(
             "caps": pair_caps,
         },
     )
-    _write_pair_manifest(output_dir / "selected-pair-manifest.jsonl", train_report.pairs)
-    _write_pair_manifest(output_dir / "eval-pair-manifest.jsonl", eval_report.pairs)
+    write_selected_row_manifest(output_dir / "selected-pair-manifest.jsonl", train_report.pairs)
+    write_selected_row_manifest(output_dir / "eval-pair-manifest.jsonl", eval_report.pairs)
 
     # Real decoding pre-check on the SFT checkpoint, before DPO touches the policy.
     precheck = run_decoding_precheck(
         reference,
         tokenizer,
-        tuple((prompt.name, prompt.prompt) for prompt in FIXED_MULTI_TURN_PROMPTS),
+        FIXED_MULTI_TURN_PROMPTS,
         is_real_checkpoint=True,
         note="pre-DPO decoding baseline on the accepted Esme SFT foundation checkpoint",
     )
@@ -195,15 +195,7 @@ def run_full_dpo(
         eval_report.pairs,
         selected_step=result.selected_step,
     )
-    judge_report = run_multi_turn_judge(
-        lambda prompt: _generate_chat(
-            policy, tokenizer, prompt, int(monitoring["sample_new_tokens"])
-        ),
-        judge=None,
-        passes=int(monitoring["judge_repeat_passes"]),
-    )
     eval_payload = result.to_dict()
-    eval_payload["dpo_judge"] = judge_report.to_dict()
     eval_payload["decoding_precheck"] = precheck.to_dict()
     write_json(output_dir / "eval-report.json", eval_payload)
     cost = spend_tracker.write_cost(step=result.steps_completed, status="complete")
@@ -236,28 +228,6 @@ def run_full_dpo(
 def _load_sft_backbone(checkpoint_path: Path, *, device: torch.device) -> DenseBackbone:
     loaded = load_training_checkpoint(checkpoint_path, map_location=device)
     return loaded.model.to(device)
-
-
-def _generate_chat(
-    model: DenseBackbone, tokenizer: Tokenizer, prompt: str, max_new_tokens: int
-) -> str:
-    eos_id = tokenizer.token_to_id("<eos>")
-    prompt_ids = tokenizer.encode(prompt, add_special_tokens=False).ids
-    device = next(model.parameters()).device
-    was_training = model.training
-    model.eval()
-    with torch.no_grad():
-        generated = model.generate(
-            torch.tensor([prompt_ids], dtype=torch.long, device=device),
-            max_new_tokens=max_new_tokens,
-            eos_token_id=eos_id,
-        )
-    if was_training:
-        model.train()
-    new_ids = generated[0].detach().cpu().tolist()[len(prompt_ids) :]
-    if eos_id is not None and eos_id in new_ids:
-        new_ids = new_ids[: new_ids.index(eos_id)]
-    return tokenizer.decode(new_ids, skip_special_tokens=False)
 
 
 def _pair_caps(config: DPOLaunchConfig, *, smoke: bool) -> dict[str, int]:
@@ -369,8 +339,3 @@ def _select_device(*, require_cuda: bool) -> torch.device:
     if require_cuda:
         raise DPOFullRunError("Modal DPO requires CUDA, but torch.cuda.is_available() is false")
     return torch.device("cpu")
-
-
-def _write_pair_manifest(path: Path, pairs: tuple[Any, ...]) -> None:
-    rows = (json.dumps(pair.manifest_entry(), sort_keys=True) + "\n" for pair in pairs)
-    path.write_text("".join(rows), encoding="utf-8")

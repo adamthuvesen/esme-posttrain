@@ -15,7 +15,6 @@ from esme_posttrain.launch.config_guards import (
     smoke_launch_blockers,
 )
 from esme_posttrain.launch.modal_cli import format_payload, validate_output_stem
-from esme_posttrain.launch.validate import load_json_file
 
 
 def test_load_json_object_rejects_non_object(tmp_path: Path) -> None:
@@ -118,7 +117,7 @@ def test_validate_output_stem_rejects_forbidden_substrings() -> None:
         )
 
 
-def test_load_json_file_rejects_missing_path(tmp_path: Path) -> None:
+def test_load_json_object_rejects_missing_path(tmp_path: Path) -> None:
     missing = tmp_path / "missing.json"
-    with pytest.raises(LaunchError, match="missing config"):
-        load_json_file(missing, "config")
+    with pytest.raises(LaunchError, match="config path does not exist"):
+        load_json_object(missing)

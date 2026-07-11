@@ -1,14 +1,14 @@
 """Fair side-by-side chat-quality eval: SFT reference vs DPO checkpoint.
 
 The end-of-DPO-run ``chat-samples.md`` used hard UltraFeedback *eval-task* prompts
-(translation / NLP), which are unfair to a 214M model, and no judge was wired -- so
-there was no fair conversational readout. This module answers the real question:
+(translation / NLP), which are unfair to a 214M model, so there was no fair
+conversational readout. This module answers the real question:
 does the DPO model chat better / ramble less than the SFT model on CONVERSATIONAL
 prompts?
 
 It reuses ``run_decoding_precheck`` (greedy + nucleus(p=0.95, rep-penalty=1.3),
 3-gram repetition rate, response-length distribution) on BOTH checkpoints over the
-shared ``FIXED_MULTI_TURN_PROMPTS`` plus a handful of simple conversational prompts,
+fixed multi-turn prompts plus a handful of simple conversational prompts,
 writes the actual generations SIDE BY SIDE (SFT vs DPO) per prompt to markdown, and
 flags obvious degeneration (loops, truncation-to-cap, empty). No external judge --
 the comparison is for eyeballing.
@@ -32,8 +32,26 @@ from esme_posttrain.dpo.decoding_precheck import (
     run_decoding_precheck,
 )
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.multiturn_judge import FIXED_MULTI_TURN_PROMPTS
 from esme_posttrain.training.checkpointing import load_training_checkpoint
+
+FIXED_MULTI_TURN_PROMPTS: tuple[tuple[str, str], ...] = (
+    (
+        "followup_clarification",
+        "user\nName three primary colors.\nassistant\nRed, yellow, and blue.\n"
+        "user\nNow combine the first two. What color do you get?\nassistant\n",
+    ),
+    (
+        "context_carryover",
+        "user\nMy dog is named Pixel.\nassistant\nNice to meet Pixel!\n"
+        "user\nWhat is my dog's name?\nassistant\n",
+    ),
+    (
+        "instruction_then_revise",
+        "user\nWrite a one-sentence summary of photosynthesis.\nassistant\n"
+        "Plants turn sunlight, water, and carbon dioxide into energy and oxygen.\n"
+        "user\nMake it shorter, under ten words.\nassistant\n",
+    ),
+)
 
 # Simple conversational prompts a 214M chat model can fairly attempt, rendered with
 # the repo chat template. Deliberately easy/open -- the point is chat feel and
@@ -59,8 +77,7 @@ CONVERSATIONAL_PROMPTS: tuple[tuple[str, str], ...] = (
 
 def chat_eval_prompts() -> tuple[tuple[str, str], ...]:
     """The shared prompt set: the fixed multi-turn prompts plus conversational ones."""
-    fixed = tuple((p.name, p.prompt) for p in FIXED_MULTI_TURN_PROMPTS)
-    return fixed + CONVERSATIONAL_PROMPTS
+    return FIXED_MULTI_TURN_PROMPTS + CONVERSATIONAL_PROMPTS
 
 
 @dataclass(frozen=True)

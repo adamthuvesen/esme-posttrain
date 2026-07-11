@@ -1,13 +1,8 @@
-"""Multi-turn SFT data path: full smol-smoltalk conversations with all-assistant masking.
+"""SFT data path for full conversations with all-assistant masking.
 
-This sits on top of the shared primitives in ``sft_data`` (DatasetSource,
-SourceSurvivorCounts, DatasetBuildResult, TokenizedExample). It differs from the
-single-turn Instruct path in three ways:
-
-- conversations keep every turn and supervise every assistant turn,
-- capacity-filtered subsets (function calling, hardest reasoning) are dropped,
-- the train mix accepts one or two sources (smol-smoltalk alone, or with a small
-  tulu-personas instruction slice), not exactly two.
+Conversations may contain one or many assistant turns. Capacity-filtered subsets
+are dropped, and the train mix accepts smol-smoltalk alone or with a small
+tulu-personas instruction slice.
 """
 
 from __future__ import annotations
@@ -24,15 +19,14 @@ from esme_posttrain.sft.adapters import (
 from esme_posttrain.sft.data import (
     ChatTurn,
     DataError,
-    DatasetBuildResult,
     DatasetSource,
     MultiTurnExample,
-    SourceSurvivorCounts,
     TokenizedExample,
     iter_rows,
     measure_multi_turn_lengths,
     tokenize_multi_turn,
 )
+from esme_posttrain.sft.data_types import DatasetBuildResult, SourceSurvivorCounts
 
 
 def _to_multi_turn_example(

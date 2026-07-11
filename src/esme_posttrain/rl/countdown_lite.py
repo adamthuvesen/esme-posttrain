@@ -277,7 +277,13 @@ def _candidate_pools() -> dict[str, list[tuple[tuple[int, ...], int, str]]]:
                 difficulty = _difficulty_for(sorted_numbers, target, solution)
                 pools[difficulty].append((sorted_numbers, target, solution))
     for difficulty, tasks in pools.items():
-        tasks.sort(key=lambda item: (_stable_score(difficulty, *item), item[0], item[1]))
+        tasks.sort(
+            key=lambda item: (
+                stable_task_score(DEFAULT_SEED, difficulty, *item),
+                item[0],
+                item[1],
+            )
+        )
     return pools
 
 
@@ -287,10 +293,6 @@ def _difficulty_for(numbers: tuple[int, ...], target: int, solution: str) -> str
     if len(numbers) == 3 and 0 <= target <= 36 and solution.count("*") <= 1:
         return "medium"
     return "hard"
-
-
-def _stable_score(difficulty: str, numbers: tuple[int, ...], target: int, solution: str) -> int:
-    return stable_task_score(DEFAULT_SEED, difficulty, numbers, target, solution)
 
 
 def stable_task_score(

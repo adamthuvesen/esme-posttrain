@@ -11,8 +11,7 @@ class AdapterError(ValueError):
 
 # Tasks beyond a 214M model's capacity. SmolLM2 dropped function calling and the
 # hardest reasoning from the small-model SFT mix; smol-smoltalk tags each row with
-# its `source` sub-dataset. Both smol-smoltalk adapters (SmolTalkAdapter and
-# SmolTalkMultiTurnAdapter) drop rows from these subsets.
+# its `source` sub-dataset.
 CAPACITY_FILTERED_SUBSETS: frozenset[str] = frozenset(
     {
         "apigen-80k",
@@ -26,18 +25,6 @@ class DatasetSourceLike(Protocol):
     name: str
     role: Literal["train", "eval"]
     train_allowed: bool
-
-
-@dataclass(frozen=True)
-class AdapterExample:
-    instruction: str
-    response: str
-    constraints: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class CapacityFiltered:
-    """Rejection marker: the row's subset is beyond a 214M model's capacity."""
 
 
 @dataclass(frozen=True)
@@ -55,84 +42,6 @@ class MultiTurnAdapterExample:
 
     turns: tuple[ChatTurnLike, ...] = ()
     rejection: Literal["", "unparsable", "capacity_filtered"] = ""
-
-
-class DatasetAdapter(Protocol):
-    def parse(
-        self, source: DatasetSourceLike, row_id: str, row: Any
-    ) -> AdapterExample | CapacityFiltered | None: ...
-
-
-class SmolTalkAdapter:
-    def parse(
-        self, source: DatasetSourceLike, row_id: str, row: Any
-    ) -> AdapterExample | CapacityFiltered | None:
-        del source, row_id
-        if isinstance(row, dict):
-            subset = row.get("source")
-            if isinstance(subset, str) and subset in CAPACITY_FILTERED_SUBSETS:
-                return CapacityFiltered()
-        return _single_turn_from_row(row)
-
-
-class TuluPersonasAdapter:
-    def parse(self, source: DatasetSourceLike, row_id: str, row: Any) -> AdapterExample | None:
-        del source, row_id
-        example = _single_turn_from_row(row)
-        if example is None or not isinstance(row, dict):
-            return example
-        return AdapterExample(
-            instruction=example.instruction,
-            response=example.response,
-            constraints=_constraints_from_row(row),
-        )
-
-
-class NoRobotsEvalAdapter:
-    def parse(self, source: DatasetSourceLike, row_id: str, row: Any) -> AdapterExample | None:
-        del row_id
-        if source.role != "eval" or source.train_allowed:
-            raise AdapterError("HuggingFaceH4/no_robots is non-commercial and eval-only here")
-        return _single_turn_from_row(row)
-
-
-def adapter_for(source: DatasetSourceLike) -> DatasetAdapter:
-    if source.name == "smol-smoltalk":
-        return SmolTalkAdapter()
-    if source.name == "tulu-3-personas":
-        return TuluPersonasAdapter()
-    if source.name == "no_robots":
-        return NoRobotsEvalAdapter()
-    raise AdapterError(f"unsupported SFT dataset adapter: {source.name}")
-
-
-def _single_turn_from_row(row: Any) -> AdapterExample | None:
-    if not isinstance(row, dict):
-        return None
-    messages = row.get("messages")
-    if isinstance(messages, list):
-        return _single_turn_from_messages(messages)
-    pair = _instruction_response_pair(row)
-    if pair is not None:
-        instruction, response = pair
-        return AdapterExample(instruction=instruction, response=response)
-    return None
-
-
-def _single_turn_from_messages(messages: list[Any]) -> AdapterExample | None:
-    turns = _turns_from_messages(messages)
-    if turns is None:
-        return None
-    roles = tuple(turn.role for turn in turns)
-    contents = tuple(turn.content for turn in turns)
-    if roles == ("user", "assistant"):
-        return AdapterExample(instruction=contents[0], response=contents[1])
-    if roles == ("system", "user", "assistant"):
-        return AdapterExample(
-            instruction=f"{contents[0].strip()}\n\n{contents[1].strip()}",
-            response=contents[2],
-        )
-    return None
 
 
 def _instruction_response_pair(row: dict[str, Any]) -> tuple[str, str] | None:
@@ -161,14 +70,6 @@ def _constraints_from_row(row: dict[str, Any]) -> tuple[str, ...]:
     if not isinstance(constraints, list):
         return ()
     return tuple(str(item) for item in constraints if str(item).strip())
-
-
-def iter_adapter_examples(
-    source: DatasetSourceLike, rows: Iterator[tuple[str, Any]]
-) -> Iterator[tuple[str, AdapterExample | CapacityFiltered | None]]:
-    adapter = adapter_for(source)
-    for row_id, row in rows:
-        yield row_id, adapter.parse(source, row_id, row)
 
 
 class MultiTurnAdapter(Protocol):
@@ -200,7 +101,7 @@ class TuluPersonasMultiTurnAdapter:
     def parse(self, source: DatasetSourceLike, row_id: str, row: Any) -> MultiTurnAdapterExample:
         del source, row_id
         parsed = _multi_turn_from_row(row)
-        if parsed.rejection or not isinstance(row, dict):
+        if parsed.rejection:
             return parsed
         constraints = _constraints_from_row(row)
         if not constraints:

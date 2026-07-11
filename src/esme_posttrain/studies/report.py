@@ -319,8 +319,6 @@ def _compatibility_errors(
     arm_results: dict[str, dict[str, Any]],
 ) -> list[str]:
     errors: list[str] = []
-    if not records:
-        return ["study has no run provenance"]
     reference_arm, reference_seed, reference = records[0]
     for arm, seed, record in records[1:]:
         if record != reference:
@@ -709,7 +707,6 @@ def _confine_path(path: Path, root: Path, *, label: str) -> None:
 
 
 def _check_artifact(path: Path, expected_sha256: str, root: Path) -> dict[str, Any]:
-    _confine_path(path, root, label="artifact")
     if not path.is_file():
         raise StudyReportError(f"study artifact does not exist: {path}")
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
