@@ -12,10 +12,17 @@ IGNORE_INDEX = -100
 
 
 class CollatableSequence(Protocol):
-    input_ids: Sequence[int]
-    labels: Sequence[int]
-    source: str
-    row_id: str
+    @property
+    def input_ids(self) -> Sequence[int]: ...
+
+    @property
+    def labels(self) -> Sequence[int]: ...
+
+    @property
+    def source(self) -> str: ...
+
+    @property
+    def row_id(self) -> str: ...
 
 
 CollatableT = TypeVar("CollatableT", bound=CollatableSequence)

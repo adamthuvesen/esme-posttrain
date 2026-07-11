@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import torch
 from pydantic import ValidationError
@@ -520,15 +520,15 @@ def _summarize(
     all_results: list[dict[str, object]],
 ) -> dict[str, object]:
     for result in all_results:
-        recorded_samples = len(result["samples"])
+        recorded_samples = len(cast(list[object], result["samples"]))
         if recorded_samples != request.samples_per_task:
             raise EvalRecordError(
                 f"incomplete sample budget: task {result['task_id']} recorded "
                 f"{recorded_samples} samples, budget is {request.samples_per_task}"
             )
     sample_count = len(all_results) * request.samples_per_task
-    valid_count = sum(int(result["valid_samples"]) for result in all_results)
-    exact_count = sum(int(result["exact_samples"]) for result in all_results)
+    valid_count = sum(cast(int, result["valid_samples"]) for result in all_results)
+    exact_count = sum(cast(int, result["exact_samples"]) for result in all_results)
     pass_at_keys = emitted_pass_at_keys(request.samples_per_task)
     summary = {
         "split": request.split,
@@ -576,9 +576,9 @@ def _difficulty_breakdown(
             "tasks": len(bucket),
             **{key: _pass_rate(bucket, key) for key in pass_at_keys},
             "valid_expression_rate": (
-                sum(int(result["valid_samples"]) for result in bucket) / sample_count
+                sum(cast(int, result["valid_samples"]) for result in bucket) / sample_count
             ),
-            "exact_solve_rate": sum(int(result["exact_samples"]) for result in bucket)
+            "exact_solve_rate": sum(cast(int, result["exact_samples"]) for result in bucket)
             / sample_count,
         }
     return breakdown
@@ -602,7 +602,7 @@ def _decision(
 
 
 def _markdown_report(report: dict[str, object]) -> str:
-    pass_at_keys = emitted_pass_at_keys(int(report["samples_per_task"]))
+    pass_at_keys = emitted_pass_at_keys(cast(int, report["samples_per_task"]))
     lines = [
         "# RLVR Countdown-Lite Baseline",
         "",
@@ -611,9 +611,10 @@ def _markdown_report(report: dict[str, object]) -> str:
         f"- Split: `{report['split']}`",
         f"- Tasks: `{report['task_count']}`",
         f"- Samples per task: `{report['samples_per_task']}`",
-        *(f"- {key}: `{_percent(float(report[key]))}`" for key in pass_at_keys),
-        f"- valid-expression rate: `{_percent(float(report['valid_expression_rate']))}`",
-        f"- exact-solve rate: `{_percent(float(report['exact_solve_rate']))}`",
+        *(f"- {key}: `{_percent(float(cast(int | float, report[key])))}`" for key in pass_at_keys),
+        f"- valid-expression rate: "
+        f"`{_percent(float(cast(int | float, report['valid_expression_rate'])))}`",
+        f"- exact-solve rate: `{_percent(float(cast(int | float, report['exact_solve_rate'])))}`",
         f"- Decision: `{report['decision']}`",
         "",
         "## Difficulty Breakdown",

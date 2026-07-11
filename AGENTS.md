@@ -13,7 +13,7 @@ Local instructions for `esme-posttrain`. The global agent rules still apply; thi
 ## Commands
 
 ```bash
-make check        # the gate: ruff lint + format-check + unit tests; green before any commit
+make check        # the gate: ruff lint + format-check + mypy + unit tests; green before any commit
 make fmt          # auto-format + safe lint fixes
 uv run pytest     # unit tests
 ```

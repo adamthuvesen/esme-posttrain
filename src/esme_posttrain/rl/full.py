@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import torch
 
@@ -220,6 +220,7 @@ def run_countdown_lite_grpo_job(
         check_spend(0)
 
         if before_eval_only:
+            assert before is not None
             cost = spend_tracker.write_cost(step=0, status="before_eval_probe_complete")
             write_environment(output_dir / "environment.txt", device=device)
             _emit_milestone("return_serialization", milestone_callback, wandb_run=wandb_run)
@@ -298,7 +299,10 @@ def run_countdown_lite_grpo_job(
                 closeness_weight=float(
                     config.payload["reward_policy"].get("closeness_weight", 0.0)
                 ),
-                reward_mode=str(grpo_settings.get("reward_mode", "verifier")),
+                reward_mode=cast(
+                    Literal["verifier", "random"],
+                    grpo_settings.get("reward_mode", "verifier"),
+                ),
                 random_reward_seed=int(grpo_settings.get("random_reward_seed", 0)),
                 zero_variance_max_resamples=int(
                     grpo_settings.get("zero_variance_max_resamples", 0)

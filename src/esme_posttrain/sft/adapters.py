@@ -22,9 +22,14 @@ CAPACITY_FILTERED_SUBSETS: frozenset[str] = frozenset(
 
 
 class DatasetSourceLike(Protocol):
-    name: str
-    role: Literal["train", "eval"]
-    train_allowed: bool
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def role(self) -> Literal["train", "eval"]: ...
+
+    @property
+    def train_allowed(self) -> bool: ...
 
 
 @dataclass(frozen=True)
