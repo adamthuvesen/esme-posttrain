@@ -301,7 +301,7 @@ def _hash_from(payload: dict[str, Any]) -> str | None:
 
 
 def _selected_source_fields(payload: dict[str, Any]) -> dict[str, Any]:
-    selected = {}
+    selected: dict[str, Any] = {}
     for key in (
         "run_id",
         "artifact_name",

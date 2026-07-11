@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "mypy>=2.2.0",
   "pytest>=8.2",
   "ruff>=0.5",
 ]
@@ -32,6 +33,12 @@ esme-posttrain = "esme_posttrain.cli:main"
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+
+[tool.mypy]
+files = ["src/esme_posttrain"]
+disallow_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
 
 [tool.ruff]
 line-length = 100

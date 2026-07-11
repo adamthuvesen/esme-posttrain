@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict, dataclass, fields
-from typing import Any
+from typing import Any, cast
 
 import torch
 
@@ -179,7 +179,7 @@ class GroupedQueryAttention(torch.nn.Module):
         return self.wo(attention)
 
 
-def build_attention(config: BackboneConfig) -> torch.nn.Module:
+def build_attention(config: BackboneConfig) -> MultiHeadAttention | GroupedQueryAttention:
     if config.attention_kind == "mha":
         return MultiHeadAttention(config)
     if config.attention_kind == "gqa":
@@ -213,6 +213,8 @@ class DenseBackbone(torch.nn.Module):
         cos, sin = build_rope_cache(
             config.context_length, config.head_dim, config.rope_theta, torch.device("cpu")
         )
+        self.rope_cos: torch.Tensor
+        self.rope_sin: torch.Tensor
         self.register_buffer("rope_cos", cos, persistent=False)
         self.register_buffer("rope_sin", sin, persistent=False)
         self.apply(self._init_weights)
@@ -225,7 +227,8 @@ class DenseBackbone(torch.nn.Module):
     def _scale_residual_projections(self) -> None:
         scale = (2.0 * self.config.layers) ** -0.5
         with torch.no_grad():
-            for block in self.blocks:
+            for module in self.blocks:
+                block = cast(DecoderBlock, module)
                 block.attention.wo.weight.mul_(scale)
                 block.feedforward.w_down.weight.mul_(scale)
 
@@ -238,7 +241,8 @@ class DenseBackbone(torch.nn.Module):
         cos = self.rope_cos[:seq].to(input_ids.device)
         sin = self.rope_sin[:seq].to(input_ids.device)
         hidden = self.token_embedding(input_ids)
-        for block in self.blocks:
+        for module in self.blocks:
+            block = cast(DecoderBlock, module)
             hidden = block(hidden, cos, sin)
         return self.lm_head(self.final_norm(hidden))
 
