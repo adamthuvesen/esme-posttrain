@@ -122,7 +122,6 @@
       "vanilla-dpo",
       "ultrafeedback-binarized"
     ],
-    "judge_repeat_passes": 5,
     "log_chosen_rejected_logps": true
   },
   "artifacts": {

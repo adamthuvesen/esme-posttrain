@@ -45,7 +45,6 @@ from esme_posttrain.launch.config_guards import (
 from esme_posttrain.launch.config_guards import (
     str_field as _str,
 )
-from esme_posttrain.launch.models import RuntimeBlock
 from esme_posttrain.sft.data import DatasetSource
 
 # DPO is far cheaper than SFT (one bounded pass on UltraFeedback at lr 1e-6); the
@@ -106,7 +105,6 @@ EXPECTED_SWEEP_BETAS: tuple[float, ...] = (0.1, 0.3, 0.5)
 class DPOLaunchConfig:
     payload: dict[str, Any]
     config_path: Path
-    sft_reference_volume_path: Path
     preference_source: DatasetSource
     eval_source: DatasetSource
     output_dir: Path
@@ -186,9 +184,7 @@ def validate_dpo_payload(payload: dict[str, Any], config_path: Path) -> DPOLaunc
     if payload["stage"] != "dpo":
         raise LaunchError("stage must be dpo")
 
-    sft_reference_path = _validate_sft_reference(
-        _require_object_field(payload["sft_reference"], "sft_reference")
-    )
+    _validate_sft_reference(_require_object_field(payload["sft_reference"], "sft_reference"))
     preference_source, eval_source = _validate_datasets(
         _require_object_field(payload["datasets"], "datasets")
     )
@@ -212,22 +208,21 @@ def validate_dpo_payload(payload: dict[str, Any], config_path: Path) -> DPOLaunc
     _validate_learning_gate(_require_object_field(payload["learning_gate"], "learning_gate"))
     _validate_acceptance(_require_object_field(payload["acceptance"], "acceptance"))
 
-    runtime_block = RuntimeBlock.from_validated_payload(runtime)
+    selected_profile = runtime["gpu_profiles"][runtime["selected_gpu"]]
     estimated_full_cost = estimate_cost_usd(
         tokens=int(budgets["target_train_tokens"]),
-        projected_tokens_per_second=runtime_block.selected_profile.projected_tokens_per_second,
-        usd_per_hour=runtime_block.selected_profile.usd_per_hour,
+        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
+        usd_per_hour=float(selected_profile["usd_per_hour"]),
     )
     estimated_smoke_cost = estimate_cost_usd(
         tokens=int(budgets["smoke_train_tokens"]),
-        projected_tokens_per_second=runtime_block.selected_profile.projected_tokens_per_second,
-        usd_per_hour=runtime_block.selected_profile.usd_per_hour,
+        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
+        usd_per_hour=float(selected_profile["usd_per_hour"]),
     )
 
     return DPOLaunchConfig(
         payload=payload,
         config_path=config_path,
-        sft_reference_volume_path=sft_reference_path,
         preference_source=preference_source,
         eval_source=eval_source,
         output_dir=output_dir,
@@ -326,7 +321,7 @@ def full_launch_blockers(
 # --- section validators -------------------------------------------------------
 
 
-def _validate_sft_reference(payload: dict[str, Any]) -> Path:
+def _validate_sft_reference(payload: dict[str, Any]) -> None:
     _require_keys(
         payload,
         {
@@ -349,11 +344,10 @@ def _validate_sft_reference(payload: dict[str, Any]) -> Path:
         raise LaunchError("sft_reference.model_family must be DenseBackbone")
     if payload["read_only"] is not True:
         raise LaunchError("sft_reference.read_only must be true")
-    checkpoint = _str(payload["checkpoint_path"], "sft_reference.checkpoint_path")
+    _str(payload["checkpoint_path"], "sft_reference.checkpoint_path")
     _str(payload["tokenizer_path"], "sft_reference.tokenizer_path")
     _str(payload["wandb_run"], "sft_reference.wandb_run")
     _positive_int(payload["best_step"], "sft_reference.best_step")
-    return Path(checkpoint)
 
 
 def _validate_datasets(payload: dict[str, Any]) -> tuple[DatasetSource, DatasetSource]:
@@ -577,7 +571,6 @@ def _validate_monitoring(payload: dict[str, Any]) -> None:
             "wandb_project",
             "wandb_required_for_modal",
             "wandb_tags",
-            "judge_repeat_passes",
             "log_chosen_rejected_logps",
         },
         "monitoring",
@@ -594,9 +587,6 @@ def _validate_monitoring(payload: dict[str, Any]) -> None:
         raise LaunchError("monitoring.wandb_tags must include stage=dpo")
     if payload["log_chosen_rejected_logps"] is not True:
         raise LaunchError("monitoring.log_chosen_rejected_logps must be true (displacement watch)")
-    judge_passes = _positive_int(payload["judge_repeat_passes"], "monitoring.judge_repeat_passes")
-    if judge_passes < 5:
-        raise LaunchError("monitoring.judge_repeat_passes must be >= 5")
 
 
 def _validate_learning_gate(payload: dict[str, Any]) -> None:

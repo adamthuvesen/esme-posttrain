@@ -382,7 +382,7 @@ def run_countdown_lite_grpo(
             rollouts, device=device, pad_token_id=config.pad_token_id
         )
         with torch.no_grad():
-            reference_logp = _sequence_logprob(reference, input_ids, labels)
+            reference_logp, _ = _sequence_logprob_and_entropy(reference, input_ids, labels)
         advantages = _group_advantages(rollouts).to(device)
 
         policy.train()
@@ -484,15 +484,6 @@ def run_countdown_lite_grpo(
         scheduler=None,
         metrics=final_metrics,
     )
-    if not best_checkpoint_metadata_path.is_file():
-        write_json(
-            best_checkpoint_metadata_path,
-            {
-                "selected_step": best_step,
-                "selected_metric_name": "train/reward_mean",
-                "selected_metric_value": best_metric,
-            },
-        )
     _write_bundle(
         bundle_dir,
         model=policy,
@@ -795,15 +786,6 @@ def _stratified_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         ordered.append(by_difficulty[choice][taken[choice]])
         taken[choice] += 1
     return ordered
-
-
-def _sequence_logprob(
-    model: DenseBackbone,
-    input_ids: torch.Tensor,
-    labels: torch.Tensor,
-) -> torch.Tensor:
-    sequence_logp, _token_entropy = _sequence_logprob_and_entropy(model, input_ids, labels)
-    return sequence_logp
 
 
 def _sequence_logprob_and_entropy(

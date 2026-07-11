@@ -579,7 +579,7 @@ def run_sft_training(
         selected_eval_suite = last_eval_suite
         best_selector_value = last_eval_suite.selector_response_loss
 
-    save_sft_checkpoint(
+    save_training_checkpoint(
         checkpoint_path,
         model=model,
         step=last_completed_step,
@@ -671,29 +671,6 @@ def run_sft_training(
     )
 
 
-def save_sft_checkpoint(
-    path: Path,
-    *,
-    model: DenseBackbone,
-    step: int,
-    optimizer: torch.optim.Optimizer | None = None,
-    scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
-    metrics: dict[str, Any] | None = None,
-    rng_state: dict[str, Any] | None = None,
-    data_position: int | None = None,
-) -> None:
-    save_training_checkpoint(
-        path,
-        model=model,
-        step=step,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        metrics=metrics,
-        rng_state=rng_state,
-        data_position=data_position,
-    )
-
-
 def _save_best_checkpoint(
     checkpoint_path: Path,
     metadata_path: Path,
@@ -718,7 +695,7 @@ def _save_best_checkpoint(
         evals_without_improvement=evals_without_improvement,
         early_stopping_patience=early_stopping_patience,
     )
-    save_sft_checkpoint(
+    save_training_checkpoint(
         checkpoint_path,
         model=model,
         step=step,
@@ -870,7 +847,7 @@ def _save_failure_checkpoint(
 ) -> tuple[Path | None, str | None]:
     path = checkpoint_dir(output_dir, step) / "checkpoint.pt"
     try:
-        save_sft_checkpoint(
+        save_training_checkpoint(
             path,
             model=model,
             step=step,
@@ -904,7 +881,7 @@ def _save_periodic_checkpoint(
     data_position: int,
 ) -> None:
     path = checkpoint_dir(output_dir, step) / "checkpoint.pt"
-    save_sft_checkpoint(
+    save_training_checkpoint(
         path,
         model=model,
         step=step,

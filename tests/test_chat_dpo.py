@@ -66,9 +66,9 @@ from esme_posttrain.dpo.trainer import (
     run_dpo_training,
     sequence_logprob,
 )
+from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.sft.data import IGNORE_INDEX, ChatTurn
-from esme_posttrain.sft.launch_instruct import LaunchError
 from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
 from esme_posttrain.training.collate import collate_batch
@@ -967,14 +967,10 @@ def test_config_rejects_noncommercial_training_flag() -> None:
         validate_dpo_payload(payload, CONFIG_PATH)
 
 
-def test_config_requires_logp_logging_and_judge_passes() -> None:
+def test_config_requires_logp_logging() -> None:
     payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     payload["monitoring"]["log_chosen_rejected_logps"] = False
     with pytest.raises(LaunchError, match="log_chosen_rejected_logps must be true"):
-        validate_dpo_payload(payload, CONFIG_PATH)
-    payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    payload["monitoring"]["judge_repeat_passes"] = 3
-    with pytest.raises(LaunchError, match="judge_repeat_passes must be >= 5"):
         validate_dpo_payload(payload, CONFIG_PATH)
 
 

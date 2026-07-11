@@ -20,18 +20,11 @@ import pytest
 from esme_posttrain.dpo.launch import validate_dpo_payload
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.rl.launch import validate_rlvr_payload
-from esme_posttrain.sft.launch_instruct import validate_sft_payload
 from esme_posttrain.sft.launch_multiturn import validate_multi_turn_payload
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 STAGE_CASES = [
-    pytest.param(
-        REPO_ROOT / "configs" / "esme-214m-instruct.json",
-        lambda payload, path: validate_sft_payload(payload, path, require_base_bundle_exists=False),
-        25.0,
-        id="instruct-sft",
-    ),
     pytest.param(
         REPO_ROOT / "configs" / "esme-214m-sft-multiturn.json",
         lambda payload, path: validate_multi_turn_payload(

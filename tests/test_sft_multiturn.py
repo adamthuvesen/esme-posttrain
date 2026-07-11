@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import random
 from pathlib import Path
 
 import pytest
@@ -10,26 +9,21 @@ from scripts import modal_chat_sft
 
 from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_bundle
 from esme_posttrain.cli import main
+from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.sft.data import (
     IGNORE_INDEX,
     ChatTurn,
     DataError,
     DatasetSource,
-    LossSemantics,
     MultiTurnExample,
     measure_multi_turn_lengths,
     tokenize_multi_turn,
 )
 from esme_posttrain.sft.full_multiturn import (
-    RESAMPLE_SPEND_CAP_USD,
     SFTFullRunError,
-    build_resample_evidence_preflight,
-    resample_evidence_blockers,
-    resample_multi_turn_evidence,
     run_full_multi_turn_sft,
 )
-from esme_posttrain.sft.launch_instruct import LaunchError
 from esme_posttrain.sft.launch_multiturn import (
     EXPECTED_ARTIFACTS as MULTITURN_EXPECTED_ARTIFACTS,
 )
@@ -47,7 +41,6 @@ from esme_posttrain.sft.multiturn_data import (
     build_multi_turn_mix,
     turn_distribution,
 )
-from esme_posttrain.sft.multiturn_judge import JudgeError, run_multi_turn_judge
 from esme_posttrain.sft.probe_multiturn import (
     PROBE_SPEND_CAP_USD,
     build_multi_turn_probe_preflight,
@@ -153,22 +146,6 @@ def test_multi_turn_samples_prompt_ends_at_final_assistant_turn(tmp_path: Path) 
     assert "blue" in prompt
     assert prompt.rstrip().endswith("assistant")
     assert "green" not in prompt
-
-
-def test_multi_turn_rejects_disabled_assistant_only_loss() -> None:
-    tokenizer = tiny_chat_tokenizer()
-    example = MultiTurnExample(
-        turns=(ChatTurn("user", "say red"), ChatTurn("assistant", "red")),
-        source="fixture",
-        row_id="1",
-    )
-    with pytest.raises(DataError, match="assistant_only_loss"):
-        tokenize_multi_turn(
-            tokenizer,
-            example,
-            max_sequence_tokens=24,
-            loss_semantics=LossSemantics(assistant_only_loss=False),
-        )
 
 
 def test_multi_turn_example_requires_an_assistant_turn() -> None:
@@ -579,44 +556,6 @@ def test_config_rejects_noncommercial_training_flag() -> None:
         validate_multi_turn_payload(payload, CONFIG_PATH, require_base_bundle_exists=False)
 
 
-def test_config_requires_judge_passes_at_least_five() -> None:
-    payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    payload["monitoring"]["judge_repeat_passes"] = 3
-    with pytest.raises(LaunchError, match="judge_repeat_passes must be >= 5"):
-        validate_multi_turn_payload(payload, CONFIG_PATH, require_base_bundle_exists=False)
-
-
-# --- LLM judge (reported, not selector) ---------------------------------------
-
-
-def test_multi_turn_judge_reports_mean_and_spread_over_k_passes() -> None:
-    rng = random.Random(7)
-    report = run_multi_turn_judge(
-        lambda prompt: "blue",
-        lambda prompt, generation: 6.0 + rng.uniform(-1.0, 1.0),
-        passes=5,
-    )
-    payload = report.to_dict()
-    assert payload["available"] is True
-    assert payload["is_selector"] is False
-    assert payload["passes"] == 5
-    assert len(payload["per_pass_mean_scores"]) == 5
-    assert payload["score_min"] <= payload["mean_score"] <= payload["score_max"]
-    assert payload["score_stdev"] >= 0.0
-
-
-def test_multi_turn_judge_requires_at_least_five_passes() -> None:
-    with pytest.raises(JudgeError, match="K>=5"):
-        run_multi_turn_judge(lambda prompt: "x", lambda prompt, generation: 5.0, passes=4)
-
-
-def test_multi_turn_judge_reports_unavailable_without_a_judge() -> None:
-    report = run_multi_turn_judge(lambda prompt: "x", None, passes=5)
-    payload = report.to_dict()
-    assert payload["available"] is False
-    assert payload["mean_score"] is None
-
-
 # --- base bundle hash validation ----------------------------------------------
 
 
@@ -723,10 +662,10 @@ def test_cli_multi_turn_cpu_fixture_writes_evidence(
     assert (out / "metrics.jsonl").is_file()
 
 
-# --- bounded evidence resample (multi-turn-samples-v2.md) ----------------------
-
-
-FULL_OUTPUT_STEM = "esme-214m-sft-multiturn-full"
+class _RefusingRunner:
+    def spawn(self, *args: object) -> object:
+        del args
+        raise AssertionError("launcher must not spawn a Modal function here")
 
 
 def test_multi_turn_base_bundle_resolves_env_or_sibling_fallback(
@@ -774,204 +713,6 @@ def test_training_launches_block_when_base_bundle_missing(
         str(missing_bundle) in blocker and modal_chat_sft.BASE_BUNDLE_ENV in blocker
         for blocker in refused["full_launch_blockers"]
     )
-
-
-def test_resample_evidence_preflight_never_launches_and_fits_cap() -> None:
-    config = load_multi_turn_config(CONFIG_PATH)
-    preflight = build_resample_evidence_preflight(
-        config, modal_gpu="A100", output_stem=FULL_OUTPUT_STEM
-    )
-    assert preflight["status"] == "ready_for_resample_evidence"
-    assert preflight["will_start_modal_job"] is False
-    assert preflight["will_download_data"] is False
-    assert preflight["generation_only"] is True
-    assert preflight["launch_blockers"] == []
-    assert preflight["checkpoint"] == f"{FULL_OUTPUT_STEM}/best-checkpoint.pt"
-    assert preflight["outputs"]["resampled_markdown"].endswith("multi-turn-samples-v2.md")
-    assert preflight["outputs"]["original_preserved"].endswith("multi-turn-samples.md")
-    assert preflight["runtime"]["spend_cap_usd"] == RESAMPLE_SPEND_CAP_USD == 1.0
-    assert preflight["runtime"]["timeout_cost_ceiling_usd"] <= RESAMPLE_SPEND_CAP_USD
-    assert preflight["runtime"]["sample_new_tokens"] == 256
-    assert "modal_chat_sft.py" in preflight["resample_evidence_command"]
-    assert "--resample-evidence" in preflight["resample_evidence_command"]
-    assert "modal run --detach" in preflight["resample_evidence_command"]
-    assert "SFT_RESAMPLE_TIMEOUT_HOURS=0.25" in preflight["resample_evidence_command"]
-
-
-def test_resample_evidence_blocks_gpu_mismatch_and_over_cap_timeout() -> None:
-    config = load_multi_turn_config(CONFIG_PATH)
-    assert any(
-        "SFT_MODAL_GPU must match runtime.selected_gpu" in b
-        for b in resample_evidence_blockers(config, modal_gpu="L4")
-    )
-    # 1h on the $2.0988/h A100 breaks the $1 resample cap.
-    blockers = resample_evidence_blockers(config, modal_gpu="A100", timeout_hours=1.0)
-    assert any("exceeds the $1 resample spend cap" in b for b in blockers)
-    assert resample_evidence_blockers(config, modal_gpu="A100", timeout_hours=0.25) == []
-
-
-class _RefusingRunner:
-    def spawn(self, *args: object) -> object:
-        del args
-        raise AssertionError("resample launcher must not spawn a Modal function here")
-
-
-def test_launcher_resample_evidence_dry_run_never_starts_modal(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setattr(modal_chat_sft, "SFT_MODAL_GPU", "A100")
-    monkeypatch.setattr(modal_chat_sft, "SFT_RESAMPLE_TIMEOUT_HOURS", 0.25)
-    monkeypatch.setattr(modal_chat_sft, "run_modal_resample_evidence", _RefusingRunner())
-
-    assert (
-        modal_chat_sft.launch(
-            ["--config", str(CONFIG_PATH), "--resample-evidence", "--dry-run", "--json"]
-        )
-        == 0
-    )
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["status"] == "ready_for_resample_evidence"
-    assert payload["will_start_modal_job"] is False
-    assert payload["runtime"]["timeout_hours"] == 0.25
-    assert payload["runtime"]["timeout_cost_ceiling_usd"] <= 1.0
-
-
-def test_launcher_resample_evidence_refused_without_approval(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setattr(modal_chat_sft, "SFT_MODAL_GPU", "A100")
-    monkeypatch.setattr(modal_chat_sft, "run_modal_resample_evidence", _RefusingRunner())
-
-    assert (
-        modal_chat_sft.launch(["--config", str(CONFIG_PATH), "--resample-evidence", "--json"]) == 2
-    )
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["status"] == "resample_evidence_refused"
-    assert any("requires --approved" in b for b in payload["launch_blockers"])
-
-
-def test_launcher_resample_evidence_blocks_over_cap_timeout(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setattr(modal_chat_sft, "SFT_MODAL_GPU", "A100")
-    monkeypatch.setattr(modal_chat_sft, "SFT_RESAMPLE_TIMEOUT_HOURS", 1.0)
-    monkeypatch.setattr(modal_chat_sft, "run_modal_resample_evidence", _RefusingRunner())
-
-    assert (
-        modal_chat_sft.launch(
-            ["--config", str(CONFIG_PATH), "--resample-evidence", "--approved", "--json"]
-        )
-        == 2
-    )
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["status"] == "resample_evidence_refused"
-    assert any("exceeds the $1 resample spend cap" in b for b in payload["launch_blockers"])
-
-
-def test_launcher_resample_evidence_spawn_returns_receipt_without_get(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    captured: dict[str, object] = {}
-
-    class FakeCall:
-        object_id = "fc-resample-test"
-
-        def get(self) -> dict[str, object]:
-            raise AssertionError("resample launcher must not wait for the remote result")
-
-    class FakeRunner:
-        def spawn(self, *args: object) -> FakeCall:
-            captured["args"] = args
-            return FakeCall()
-
-    monkeypatch.setattr(modal_chat_sft, "SFT_MODAL_GPU", "A100")
-    monkeypatch.setattr(modal_chat_sft, "SFT_RESAMPLE_TIMEOUT_HOURS", 0.25)
-    monkeypatch.setattr(modal_chat_sft, "modal", object())
-    monkeypatch.setattr(modal_chat_sft, "run_modal_resample_evidence", FakeRunner())
-
-    assert (
-        modal_chat_sft.launch(
-            ["--config", str(CONFIG_PATH), "--resample-evidence", "--approved", "--json"]
-        )
-        == 0
-    )
-    receipt = json.loads(capsys.readouterr().out)
-    args = captured["args"]
-    assert args[0] == load_multi_turn_config(CONFIG_PATH).payload
-    assert args[3] == "A100"
-    assert args[4] == 0.25
-    assert args[5] == FULL_OUTPUT_STEM
-    assert receipt["status"] == "modal_resample_evidence_launched"
-    assert receipt["will_start_modal_job"] is True
-    assert receipt["modal_result_awaited"] is False
-    assert receipt["modal_call_id"] == "fc-resample-test"
-    assert receipt["volume"] == "esme-posttrain-esme-sft-multiturn"
-    assert receipt["volume_output_dir"] == f"/posttrain/{FULL_OUTPUT_STEM}"
-    assert receipt["timeout_cost_ceiling_usd"] <= receipt["spend_cap_usd"] == 1.0
-
-
-def test_resample_multi_turn_evidence_writes_resample_artifact(
-    tmp_path: Path,
-) -> None:
-    config = load_multi_turn_config(CONFIG_PATH)
-    out = tmp_path / "full-run"
-    run_multi_turn_cpu_fixture(config, output_dir=out)
-    original_text = (out / "multi-turn-samples.md").read_text(encoding="utf-8")
-
-    tokenizer = tiny_chat_tokenizer()
-    pool_example = tokenize_multi_turn(
-        tokenizer,
-        MultiTurnExample(
-            turns=(
-                ChatTurn("system", "helpful"),
-                ChatTurn("user", "say red"),
-                ChatTurn("assistant", "blue"),  # unique to the first assistant turn
-                ChatTurn("user", "again"),
-                ChatTurn("assistant", "green"),  # unique to the final assistant turn
-            ),
-            source="fixture",
-            row_id="resample-mt-1",
-        ),
-        max_sequence_tokens=48,
-    )
-    result = resample_multi_turn_evidence(
-        config,
-        output_dir=out,
-        allow_remote_download=False,
-        require_cuda=False,
-        commit="abc123",
-        dirty=False,
-        sample_pool=(pool_example,),
-    )
-
-    assert result["status"] == "resample_evidence_complete"
-    assert result["original_samples_preserved"] is True
-    assert result["resampled_samples_path"] == str(out / "multi-turn-samples-v2.md")
-    assert result["estimated_cost_usd"] <= result["spend_cap_usd"] == 1.0
-    # Existing sample evidence is untouched byte for byte.
-    assert (out / "multi-turn-samples.md").read_text(encoding="utf-8") == original_text
-
-    text = (out / "multi-turn-samples-v2.md").read_text(encoding="utf-8")
-    assert result["resampled_markdown"] == text
-    assert "truncated before the final assistant" in text
-    prompt_block = text.split("Prompt:")[1].split("Generation:")[0]
-    prompt = prompt_block.split("```text\n")[1].split("\n```")[0]
-    # Fixed truncation: earlier assistant turns stay in the prompt; it ends at
-    # the final assistant header and never leaks the final turn's content.
-    assert "blue" in prompt
-    assert prompt.rstrip().endswith("assistant")
-    assert "green" not in prompt
-
-
-def test_resample_multi_turn_evidence_requires_completed_run(tmp_path: Path) -> None:
-    config = load_multi_turn_config(CONFIG_PATH)
-    with pytest.raises(SFTFullRunError, match="best checkpoint"):
-        resample_multi_turn_evidence(
-            config,
-            output_dir=tmp_path / "missing",
-            allow_remote_download=False,
-            require_cuda=False,
-        )
 
 
 # --- helpers ------------------------------------------------------------------

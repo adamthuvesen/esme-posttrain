@@ -24,13 +24,11 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
 
 - Start with `README.md` for the current stage of the Esme post-training stack, active CLI commands, and launch prep overview.
 - Read `docs/package-layout.md` before moving modules, adding stage code, or changing imports.
-- If the local-only `docs/internal/instruct-sft-recipe.md` exists, read it before touching the single-turn Instruct SFT recipe, trainer loop, eval selection, checkpoint/resume behavior, Modal smoke, or full-run path.
 - Read the matching run card before changing a launch config, run budget, data source, acceptance gate, or artifact path:
-  - `run_cards/esme-214m-instruct.md` for the original single-turn Instruct SFT path.
   - `run_cards/esme-214m-sft-multiturn.md` for the multi-turn SFT foundation.
   - `run_cards/esme-214m-chat-dpo.md` for chat DPO.
   - `run_cards/esme-214m-rl.md` for RLVR prep.
-- When editing config shape, fixtures, or CLI dry-run payloads, update the matching stage launch validator (`sft/launch_instruct.py`, `sft/launch_multiturn.py`, `dpo/launch.py`, `rl/launch.py`) and its tests together. The validators are the single source of truth for config shape.
+- When editing config shape, fixtures, or CLI dry-run payloads, update the matching stage launch validator (`sft/launch_multiturn.py`, `dpo/launch.py`, `rl/launch.py`) and its tests together. The validators are the single source of truth for config shape.
 
 ## Scope
 

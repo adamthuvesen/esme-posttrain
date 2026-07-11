@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 import torch
+from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_bundle
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.sft.data import (
-    DatasetSource,
-    SingleTurnExample,
+    ChatTurn,
+    MultiTurnExample,
+    TokenizedExample,
     sequence_efficiency_report,
-    tokenize_single_turn,
+    tokenize_multi_turn,
 )
-from esme_posttrain.sft.launch_instruct import (
-    SFTLaunchConfig,
-)
-from esme_posttrain.sft.smoke_instruct import tiny_backbone_config, tiny_tokenizer
+from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.sft.trainer import (
     EvalMetrics,
     EvalSplit,
@@ -35,15 +35,35 @@ from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import EVAL_METRIC_NAMES, TRAIN_METRIC_NAMES
 from esme_posttrain.training.runtime import resolve_torch_device
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-instruct.json"
 WEIGHTS_FIELD = "key_format"
 
 
+@dataclass(frozen=True)
+class ConversationPair:
+    user: str
+    assistant: str
+    source: str
+    row_id: str
+
+
+def tokenize_pair(
+    tokenizer: Tokenizer, example: ConversationPair, *, max_sequence_tokens: int
+) -> TokenizedExample:
+    return tokenize_multi_turn(
+        tokenizer,
+        MultiTurnExample(
+            turns=(ChatTurn("user", example.user), ChatTurn("assistant", example.assistant)),
+            source=example.source,
+            row_id=example.row_id,
+        ),
+        max_sequence_tokens=max_sequence_tokens,
+    )
+
+
 def test_collate_batch_honors_device() -> None:
-    tokenized = tokenize_single_turn(
-        tiny_tokenizer(),
-        SingleTurnExample("say red", "red", "fixture", "1"),
+    tokenized = tokenize_pair(
+        tiny_chat_tokenizer(),
+        ConversationPair("say red", "red", "fixture", "1"),
         max_sequence_tokens=24,
     )
 
@@ -54,12 +74,12 @@ def test_collate_batch_honors_device() -> None:
 
 
 def test_collate_batch_can_pad_to_multiple_and_reports_padding_efficiency() -> None:
-    tokenizer = tiny_tokenizer()
+    tokenizer = tiny_chat_tokenizer()
     examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=24)
         for example in (
-            SingleTurnExample("say red", "red", "fixture", "train-1"),
-            SingleTurnExample("repeat one", "one", "fixture", "train-2"),
+            ConversationPair("say red", "red", "fixture", "train-1"),
+            ConversationPair("repeat one", "one", "fixture", "train-2"),
         )
     )
 
@@ -92,10 +112,10 @@ def test_cuda_device_request_fails_loudly_when_unavailable() -> None:
 def test_bf16_precision_requires_supported_cuda(tmp_path: Path) -> None:
     if torch.cuda.is_available():
         pytest.skip("CPU-only validation test")
-    tokenizer = tiny_tokenizer()
-    example = tokenize_single_turn(
+    tokenizer = tiny_chat_tokenizer()
+    example = tokenize_pair(
         tokenizer,
-        SingleTurnExample("say red", "red", "fixture", "train-1"),
+        ConversationPair("say red", "red", "fixture", "train-1"),
         max_sequence_tokens=24,
     )
 
@@ -122,7 +142,7 @@ def test_bundle_hash_validation_and_dense_load(tmp_path: Path) -> None:
 
     loaded = load_dense_backbone_bundle(bundle_dir)
 
-    assert loaded.bundle.config.name == "tiny-sft-fixture"
+    assert loaded.bundle.config.name == "tiny-multi-turn-sft-fixture"
     assert loaded.tokenizer.token_to_id("<eos>") == 1
 
     (bundle_dir / "config.json").write_text("{}", encoding="utf-8")
@@ -156,11 +176,11 @@ def test_dense_generate_stops_after_eos(monkeypatch: pytest.MonkeyPatch) -> None
 def test_sample_generation_trims_eos_marker_and_trailing_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tokenizer = tiny_tokenizer()
+    tokenizer = tiny_chat_tokenizer()
     model = DenseBackbone(tiny_backbone_config())
-    example = tokenize_single_turn(
+    example = tokenize_pair(
         tokenizer,
-        SingleTurnExample("say red", "red", "fixture", "eval-1"),
+        ConversationPair("say red", "red", "fixture", "eval-1"),
         max_sequence_tokens=model.config.context_length,
     )
 
@@ -172,7 +192,7 @@ def test_sample_generation_trims_eos_marker_and_trailing_tokens(
     ) -> torch.Tensor:
         assert max_new_tokens == 4
         assert eos_token_id == 1
-        return torch.tensor([input_ids[0].tolist() + [5, 1, 6]], dtype=torch.long)
+        return torch.tensor([input_ids[0].tolist() + [6, 1, 7]], dtype=torch.long)
 
     monkeypatch.setattr(model, "generate", fake_generate)
 
@@ -191,22 +211,22 @@ def test_markdown_sample_fence_handles_generated_code_blocks() -> None:
 
 
 def test_cpu_fixture_sft_loss_decreases_and_checkpoint_reloads_logits(tmp_path: Path) -> None:
-    tokenizer = tiny_tokenizer()
+    tokenizer = tiny_chat_tokenizer()
     model = DenseBackbone(tiny_backbone_config())
     train_examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=model.config.context_length)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=model.config.context_length)
         for example in (
-            SingleTurnExample("say red", "red", "fixture", "train-1"),
-            SingleTurnExample("say blue", "blue", "fixture", "train-2"),
-            SingleTurnExample("repeat one", "one", "fixture", "train-3"),
-            SingleTurnExample("repeat two", "two", "fixture", "train-4"),
+            ConversationPair("say red", "red", "fixture", "train-1"),
+            ConversationPair("say blue", "blue", "fixture", "train-2"),
+            ConversationPair("repeat one", "one", "fixture", "train-3"),
+            ConversationPair("repeat two", "two", "fixture", "train-4"),
         )
     )
     eval_examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=model.config.context_length)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=model.config.context_length)
         for example in (
-            SingleTurnExample("say red", "red", "fixture", "eval-1"),
-            SingleTurnExample("repeat two", "two", "fixture", "eval-2"),
+            ConversationPair("say red", "red", "fixture", "eval-1"),
+            ConversationPair("repeat two", "two", "fixture", "eval-2"),
         )
     )
 
@@ -265,34 +285,34 @@ def test_cpu_fixture_sft_loss_decreases_and_checkpoint_reloads_logits(tmp_path: 
 def test_matched_eval_selector_best_checkpoint_and_no_robots_guardrail(
     tmp_path: Path,
 ) -> None:
-    tokenizer = tiny_tokenizer()
+    tokenizer = tiny_chat_tokenizer()
     train_examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=24)
         for example in (
-            SingleTurnExample("say red", "red", "smol-smoltalk", "train-smol-1"),
-            SingleTurnExample("say blue", "blue", "smol-smoltalk", "train-smol-2"),
-            SingleTurnExample("repeat one", "one", "tulu-3-personas", "train-tulu-1"),
-            SingleTurnExample("repeat two", "two", "tulu-3-personas", "train-tulu-2"),
+            ConversationPair("say red", "red", "smol-smoltalk", "train-smol-1"),
+            ConversationPair("say blue", "blue", "smol-smoltalk", "train-smol-2"),
+            ConversationPair("repeat one", "one", "tulu-3-personas", "train-tulu-1"),
+            ConversationPair("repeat two", "two", "tulu-3-personas", "train-tulu-2"),
         )
     )
     smol_eval = (
-        tokenize_single_turn(
+        tokenize_pair(
             tokenizer,
-            SingleTurnExample("say red", "red", "smol-smoltalk", "eval-smol-1"),
+            ConversationPair("say red", "red", "smol-smoltalk", "eval-smol-1"),
             max_sequence_tokens=24,
         ),
     )
     tulu_eval = (
-        tokenize_single_turn(
+        tokenize_pair(
             tokenizer,
-            SingleTurnExample("repeat one", "one", "tulu-3-personas", "eval-tulu-1"),
+            ConversationPair("repeat one", "one", "tulu-3-personas", "eval-tulu-1"),
             max_sequence_tokens=24,
         ),
     )
     no_robots_eval = (
-        tokenize_single_turn(
+        tokenize_pair(
             tokenizer,
-            SingleTurnExample("say blue", "blue", "no_robots", "eval-ood-1"),
+            ConversationPair("say blue", "blue", "no_robots", "eval-ood-1"),
             max_sequence_tokens=24,
         ),
     )
@@ -366,17 +386,17 @@ def test_matched_eval_selector_best_checkpoint_and_no_robots_guardrail(
 
 
 def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) -> None:
-    tokenizer = tiny_tokenizer()
+    tokenizer = tiny_chat_tokenizer()
     train_examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=24)
         for example in (
-            SingleTurnExample("say red", "red", "fixture", "train-1"),
-            SingleTurnExample("say blue", "blue", "fixture", "train-2"),
+            ConversationPair("say red", "red", "fixture", "train-1"),
+            ConversationPair("say blue", "blue", "fixture", "train-2"),
         )
     )
     eval_examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
-        for example in (SingleTurnExample("say red", "red", "fixture", "eval-1"),)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=24)
+        for example in (ConversationPair("say red", "red", "fixture", "eval-1"),)
     )
     output_dir = tmp_path / "resume"
     torch.manual_seed(214)
@@ -469,17 +489,17 @@ def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) ->
 
 
 def test_sft_failure_saves_latest_checkpoint_and_preserves_error(tmp_path: Path) -> None:
-    tokenizer = tiny_tokenizer()
+    tokenizer = tiny_chat_tokenizer()
     train_examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=24)
         for example in (
-            SingleTurnExample("say red", "red", "fixture", "train-1"),
-            SingleTurnExample("say blue", "blue", "fixture", "train-2"),
+            ConversationPair("say red", "red", "fixture", "train-1"),
+            ConversationPair("say blue", "blue", "fixture", "train-2"),
         )
     )
     eval_examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
-        for example in (SingleTurnExample("say red", "red", "fixture", "eval-1"),)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=24)
+        for example in (ConversationPair("say red", "red", "fixture", "eval-1"),)
     )
     output_dir = tmp_path / "failure"
 
@@ -519,17 +539,17 @@ def test_sft_failure_saves_latest_checkpoint_and_preserves_error(tmp_path: Path)
 def test_final_eval_regression_writes_failure_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    tokenizer = tiny_tokenizer()
+    tokenizer = tiny_chat_tokenizer()
     train_examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=24)
         for example in (
-            SingleTurnExample("say red", "red", "fixture", "train-1"),
-            SingleTurnExample("say blue", "blue", "fixture", "train-2"),
+            ConversationPair("say red", "red", "fixture", "train-1"),
+            ConversationPair("say blue", "blue", "fixture", "train-2"),
         )
     )
     eval_examples = tuple(
-        tokenize_single_turn(tokenizer, example, max_sequence_tokens=24)
-        for example in (SingleTurnExample("say red", "red", "fixture", "eval-1"),)
+        tokenize_pair(tokenizer, example, max_sequence_tokens=24)
+        for example in (ConversationPair("say red", "red", "fixture", "eval-1"),)
     )
     output_dir = tmp_path / "final-eval-regression"
     monkeypatch.setattr(
@@ -563,150 +583,11 @@ def test_final_eval_regression_writes_failure_report(
     assert failure_report["checkpoint_path"] == str(checkpoint)
 
 
-def _load_config_payload() -> dict[str, object]:
-    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-
-
-def _write_json(path: Path, payload: object) -> Path:
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return path
-
-
-def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
-    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
-
-
-def _tiny_sweep_config(tmp_path: Path) -> SFTLaunchConfig:
-    bundle_dir = _write_tiny_bundle(tmp_path / "bundle")
-    smol_path = tmp_path / "smol.jsonl"
-    tulu_path = tmp_path / "tulu.jsonl"
-    eval_path = tmp_path / "no_robots.jsonl"
-    _write_jsonl(
-        smol_path,
-        [
-            {
-                "messages": [
-                    {"role": "user", "content": "say red"},
-                    {"role": "assistant", "content": "red"},
-                ]
-            }
-            for _ in range(8)
-        ],
-    )
-    _write_jsonl(
-        tulu_path,
-        [
-            {
-                "messages": [
-                    {"role": "user", "content": "say blue"},
-                    {"role": "assistant", "content": "blue"},
-                ],
-                "constraints": ["answer with one token"],
-            },
-            {
-                "messages": [
-                    {"role": "user", "content": "say red"},
-                    {"role": "assistant", "content": "red"},
-                ],
-                "constraints": ["answer with one token"],
-            },
-            {
-                "messages": [
-                    {"role": "user", "content": "say blue"},
-                    {"role": "assistant", "content": "blue"},
-                ],
-                "constraints": ["answer with one token"],
-            },
-        ],
-    )
-    _write_jsonl(
-        eval_path,
-        [
-            {"instruction": "say red", "response": "red"},
-            {"instruction": "say blue", "response": "blue"},
-        ],
-    )
-    payload = _load_config_payload()
-    payload["runtime"]["precision"] = "fp32"
-    payload["base_bundle"]["path"] = str(bundle_dir)
-    return SFTLaunchConfig(
-        payload=payload,
-        config_path=tmp_path / "config.json",
-        base_bundle_path=bundle_dir,
-        train_sources=(
-            DatasetSource(
-                name="smol-smoltalk",
-                source="HuggingFaceTB/smol-smoltalk",
-                revision="f73fe857d519ff6ac5af2ea67c4d3834da7b8bcc",
-                license="apache-2.0",
-                split="train",
-                role="train",
-                mix_ratio=0.8,
-                path=smol_path,
-            ),
-            DatasetSource(
-                name="tulu-3-personas",
-                source="allenai/tulu-3-sft-personas-instruction-following",
-                revision="fe0c7d350c9b4542b8d829a6f1daa1c259f0ba0e",
-                license="odc-by",
-                split="train",
-                role="train",
-                mix_ratio=0.2,
-                path=tulu_path,
-            ),
-        ),
-        eval_source=DatasetSource(
-            name="no_robots",
-            source="HuggingFaceH4/no_robots",
-            revision="e6f9a4ac5c37faeb744ba9ecf0473184d7f8105b",
-            license="cc-by-nc-4.0",
-            split="test",
-            role="eval",
-            path=eval_path,
-            train_allowed=False,
-        ),
-        output_dir=tmp_path / "unused",
-        train_steps=20,
-        tokens_per_step=1,
-        estimated_full_cost_usd=0.0,
-        estimated_smoke_cost_usd=0.0,
-        smoke_launch_command="smoke",
-        full_launch_command="full",
-    )
-
-
-def _complete_learning_gate_evidence() -> dict[str, object]:
-    return {
-        "stopped_run_reconciliation": {
-            "kind": "stopped_run_reconciliation",
-            "showcase_metrics_uri": "/posttrain/esme-instruct-sft-showcase-full/metrics.jsonl",
-            "stopped_full_metrics_uri": "/posttrain/esme-instruct-sft-full/metrics.jsonl",
-            "showcase_eval_rows": 98,
-            "showcase_best_step": 600,
-            "showcase_latest_step": 19400,
-            "notes": "showcase-full and stopped full metrics are distinct",
-        },
-        "bounded_matched_interval_eval_sweep": _bounded_interval_eval_sweep_evidence(),
-    }
-
-
-def _bounded_interval_eval_sweep_evidence() -> dict[str, object]:
-    return {
-        "kind": "bounded_matched_interval_eval_sweep",
-        "eval_metric": "eval/matched/response_loss",
-        "baseline_step": 0,
-        "step0_response_loss": 4.2,
-        "best_response_loss": 3.9,
-        "interval_eval_steps": [10, 20, 40],
-        "evidence_uri": "runs/esme-214m-instruct-sft-pilot/interval-eval-sweep.json",
-    }
-
-
 def _write_tiny_bundle(bundle_dir: Path) -> Path:
     bundle_dir.mkdir()
     config = tiny_backbone_config()
     model = DenseBackbone(config)
-    tokenizer = tiny_tokenizer()
+    tokenizer = tiny_chat_tokenizer()
     (bundle_dir / "config.json").write_text(
         json.dumps(config.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
     )

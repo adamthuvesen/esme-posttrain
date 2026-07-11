@@ -49,6 +49,14 @@ def write_selected_row_manifest(path: Path, examples: tuple[Any, ...]) -> None:
     path.write_text("".join(rows), encoding="utf-8")
 
 
+def write_eval_suite_manifests(
+    output_dir: Path, matched_eval_reports: dict[str, Any], no_robots_examples: tuple[Any, ...]
+) -> None:
+    for name, report in matched_eval_reports.items():
+        write_selected_row_manifest(output_dir / f"eval-{name}-manifest.jsonl", report.examples)
+    write_selected_row_manifest(output_dir / "eval-no_robots-manifest.jsonl", no_robots_examples)
+
+
 def refresh_manifest_files(output_dir: Path, expected_artifacts: tuple[str, ...]) -> None:
     manifest_path = output_dir / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -74,15 +82,19 @@ class RuntimeSpendTracker:
         return (time.perf_counter() - self.started) * self.usd_per_hour / 3600.0
 
     def write_cost(self, *, step: int, status: str) -> dict[str, Any]:
-        return write_runtime_cost(
-            self.output_dir,
-            started=self.started,
-            usd_per_hour=self.usd_per_hour,
-            stop_usd=self.stop_usd,
-            step=step,
-            status=status,
-            paid_compute=self.paid_compute,
-        )
+        elapsed = time.perf_counter() - self.started
+        payload = {
+            "paid_compute": self.paid_compute,
+            "status": status,
+            "elapsed_seconds": elapsed,
+            "usd_per_hour": self.usd_per_hour,
+            "estimated_cost_usd": elapsed * self.usd_per_hour / 3600.0,
+            "runtime_spend_stop_usd": self.stop_usd,
+            "step": step,
+        }
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        write_json(self.output_dir / "cost.json", payload)
+        return payload
 
     def check_cap(
         self,
@@ -97,28 +109,3 @@ class RuntimeSpendTracker:
             raise error_type(
                 f"{label} runtime spend estimate ${cost:.4f} exceeded ${self.stop_usd:.2f}"
             )
-
-
-def write_runtime_cost(
-    output_dir: Path,
-    *,
-    started: float,
-    usd_per_hour: float,
-    stop_usd: float,
-    step: int,
-    status: str,
-    paid_compute: bool = True,
-) -> dict[str, Any]:
-    elapsed = time.perf_counter() - started
-    payload = {
-        "paid_compute": paid_compute,
-        "status": status,
-        "elapsed_seconds": elapsed,
-        "usd_per_hour": usd_per_hour,
-        "estimated_cost_usd": elapsed * usd_per_hour / 3600.0,
-        "runtime_spend_stop_usd": stop_usd,
-        "step": step,
-    }
-    output_dir.mkdir(parents=True, exist_ok=True)
-    write_json(output_dir / "cost.json", payload)
-    return payload

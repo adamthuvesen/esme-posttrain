@@ -20,7 +20,9 @@ Do not add root compatibility aliases.
 
 ## Stage Packages
 
-- `src/esme_posttrain/sft/`: supervised fine-tuning data, trainers, launch validation, evaluation, sampling, and stage artifacts.
+- `src/esme_posttrain/sft/`: one conversation-based supervised fine-tuning path for
+  single- and multi-turn rows, plus launch validation, evaluation, sampling, and
+  stage artifacts.
 - `src/esme_posttrain/dpo/`: preference data, DPO trainer, launch validation, checkpoint evaluation, and chat-quality comparison.
 - `src/esme_posttrain/rl/`: verifier-backed RLVR data, Countdown-Lite baseline, GRPO training, launch validation, and result reports.
 - `src/esme_posttrain/evals/`: typed records for the evaluation contract: task rows, per-sample scores, per-task results, resume lines, and aggregate summaries. Serialized shapes are pinned by the golden fixtures under `fixtures/outputs/`.
@@ -33,7 +35,7 @@ Do not add root compatibility aliases.
 
 ## Import Rules
 
-- Internal imports should use canonical package paths such as `esme_posttrain.sft.trainer`, `esme_posttrain.dpo.launch`, `esme_posttrain.rl.launch`, `esme_posttrain.launch.validate`, and `esme_posttrain.export.dense_bundle`.
+- Internal imports should use canonical package paths such as `esme_posttrain.sft.trainer`, `esme_posttrain.dpo.launch`, `esme_posttrain.rl.launch`, `esme_posttrain.launch.config_guards`, and `esme_posttrain.export.dense_bundle`.
 - Keep package `__init__.py` files boring. Avoid broad re-export barrels; they hide ownership and can create import cycles.
 - If a module grows large, split by responsibility inside the stage package before adding a new top-level package.
 

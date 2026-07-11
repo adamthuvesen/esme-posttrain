@@ -129,8 +129,8 @@ uv run esme-posttrain rlvr-emit-decomp-completions \
 
 Each emitted sample is the model's Countdown expression wrapped in `\boxed{...}`; the
 `grpo-decomp` `esme-countdown` verifier grades it with Esme's rules (each supplied number
-used exactly once, `+ - *` only, integer result equal to target). The result table is
-produced by `grpo-decomp report --task-set esme-countdown` in the `grpo-decomp` repo.
+used exactly once, `+ - *` only, integer result equal to target). The sampled multi-seed
+result is produced offline by `scripts/esme_sampled_decomp.py` in the `grpo-decomp` repo.
 
 CPU-fixture proof (no private compute): `tests/test_rlvr_decomp.py` here, plus
 `tests/test_esme_countdown_decomp.py` in `grpo-decomp`.

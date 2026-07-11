@@ -5,7 +5,7 @@ preference pairs so the fixture exercises: preference-pair prompt masking, the
 frozen reference, margin increase, chosen/rejected logp tracking (likelihood-
 displacement watch), checkpoint round-trip, a decoding pre-check on the fixture
 (clearly marked as a harness demo, not the real SFT checkpoint), chat samples,
-and the K>=5 LLM-judge report.
+and the evaluation report.
 """
 
 from __future__ import annotations
@@ -29,9 +29,13 @@ from esme_posttrain.dpo.trainer import (
     run_dpo_training,
 )
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.run_artifacts import refresh_manifest_files, write_environment, write_json
+from esme_posttrain.run_artifacts import (
+    refresh_manifest_files,
+    write_environment,
+    write_json,
+    write_selected_row_manifest,
+)
 from esme_posttrain.sft.data import ChatTurn
-from esme_posttrain.sft.multiturn_judge import run_multi_turn_judge
 from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import (
     latest_checkpoint_path,
@@ -104,8 +108,8 @@ def run_dpo_cpu_fixture(
             "selected_pair_manifest": [pair.manifest_entry() for pair in train_pairs],
         },
     )
-    _write_pair_manifest(evidence_dir / "selected-pair-manifest.jsonl", train_pairs)
-    _write_pair_manifest(evidence_dir / "eval-pair-manifest.jsonl", eval_pairs)
+    write_selected_row_manifest(evidence_dir / "selected-pair-manifest.jsonl", train_pairs)
+    write_selected_row_manifest(evidence_dir / "eval-pair-manifest.jsonl", eval_pairs)
 
     # Decoding pre-check on the fixture reference model. This is a HARNESS DEMO of
     # the pre-check; the real SFT checkpoint is not loadable in a CPU-only env.
@@ -213,13 +217,7 @@ def run_dpo_cpu_fixture(
         eval_pairs,
         selected_step=result.selected_step,
     )
-    judge_report = run_multi_turn_judge(
-        lambda prompt: "blue",  # fixture stand-in generator; no real judge configured
-        judge=None,
-        passes=int(config.payload["monitoring"]["judge_repeat_passes"]),
-    )
     eval_payload = result.to_dict()
-    eval_payload["dpo_judge"] = judge_report.to_dict()
     eval_payload["decoding_precheck"] = precheck.to_dict()
     write_json(evidence_dir / "eval-report.json", eval_payload)
     write_json(
@@ -377,8 +375,3 @@ def _prepare_evidence_dir(config: DPOLaunchConfig, output_dir: Path | None) -> P
         raise ValueError(f"custom output_dir must be empty or absent: {evidence_dir}")
     evidence_dir.mkdir(parents=True, exist_ok=True)
     return evidence_dir
-
-
-def _write_pair_manifest(path: Path, pairs: tuple[Any, ...]) -> None:
-    rows = (json.dumps(pair.manifest_entry(), sort_keys=True) + "\n" for pair in pairs)
-    path.write_text("".join(rows), encoding="utf-8")

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 from esme_posttrain.launch.errors import LaunchError
-from esme_posttrain.launch.validate import load_json_file
 
 LAUNCH_APPROVAL_FLAG = "--approved"
 MODAL_CLIENT_VERSION = "1.5.1"
@@ -24,7 +24,13 @@ def load_json_object(config_path: Path) -> tuple[Path, dict[str, Any]]:
         raise LaunchError(f"config path does not exist: {resolved_path}")
     if not resolved_path.is_file():
         raise LaunchError(f"config path must be a file: {resolved_path}")
-    return resolved_path, dict(load_json_file(resolved_path, "config"))
+    try:
+        payload = json.loads(resolved_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise LaunchError(f"malformed config JSON at {resolved_path}: {error.msg}") from error
+    if not isinstance(payload, dict):
+        raise LaunchError("config must be a JSON object")
+    return resolved_path, payload
 
 
 def estimate_cost_usd(

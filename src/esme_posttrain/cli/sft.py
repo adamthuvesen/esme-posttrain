@@ -4,30 +4,11 @@ import argparse
 from pathlib import Path
 
 from esme_posttrain.cli.output import run_config_stage
-from esme_posttrain.sft.launch_instruct import build_sft_dry_run, load_sft_config
 from esme_posttrain.sft.launch_multiturn import build_multi_turn_dry_run, load_multi_turn_config
-from esme_posttrain.sft.smoke_instruct import run_cpu_fixture_sft
 from esme_posttrain.sft.smoke_multiturn import run_multi_turn_cpu_fixture
 
 
 def add_sft_parsers(subparsers: argparse._SubParsersAction) -> None:
-    sft_dry_run = subparsers.add_parser(
-        "instruct-sft-dry-run",
-        help="Validate the approval-gated Esme Instruct SFT pilot config.",
-    )
-    sft_dry_run.add_argument("--config", type=Path, required=True)
-    sft_dry_run.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
-    sft_dry_run.set_defaults(handler=_handle_instruct_sft, stage_action="dry-run")
-
-    sft_fixture = subparsers.add_parser(
-        "instruct-sft-cpu-fixture",
-        help="Run the no-spend CPU SFT fixture and write evidence artifacts.",
-    )
-    sft_fixture.add_argument("--config", type=Path, required=True)
-    sft_fixture.add_argument("--output-dir", type=Path)
-    sft_fixture.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
-    sft_fixture.set_defaults(handler=_handle_instruct_sft, stage_action="cpu-fixture")
-
     mt_dry_run = subparsers.add_parser(
         "sft-multiturn-dry-run",
         help="Validate the approval-gated Esme multi-turn SFT config.",
@@ -44,15 +25,6 @@ def add_sft_parsers(subparsers: argparse._SubParsersAction) -> None:
     mt_fixture.add_argument("--output-dir", type=Path)
     mt_fixture.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     mt_fixture.set_defaults(handler=_handle_multi_turn_sft, stage_action="cpu-fixture")
-
-
-def _handle_instruct_sft(args: argparse.Namespace) -> int:
-    return run_config_stage(
-        args,
-        load_config=load_sft_config,
-        build_dry_run=build_sft_dry_run,
-        run_fixture=run_cpu_fixture_sft,
-    )
 
 
 def _handle_multi_turn_sft(args: argparse.Namespace) -> int:

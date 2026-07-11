@@ -46,7 +46,6 @@ from esme_posttrain.launch.config_guards import (
 from esme_posttrain.launch.config_guards import (
     str_field as _str,
 )
-from esme_posttrain.launch.models import RuntimeBlock
 from esme_posttrain.sft.data import DatasetSource
 from esme_posttrain.sft.launch_shared import (
     validate_eval_source as _validate_eval_source,
@@ -234,16 +233,16 @@ def validate_multi_turn_payload(
 
     train_steps = int(optimizer["max_steps"])
     tokens_per_step = max(1, int(budgets["target_train_tokens"]) // train_steps)
-    runtime_block = RuntimeBlock.from_validated_payload(runtime)
+    selected_profile = runtime["gpu_profiles"][runtime["selected_gpu"]]
     estimated_full_cost = estimate_cost_usd(
         tokens=int(budgets["target_train_tokens"]),
-        projected_tokens_per_second=runtime_block.selected_profile.projected_tokens_per_second,
-        usd_per_hour=runtime_block.selected_profile.usd_per_hour,
+        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
+        usd_per_hour=float(selected_profile["usd_per_hour"]),
     )
     estimated_smoke_cost = estimate_cost_usd(
         tokens=int(budgets["smoke_train_tokens"]),
-        projected_tokens_per_second=runtime_block.selected_profile.projected_tokens_per_second,
-        usd_per_hour=runtime_block.selected_profile.usd_per_hour,
+        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
+        usd_per_hour=float(selected_profile["usd_per_hour"]),
     )
 
     return MultiTurnLaunchConfig(
@@ -432,7 +431,7 @@ def _validate_budgets(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_monitoring(payload: dict[str, Any]) -> None:
-    _validate_sft_monitoring(payload, require_judge=True)
+    _validate_sft_monitoring(payload)
 
 
 def _validate_learning_gate(payload: dict[str, Any]) -> None:

@@ -18,5 +18,5 @@ def main(argv: list[str] | None = None) -> int:
     if handler is not None:
         return handler(args)
 
-    print(f"esme-posttrain {__version__}: RLVR, Instruct/multi-turn SFT, and DPO checks.")
+    print(f"esme-posttrain {__version__}: RLVR, multi-turn SFT, and DPO checks.")
     return 0

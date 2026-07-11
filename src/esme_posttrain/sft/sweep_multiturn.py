@@ -26,6 +26,7 @@ from esme_posttrain.launch.config_guards import (
 from esme_posttrain.run_artifacts import (
     RuntimeSpendTracker,
     write_environment,
+    write_eval_suite_manifests,
     write_json,
     write_selected_row_manifest,
 )
@@ -60,9 +61,6 @@ from esme_posttrain.sft.sweep_shared import (
 )
 from esme_posttrain.sft.sweep_shared import (
     train_sanity as _train_sanity,
-)
-from esme_posttrain.sft.sweep_shared import (
-    write_eval_suite_manifests as _write_eval_suite_manifests,
 )
 from esme_posttrain.sft.trainer import EvalSplit, SFTTrainerConfig, run_sft_training
 from esme_posttrain.training.wandb_init import WandbConfig
@@ -508,7 +506,7 @@ def _run_sweep_arm(
         },
     )
     write_selected_row_manifest(output_dir / "selected-row-manifest.jsonl", train_examples)
-    _write_eval_suite_manifests(output_dir, matched_eval_reports, eval_examples)
+    write_eval_suite_manifests(output_dir, matched_eval_reports, eval_examples)
     write_environment(output_dir / "environment.txt", device=device)
 
     arm_started_cost = sweep_spend.estimated_cost_usd()

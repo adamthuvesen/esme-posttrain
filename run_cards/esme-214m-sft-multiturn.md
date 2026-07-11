@@ -65,8 +65,6 @@ turns and role markers are masked with `-100`.
 - `no_robots` is reported as a guardrail, never as the selector.
 - Multi-turn samples show coherent turn-taking.
 - Instruction following remains present after multi-turn training.
-- LLM-judge chat scores, when run, are reported with repeated-judge spread and
-  are never the selector.
 
 ## Accepted Result
 

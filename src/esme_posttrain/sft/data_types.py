@@ -12,21 +12,6 @@ class DataError(ValueError):
 
 
 @dataclass(frozen=True)
-class LossSemantics:
-    assistant_only_loss: bool = True
-    completion_only_loss: bool = True
-    ignore_index: int = IGNORE_INDEX
-
-    def __post_init__(self) -> None:
-        if not self.assistant_only_loss:
-            raise DataError("only assistant_only_loss=true is supported for Instruct SFT")
-        if not self.completion_only_loss:
-            raise DataError("only completion_only_loss=true is supported for Instruct SFT")
-        if self.ignore_index != IGNORE_INDEX:
-            raise DataError(f"loss.ignore_index must be {IGNORE_INDEX}")
-
-
-@dataclass(frozen=True)
 class DatasetSource:
     name: str
     source: str
@@ -40,17 +25,6 @@ class DatasetSource:
     train_allowed: bool = True
     max_prompt_chars: int = 1600
     max_response_chars: int = 1600
-
-
-@dataclass(frozen=True)
-class SingleTurnExample:
-    instruction: str
-    response: str
-    source: str
-    row_id: str
-    source_revision: str = "local"
-    source_dataset: str | None = None
-    constraints: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -76,18 +50,6 @@ class MultiTurnExample:
     @property
     def assistant_turns(self) -> int:
         return sum(1 for turn in self.turns if turn.role == "assistant")
-
-
-@dataclass(frozen=True)
-class FormattedExample:
-    prompt: str
-    response: str
-    source: str
-    row_id: str
-    source_revision: str
-    source_dataset: str
-    prompt_chars: int
-    response_chars: int
 
 
 @dataclass(frozen=True)
@@ -135,7 +97,6 @@ class SourceSurvivorCounts:
     rows_seen: int = 0
     survivors: int = 0
     selected: int = 0
-    rejected_non_single_turn: int = 0
     rejected_unparsable: int = 0
     rejected_capacity_filtered: int = 0
     rejected_too_long_chars: int = 0
@@ -160,7 +121,6 @@ class SourceSurvivorCounts:
             "rows_seen": self.rows_seen,
             "survivors": self.survivors,
             "selected": self.selected,
-            "rejected_non_single_turn": self.rejected_non_single_turn,
             "rejected_unparsable": self.rejected_unparsable,
             "rejected_capacity_filtered": self.rejected_capacity_filtered,
             "rejected_too_long_chars": self.rejected_too_long_chars,
