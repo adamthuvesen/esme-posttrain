@@ -125,6 +125,8 @@ src/esme_posttrain/
 ```
 
 Stage-specific code belongs in the stage package. Keep the package root small.
+[`docs/architecture.md`](docs/architecture.md) maps how the stages, shared
+runtime, and artifact handoffs connect.
 The canonical cross-repo bundle contract and compatibility policy live in
 [`esme-pretrain/docs/bundle-format.md`](https://github.com/adamthuvesen/esme-pretrain/blob/main/docs/bundle-format.md).
 

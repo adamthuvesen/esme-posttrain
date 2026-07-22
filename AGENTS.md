@@ -23,6 +23,7 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
 ## Doc Routing
 
 - Start with `README.md` for the current stage of the Esme post-training stack, active CLI commands, and launch prep overview.
+- Read `docs/architecture.md` for the stage pipeline, module seams, and artifact handoffs.
 - Read `docs/package-layout.md` before moving modules, adding stage code, or changing imports.
 - Read the matching run card before changing a launch config, run budget, data source, acceptance gate, or artifact path:
   - `run_cards/esme-214m-sft-multiturn.md` for the multi-turn SFT foundation.
