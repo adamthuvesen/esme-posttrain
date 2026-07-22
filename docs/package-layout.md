@@ -42,6 +42,7 @@ Do not add root compatibility aliases.
 ## Related Docs
 
 - `README.md` explains the current Esme post-training stack.
+- `docs/architecture.md` maps the stage pipeline, module seams, and artifact handoffs.
 - `docs/rlvr-countdown-lite.md` records the Countdown-Lite RLVR task, baseline, and result.
 - `esme-pretrain/docs/bundle-format.md` is the canonical cross-repo bundle
   contract and compatibility policy; this repo does not maintain a parallel copy.
