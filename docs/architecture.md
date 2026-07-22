@@ -128,9 +128,9 @@ flowchart TB
         RunArtifacts["run_artifacts.py: evidence writers"]
     end
 
-    entry --> sft
-    entry --> dpo
-    entry --> rl
+    CLI --> sft
+    CLI --> dpo
+    CLI --> rl
     CLI --> Export
     CLI --> Studies
 
