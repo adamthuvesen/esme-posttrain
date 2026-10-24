@@ -8,6 +8,7 @@ from esme_posttrain.rl.countdown_heldout import (
     SHIFT_TARGET_MAX,
     SHIFT_TARGET_MIN,
     build_heldout_fresh_tasks,
+    build_heldout_large_tasks,
     build_heldout_shift_tasks,
     countdown_lite_task_keys,
 )
@@ -63,6 +64,18 @@ def test_heldout_sets_are_disjoint_from_countdown_lite_and_each_other() -> None:
     assert len(fresh_keys) == 30
     assert len(shift_keys) == 30
 
+    large = build_heldout_large_tasks()
+    large_keys = {(task.numbers, task.target) for task in large}
+    assert len(large_keys) == 200
+    assert not large_keys & (existing_keys | fresh_keys | shift_keys)
+    assert sum(task.difficulty == "medium" for task in large) == 120
+    assert all(
+        verify_countdown_lite_expression(
+            task.solution, numbers=task.numbers, target=task.target
+        ).is_exact_solve
+        for task in large
+    )
+
 
 def test_heldout_solutions_are_exact_solves() -> None:
     for task in build_heldout_fresh_tasks() + build_heldout_shift_tasks():
@@ -79,8 +92,8 @@ def test_heldout_build_data_cli_writes_manifest_and_jsonl(tmp_path: Path) -> Non
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     assert manifest["manifest_type"] == "rl_tasks"
-    assert manifest["sample_budget"] == 60
-    assert [entry["records"] for entry in manifest["data_files"]] == [30, 30]
+    assert manifest["sample_budget"] == 260
+    assert [entry["records"] for entry in manifest["data_files"]] == [30, 30, 200]
     fresh_rows = load_countdown_lite_rows(manifest_path, split="heldout_fresh")
     shift_rows = load_countdown_lite_rows(manifest_path, split="heldout_shift")
     assert len(fresh_rows) == 30
