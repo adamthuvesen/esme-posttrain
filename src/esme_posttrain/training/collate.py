@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol, TypeVar
+from typing import Protocol
 
 import torch
 
@@ -23,9 +23,6 @@ class CollatableSequence(Protocol):
 
     @property
     def row_id(self) -> str: ...
-
-
-CollatableT = TypeVar("CollatableT", bound=CollatableSequence)
 
 
 def token_correct(logits: torch.Tensor, targets: torch.Tensor) -> int:
@@ -66,7 +63,7 @@ def collate_batch(
     )
 
 
-def cyclic_batch(
+def cyclic_batch[CollatableT: CollatableSequence](
     examples: tuple[CollatableT, ...], *, batch_index: int, batch_size: int
 ) -> tuple[CollatableT, ...]:
     start = batch_index * batch_size
