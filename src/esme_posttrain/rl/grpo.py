@@ -7,6 +7,7 @@ import io
 import json
 import math
 import random
+import statistics
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -46,6 +47,10 @@ StepCallback = Callable[[int], None]
 # Exact solves must clear the closeness ceiling (valid + closeness_weight) by at
 # least this margin so near-miss farming can never rival solving the task.
 EXACT_SOLVE_REWARD_MARGIN = 0.4
+
+
+# Matches the epsilon in TRL's GRPO std normalization.
+GRPO_STD_EPSILON = 1e-4
 
 
 class CountdownGRPOTrainerError(TrainerError):
@@ -91,6 +96,9 @@ class CountdownGRPOTrainerConfig:
     zero_variance_max_resamples: int = 0
     replay_buffer_max_age_steps: int = 0
     stratified_difficulty_sampling: bool = False
+    # "mean" is the Dr. GRPO baseline (reward - group mean). "std" also divides by the
+    # group standard deviation, as in the original GRPO; kept for the ablation.
+    advantage_normalization: Literal["mean", "std"] = "mean"
     write_final_bundle: bool = False
     precision: str = "fp32"
     device: str = "cpu"
@@ -168,6 +176,8 @@ class CountdownGRPOTrainerConfig:
             raise CountdownGRPOTrainerError("zero_variance_max_resamples must be non-negative")
         if self.replay_buffer_max_age_steps < 0:
             raise CountdownGRPOTrainerError("replay_buffer_max_age_steps must be non-negative")
+        if self.advantage_normalization not in {"mean", "std"}:
+            raise CountdownGRPOTrainerError("advantage_normalization must be mean or std")
 
 
 @dataclass(frozen=True)
@@ -404,7 +414,7 @@ def run_countdown_lite_grpo(
         )
         with torch.no_grad():
             reference_logp, _ = _sequence_logprob_and_entropy(reference, input_ids, labels)
-        advantages = _group_advantages(rollouts).to(device)
+        advantages = _group_advantages(rollouts, config.advantage_normalization).to(device)
 
         policy.train()
         optimizer.zero_grad(set_to_none=True)
@@ -846,7 +856,9 @@ def _collate_rollouts(
     )
 
 
-def _group_advantages(rollouts: tuple[_Rollout, ...]) -> torch.Tensor:
+def _group_advantages(
+    rollouts: tuple[_Rollout, ...], normalization: Literal["mean", "std"] = "mean"
+) -> torch.Tensor:
     # Dr. GRPO mean-only baseline: advantage = reward - group mean, with no
     # std division. Normalizing by std blows the advantage up exactly when a
     # group is nearly uniform, which is the least informative case.
@@ -854,8 +866,17 @@ def _group_advantages(rollouts: tuple[_Rollout, ...]) -> torch.Tensor:
     for rollout in rollouts:
         grouped[rollout.group_index].append(float(rollout.reward))
     means = {group_index: sum(rewards) / len(rewards) for group_index, rewards in grouped.items()}
+    scales = {group_index: 1.0 for group_index in grouped}
+    if normalization == "std":
+        scales = {
+            group_index: statistics.stdev(rewards) + GRPO_STD_EPSILON if len(rewards) > 1 else 1.0
+            for group_index, rewards in grouped.items()
+        }
     return torch.tensor(
-        [float(rollout.reward) - means[rollout.group_index] for rollout in rollouts],
+        [
+            (float(rollout.reward) - means[rollout.group_index]) / scales[rollout.group_index]
+            for rollout in rollouts
+        ],
         dtype=torch.float32,
     )
 
@@ -1016,6 +1037,7 @@ def _config_payload(config: CountdownGRPOTrainerConfig) -> dict[str, Any]:
         "zero_variance_max_resamples": config.zero_variance_max_resamples,
         "replay_buffer_max_age_steps": config.replay_buffer_max_age_steps,
         "stratified_difficulty_sampling": config.stratified_difficulty_sampling,
+        "advantage_normalization": config.advantage_normalization,
         "precision": config.precision,
         "device": config.device,
     }

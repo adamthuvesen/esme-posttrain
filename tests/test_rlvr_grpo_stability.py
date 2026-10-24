@@ -105,6 +105,25 @@ def test_group_advantages_are_mean_only_without_std_division() -> None:
     assert torch.allclose(advantages[2:], torch.tensor([-0.05, 0.05]), atol=1e-6)
 
 
+def test_std_normalization_rescales_each_group_to_unit_scale() -> None:
+    rollouts = (
+        _rollout(reward=1.0, group_index=0),
+        _rollout(reward=0.0, group_index=0),
+        _rollout(reward=0.9, group_index=1),
+        _rollout(reward=1.0, group_index=1),
+        _rollout(reward=0.3, group_index=2),
+        _rollout(reward=0.3, group_index=2),
+    )
+
+    advantages = _group_advantages(rollouts, "std")
+
+    # Both varying groups land at the same +/-0.707 scale: the low-variance group is
+    # blown up to match, which is the behavior the Dr. GRPO default avoids.
+    assert torch.allclose(advantages[:2], torch.tensor([0.7071, -0.7071]), atol=1e-3)
+    assert torch.allclose(advantages[2:4], torch.tensor([-0.7071, 0.7071]), atol=2e-3)
+    assert torch.equal(advantages[4:], torch.zeros(2))
+
+
 def test_group_advantages_zero_for_zero_variance_group() -> None:
     rollouts = tuple(_rollout(reward=0.3, group_index=0) for _ in range(4))
     assert torch.equal(_group_advantages(rollouts), torch.zeros(4))
