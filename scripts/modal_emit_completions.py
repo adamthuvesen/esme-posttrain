@@ -116,12 +116,18 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
         dirty = local_git_dirty(REPO_ROOT)
         for job in job_list:
             missing = JOB_KEYS - set(job)
-            if missing or ("bundle" in job) == ("checkpoint" in job):
+            if missing:
                 raise SystemExit(f"invalid job {job.get('label')}: missing {sorted(missing)}")
+            if ("bundle" in job) == ("checkpoint" in job):
+                raise SystemExit(
+                    f"invalid job {job['label']}: give exactly one of bundle, checkpoint"
+                )
             job.update(commit=commit, dirty=dirty)
         root = Path(out_root)
+        failures = 0
         for result in emit_job.map(job_list, return_exceptions=True):
             if isinstance(result, Exception):
+                failures += 1
                 print(f"FAILED {result!r}", flush=True)
                 continue
             target = root / result["label"]
@@ -135,3 +141,5 @@ if modal is not None:  # pragma: no cover - exercised by Modal, not local unit t
                 result["bundle_manifest"], encoding="utf-8"
             )
             print(f"DONE {result['label']}", flush=True)
+        if failures:
+            raise SystemExit(f"{failures} of {len(job_list)} jobs failed")
