@@ -66,7 +66,7 @@ app = None
 
 if modal is not None:  # pragma: no cover - exercised by Modal, not local unit tests.
     image = (
-        modal.Image.debian_slim(python_version="3.12")
+        modal.Image.debian_slim(python_version="3.13")
         .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
         .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
         .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
