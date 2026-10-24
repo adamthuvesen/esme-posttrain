@@ -54,7 +54,11 @@ from esme_posttrain.studies.report import (  # noqa: E402
 
 TASKS = 200
 CURVE_SEEDS = (215, 216, 217)
-CURVE_STEPS = (20, 40, 60, 80, 100, 120, 160, 200, 240)
+CURVE_STEPS = {
+    "real": (20, 40, 60, 80, 100, 120, 160, 200, 240),
+    "placebo": (20, 40, 60, 80, 100, 120, 160, 200, 240),
+    "closeness": (40, 120, 240),
+}
 ARMS = {
     # arm key: (display name, seeds)
     "placebo": ("Random-reward placebo", (214, 215, 216, 217, 218, 219)),
@@ -62,6 +66,7 @@ ARMS = {
     "nostab": ("No stability techniques", (215, 216, 217)),
     "stdnorm": ("Std-normalized advantages", (215, 216, 217)),
     "binary": ("Binary exact-only reward", (215, 216, 217)),
+    "closeness": ("Closeness-only partial credit", (215, 216, 217)),
 }
 PASS_K = (1, 2, 4, 8, 16, 32, 64, 128, 256)
 
@@ -153,9 +158,9 @@ def summarize(root: Path) -> dict[str, object]:
             "solved_by_any_seed_and_no_full_recipe_seed": len(union - real_union),
         }
     curves: dict[str, object] = {}
-    for key in ("real", "placebo"):
+    for key, curve_steps in CURVE_STEPS.items():
         points = []
-        for step in CURVE_STEPS:
+        for step in curve_steps:
             per_seed = [
                 public(score(root / f"heldout_large-{key}-seed{s}-step{step}")) for s in CURVE_SEEDS
             ]
@@ -215,15 +220,16 @@ def tradeoff_figure(summary: dict) -> go.Figure:
         "nostab": "#ab63fa",
         "stdnorm": GREEN,
         "binary": RED,
+        "closeness": "#ffa15a",
     }
     figure = go.Figure(
         layout=card_layout(
             title="The graded reward collapses to one template",
             subtitle="Step 240, 200 held-out tasks, 16 samples each, one point per seed",
             conclusion=(
-                "With the graded reward, ~98% of samples just add all the numbers. That solves the"
-                " 13 tasks whose target is the sum, and nothing else.<br>A binary exact-only reward"
-                " adds the numbers half as often and solves 15-18 other tasks."
+                "With the graded reward, ~98% of samples just add all the numbers. Closeness credit"
+                " alone keeps it at ~95%.<br>A binary exact-only reward adds the numbers half as"
+                " often and solves 15-18 tasks beyond the 13 sum tasks."
             ),
         )
     )
@@ -237,7 +243,7 @@ def tradeoff_figure(summary: dict) -> go.Figure:
                 name=arm["name"],
             )
         )
-    offsets = {"real": 0.3, "nostab": 1.4, "stdnorm": -1.6}
+    offsets = {"real": 0.3, "nostab": 1.4, "stdnorm": -1.6, "closeness": 2.2}
     labels = [
         trace_label(
             arm["name"],

@@ -34,8 +34,9 @@ the same training step, on 200 fresh held-out tasks:
   0.54 for it. The model solves exactly the 13 tasks whose target is the sum.
 - **Training converges on the hack.** At step 40 the model solves 7 tasks that are not
   sums. By step 200 it solves none.
-- **The reward shape controls it.** With a binary exact-only reward, the model adds the
-  numbers only half the time and solves 15-18 tasks that are not sums. Removing the
+- **The partial credit drives it.** With a binary exact-only reward, the model adds the
+  numbers only half the time and solves 15-18 tasks that are not sums. With credit for
+  closeness to the target alone, it still adds them 95% of the time. Removing the
   stability techniques changes validity by under 1 pp and leaves the solved set
   unchanged. Std-normalized advantages change nothing.
 
@@ -43,7 +44,7 @@ the same training step, on 200 fresh held-out tasks:
   <img src="assets/fig-learning-curves.svg" width="100%" alt="The sum template takes over the samples and the non-sum solves disappear" />
 </p>
 <p>
-  <img src="assets/fig-reward-shape-tradeoff.svg" width="100%" alt="Binary reward solves 15-18 non-sum tasks while the graded reward solves none" />
+  <img src="assets/fig-reward-shape-tradeoff.svg" width="100%" alt="Binary reward solves 15-18 non-sum tasks while graded and closeness-only rewards collapse to the sum" />
 </p>
 
 ## Stage Summary

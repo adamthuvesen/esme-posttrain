@@ -256,6 +256,44 @@
       "problems_solved_by_any_seed": 31,
       "problems_solved_by_every_seed": 25,
       "solved_by_any_seed_and_no_full_recipe_seed": 18
+    },
+    "closeness": {
+      "name": "Closeness-only partial credit",
+      "runs": [
+        {
+          "seed": 215,
+          "valid_expression_rate": 0.9534375,
+          "exact_solve_rate": 0.0590625,
+          "problems_solved": 14,
+          "sum_template_rate": 0.95,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 1
+        },
+        {
+          "seed": 216,
+          "valid_expression_rate": 0.95375,
+          "exact_solve_rate": 0.0590625,
+          "problems_solved": 14,
+          "sum_template_rate": 0.94875,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 1
+        },
+        {
+          "seed": 217,
+          "valid_expression_rate": 0.944375,
+          "exact_solve_rate": 0.058125,
+          "problems_solved": 14,
+          "sum_template_rate": 0.9403125,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 1
+        }
+      ],
+      "mean_valid_expression_rate": 0.9505208333333334,
+      "mean_problems_solved": 14.0,
+      "mean_sum_template_rate": 0.9463541666666666,
+      "problems_solved_by_any_seed": 14,
+      "problems_solved_by_every_seed": 14,
+      "solved_by_any_seed_and_no_full_recipe_seed": 0
     }
   },
   "learning_curves": {
@@ -422,6 +460,35 @@
         "problems_solved": 2.3333333333333335,
         "sum_template_rate": 0.0078125,
         "solved_sum_tasks": 1.3333333333333333,
+        "solved_other_tasks": 1.0
+      }
+    ],
+    "closeness": [
+      {
+        "step": 40,
+        "valid_expression_rate": 0.2459375,
+        "exact_solve_rate": 0.016666666666666666,
+        "problems_solved": 19.0,
+        "sum_template_rate": 0.21760416666666668,
+        "solved_sum_tasks": 12.0,
+        "solved_other_tasks": 7.0
+      },
+      {
+        "step": 120,
+        "valid_expression_rate": 0.9046875,
+        "exact_solve_rate": 0.05406249999999999,
+        "problems_solved": 15.0,
+        "sum_template_rate": 0.8967708333333334,
+        "solved_sum_tasks": 13.0,
+        "solved_other_tasks": 2.0
+      },
+      {
+        "step": 240,
+        "valid_expression_rate": 0.9505208333333334,
+        "exact_solve_rate": 0.05875,
+        "problems_solved": 14.0,
+        "sum_template_rate": 0.9463541666666666,
+        "solved_sum_tasks": 13.0,
         "solved_other_tasks": 1.0
       }
     ]
