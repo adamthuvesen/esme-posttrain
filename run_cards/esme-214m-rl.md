@@ -143,8 +143,8 @@ to the seed 215-217 real-reward runs.
 - **Evaluation:** the same rebuild, sampling, and `heldout_large` protocol as the
   placebo control. Sampling runs on 1x A10G per job, at most 3 jobs at once
   (`scripts/modal_emit_completions.py`).
-- **Studies:** `studies/rlvr-ablation-{binary,nostab,stdnorm}.json`, each against the
-  matched real-reward seeds.
+- **Studies:** `studies/rlvr-ablation-{binary,closeness,nostab,stdnorm}.json`, each
+  against the matched real-reward seeds.
 
 Step-240 results on `heldout_large`, mean of seeds 215-217:
 
@@ -152,18 +152,20 @@ Step-240 results on `heldout_large`, mean of seeds 215-217:
 | --- | ---: | ---: | ---: | --- |
 | Full recipe | 98.0% | 97.8% | 13.0 | |
 | `binary` | 59.2% | 50.0% | 28.3 | `studies/rlvr-ablation-binary.report.md` |
+| `closeness` | 95.1% | 94.6% | 14.0 | `studies/rlvr-ablation-closeness.report.md` |
 | `nostab` | 97.3% | 97.0% | 13.3 | `studies/rlvr-ablation-nostab.report.md` |
 | `stdnorm` | 97.9% | 97.7% | 13.0 | `studies/rlvr-ablation-stdnorm.report.md` |
 
-The reward shape decides the outcome. With the graded reward every run collapses to the
-sum template and solves only the 13 sum-target tasks. With the binary reward the model
-writes the sum on half of its samples and also solves 15-18 other tasks. The stability
-techniques change validity by under 1 pp, and the advantage normalization changes
-nothing. The `closeness` arm is in training.
+The partial credit decides the outcome. With the graded reward every run collapses to
+the sum template and solves only the 13 sum-target tasks. Closeness credit alone is
+enough for the same collapse: 95% of samples are the sum, and each seed solves one task
+beyond the 13. With the binary reward the model writes the sum on half of its samples
+and also solves 15-18 other tasks. The stability techniques change validity by under
+1 pp, and the advantage normalization changes nothing.
 
 ## Spend
 
-The placebo control cost about $9.80 for eleven training runs. The `binary`, `nostab`,
-and `stdnorm` ablations cost $8.84 for nine runs on A100s. Evaluation sampling on A10Gs
-cost about $6, estimated from container hours. All other evaluation ran
+The placebo control cost about $9.80 for eleven training runs. The ablations cost
+$11.75 for twelve runs on A100s. Evaluation sampling on A10Gs cost about $7, estimated
+from container hours. All other evaluation ran
 on a laptop CPU.

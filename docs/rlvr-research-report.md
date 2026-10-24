@@ -108,7 +108,7 @@ At step 40 the model solves 7 tasks that are not sums. As the template takes ove
 samples, those solves disappear. Per-sample exact rate keeps rising only because the
 template answers the 13 sum tasks on nearly every sample.
 
-### 3. The reward shape controls the collapse, and the stability techniques do not
+### 3. The reward's partial credit drives the collapse, and the stability techniques do not
 
 Each ablation removes one part of the recipe, over seeds 215-217
 (`studies/rlvr-ablation-*.report.md`, `assets/fig-reward-shape-tradeoff.svg`):
@@ -117,6 +117,7 @@ Each ablation removes one part of the recipe, over seeds 215-217
 | --- | ---: | ---: | ---: | ---: |
 | Full recipe | 98.0% | 97.8% | 13 | 0 |
 | Binary exact-only reward | 59.2% | 50.0% | 12 | 15-18 |
+| Closeness-only partial credit | 95.1% | 94.6% | 13 | 1 |
 | No stability techniques | 97.3% | 97.0% | 13 | 0-1 |
 | Std-normalized advantages | 97.9% | 97.7% | 13 | 0 |
 
@@ -125,6 +126,14 @@ Each ablation removes one part of the recipe, over seeds 215-217
   but it also solves 15-18 tasks that are not sums. Across its three seeds it solves 31
   distinct tasks, 18 of which no full-recipe seed solves. The graded reward trains this
   arithmetic away.
+- **Closeness-only partial credit.** This arm removes the flat 0.3 for any valid
+  expression and the 0.05 format credit, and keeps only the credit for closeness to the
+  target. The run still collapses: 95% of samples add the numbers, and each seed solves
+  the 13 sum tasks plus one other. It follows the same path as the full recipe: 7 other
+  tasks solved at step 40, 2 at step 120, and 1 at step 240. Validity is 2.9 pp lower than the full recipe (CI [+2.1, +3.8]). The
+  closeness credit alone pays for the template. Under this reward, a policy that always
+  writes the sum earns 0.29 on the training tasks. The runs' logged training reward
+  averaged 0.26 over their last 20 steps. The flat valid credit adds little.
 - **Stability techniques.** Removing resampling, the replay buffer, and stratified
   sampling lowers validity by 0.7 pp (CI [+0.3, +1.2]) and does not change the solved
   set. The run still collapses to the template.
@@ -132,7 +141,9 @@ Each ablation removes one part of the recipe, over seeds 215-217
   results as the Dr. GRPO default.
 
 Three seeds cannot give a permutation p below 0.25, so these intervals rest on problem
-resampling. The binary result is large and holds on all three seeds.
+resampling. The binary and closeness results are large or consistent on all three
+seeds. At the tested scale (up to 0.3), credit for a wrong answer that is close to the
+target is enough to make the sum template the policy's best move.
 
 ### 4. RL trades breadth for reliability
 
@@ -175,14 +186,14 @@ specification.
   (`heldout_shift`, targets 65-128, above any sum of three numbers from 1-9) is solved
   0% of the time by every model.
 - Ablations use three seeds. They test one change each. KL strength, learning rate,
-  the closeness weight, and longer generation budgets are not ablated.
+  the closeness scale, and longer generation budgets are not ablated.
 - The analysis identifies the sum template from output form. It does not inspect what
   the model represents internally.
 
 ## Cost
 
-Nine ablation runs cost $8.84 on A100s. Sampling for the 200-task evaluations, learning
-curves, and pass@k cost about $6 on A10Gs, estimated from container hours. All other
+Twelve ablation runs cost $11.75 on A100s. Sampling for the 200-task evaluations,
+learning curves, and pass@k cost about $7 on A10Gs, estimated from container hours. All other
 evaluation ran on a laptop CPU.
 
 ## Reproduce
@@ -190,6 +201,7 @@ evaluation ran on a laptop CPU.
 ```bash
 uv run esme-posttrain study-report --study studies/rlvr-placebo-step240-large.json
 uv run esme-posttrain study-report --study studies/rlvr-ablation-binary.json
+uv run esme-posttrain study-report --study studies/rlvr-ablation-closeness.json
 uv run --with plotly --with kaleido python scripts/plot_rlvr_research.py \
   --completions runs/gpu-emit/batch1
 ```
