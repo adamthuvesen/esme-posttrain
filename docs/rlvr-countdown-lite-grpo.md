@@ -31,6 +31,8 @@
 GRPO nearly always produces a well-formed expression after training
 (valid-expression rate 5.83% -> 99.38%) and lifts exact solves on the easy
 band; medium and hard tasks stay unsolved at this model size.
+The five solved tasks are the five acceptance tasks whose target is the sum of the
+numbers. The model learned to write that sum (`docs/rlvr-research-report.md`).
 
 ## Inputs
 

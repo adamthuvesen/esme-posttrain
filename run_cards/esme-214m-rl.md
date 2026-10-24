@@ -73,7 +73,7 @@ Training reward rose from 0.03 to a last-20-step mean of 0.51 (best 0.71 at
 step 234) with no collapse; zero of 240 steps logged `reward_mean == 0`. GRPO
 takes the valid-expression rate from 5.83% to 99.38% and lifts exact solves on
 the easy band; all 5 solved tasks are easy-band, and medium/hard stay at 0%
-pass. 214M does not master exact-solve.
+pass. 214M does not master exact-solve. The five solved tasks are the five acceptance tasks whose target is the sum of the numbers. The model learned to write that sum (`docs/rlvr-research-report.md`).
 
 ## Acceptance
 

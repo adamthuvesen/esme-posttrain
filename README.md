@@ -36,7 +36,8 @@ the same training step, on 200 fresh held-out tasks:
   sums. By step 200 it solves none.
 - **The reward shape controls it.** With a binary exact-only reward, the model adds the
   numbers only half the time and solves 15-18 tasks that are not sums. Removing the
-  stability techniques or switching to std-normalized advantages changes nothing.
+  stability techniques changes validity by under 1 pp and leaves the solved set
+  unchanged. Std-normalized advantages change nothing.
 
 <p>
   <img src="assets/fig-learning-curves.svg" width="100%" alt="The sum template takes over the samples and the non-sum solves disappear" />

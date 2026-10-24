@@ -7,8 +7,8 @@ close to the target, so the graded reward pays well for it. The model solves exa
 the held-out tasks whose target is the sum, and almost nothing else.
 
 A random-reward placebo, a larger held-out set, learning curves, and reward ablations
-found this. The earlier summary of the same runs ("RL makes 98% of outputs valid and
-adds real 2-operand skill") described the template without noticing it.
+found this. Earlier docs on the same runs described the result as a "transferable
+answer format plus real 2-operand skill". They described the template without noticing it.
 
 All numbers come from committed study reports and `studies/rlvr-research-summary.json`.
 Figures are in `assets/`.
@@ -155,9 +155,10 @@ curves cross between k = 64 and k = 128. With 256 samples:
 - 11 tasks are solved by both, 17 only by Chat, and 8 only by RL.
 
 RL makes the model reliable on the sum tasks, including four that the Chat model never
-solves in 256 samples. It loses most of the base model's reach on everything else.
-This is not a pure case of RL sharpening what the base model can already do (Yue et
-al., 2025): RL also reaches new tasks, because the template it learned reaches them.
+solves in 256 samples. Its four other new solves are single hits in 256 samples. It
+loses most of the base model's reach on everything else. This is close to the pattern
+Yue et al. (2025) describe, where RL sharpens rather than extends what the base model
+can do. The exception is the four sum tasks, which the template reaches.
 
 ## Corrections made during this audit
 

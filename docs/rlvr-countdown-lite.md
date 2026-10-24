@@ -31,6 +31,9 @@ Countdown-Lite is the only RLVR training target in this run. GSM8K-lite remains 
 | Baseline report | 3.33% | 6.67% | 13.33% | 5.83% | 0.73% |
 | GRPO result | 16.67% | 16.67% | 16.67% | 99.38% | 16.35% |
 
+The five solved tasks are the five acceptance tasks whose target is the sum of the
+numbers. The model learned to write that sum (`docs/rlvr-research-report.md`).
+
 `Esme-214M-RL` is the current Countdown-Lite GRPO artifact. Secondary transfer evals are separate from the verifier reward.
 
 Held-out transfer results (fresh-unseen and shifted-target sets) live in `docs/rlvr-countdown-heldout-transfer.md`.

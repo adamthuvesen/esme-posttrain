@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -86,9 +87,11 @@ def score(directory: Path, *, samples: int = 16) -> dict[str, object]:
     for row in rows:
         target, numbers = _parse_countdown_key(row["problem"]["gold_answer"])
         for sample in row["samples"]:
-            expression = sample[7:-1]
+            match = re.fullmatch(r"\\boxed\{(.*)\}", sample)
+            expression = match.group(1) if match else ""
             if (
-                set(expression) <= set("0123456789+ ")
+                "+" in expression
+                and set(expression) <= set("0123456789+ ")
                 and _score_countdown_sample(
                     sample, numbers=numbers, target=target
                 ).is_valid_expression

@@ -633,10 +633,9 @@ def build_countdown_evidence_figure() -> go.Figure:
                 " 2-number transfer, same protocol, max_new_tokens=12"
             ),
             conclusion=(
-                "Conclusion: GRPO lifts valid expressions from 5.83% to 99.38%"
-                " in-distribution and preserves the gain on unseen 2-number tasks"
-                " (10.00% -> 98.75%).<br>Exact solves rise too: 0.73% -> 16.35%"
-                " in-distribution, 3.12% -> 38.75% on unseen 2-number tasks."
+                "Conclusion: GRPO lifts valid expressions from 5.83% to 99.38%. Every exact"
+                " solve here is a task whose target is the sum of the numbers:<br>the model"
+                " learned to add all the numbers (docs/rlvr-research-report.md)."
             ),
         )
     )
