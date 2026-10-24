@@ -106,8 +106,8 @@ def _identity_from_manifest(manifest: dict[str, Any]) -> RLVRBundleIdentity:
             source_sha256 = str(manifest["source_checkpoint_sha256"])
         else:
             # Bundles from the 2026-07 multiseed runs predate the top-level source
-            # fields. The warm start is still pinned by the embedded source manifest,
-            # which is the same weights file current runs record as source_checkpoint.
+            # fields. The embedded source manifest still pins the warm-start weights by
+            # hash; current runs record that hash too, with a local path as the label.
             source_model_id = str(source_manifest["model"]["id"])
             reference_name = str(source_manifest["model"]["name"])
             source_checkpoint = f"{source_model_id}/weights.pt"

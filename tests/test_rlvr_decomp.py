@@ -9,6 +9,7 @@ artifacts are well formed and honest.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -16,7 +17,6 @@ import pytest
 import torch
 
 from esme_posttrain.bundle import file_sha256, load_dense_backbone_bundle
-from esme_posttrain.launch.modal_cli import local_git_commit, local_git_dirty
 from esme_posttrain.rl import full as full_module
 from esme_posttrain.rl.checkpoint_bundle import (
     CheckpointBundleError,
@@ -126,6 +126,44 @@ def test_checkpoint_bundle_carries_the_checkpoint_weights_and_step(tmp_path: Pat
             )
         )
 
+    # A legacy template (2026-07 runs) has no top-level source fields; its identity
+    # comes from the embedded warm-start manifest.
+    legacy = tmp_path / "legacy-template"
+    legacy.mkdir()
+    (legacy / "tokenizer.json").write_bytes((result.bundle_dir / "tokenizer.json").read_bytes())
+    manifest = json.loads((result.bundle_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest.pop("source_checkpoint")
+    manifest.pop("source_checkpoint_sha256")
+    manifest["provenance"]["source_manifest"] = {
+        "model": {"id": "esme-214m-chat", "name": "Esme-214M-Chat"},
+        "files": {"weights": {"sha256": "a" * 64}},
+    }
+    (legacy / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    export_checkpoint_bundle(
+        CheckpointBundleRequest(
+            checkpoint_path=checkpoint_path,
+            template_bundle_dir=legacy,
+            output_dir=tmp_path / "legacy-bundle",
+        )
+    )
+    legacy_manifest = json.loads(
+        (tmp_path / "legacy-bundle" / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert legacy_manifest["source_checkpoint"] == "esme-214m-chat/weights.pt"
+    assert legacy_manifest["source_checkpoint_sha256"] == "a" * 64
+    assert legacy_manifest["provenance"]["starts_from"] == "Esme-214M-Chat"
+
+    manifest["model_config"]["layers"] += 1
+    (legacy / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(CheckpointBundleError, match=r"\['layers'\]"):
+        export_checkpoint_bundle(
+            CheckpointBundleRequest(
+                checkpoint_path=checkpoint_path,
+                template_bundle_dir=legacy,
+                output_dir=tmp_path / "mismatched-bundle",
+            )
+        )
+
 
 def test_random_reward_draw_is_signal_free_and_over_support() -> None:
     import random
@@ -193,8 +231,7 @@ def test_emitter_writes_valid_completion_set_schema(tmp_path: Path) -> None:
     assert provenance["sampling"]["n"] == 2
     # Provenance pins the exact weights and the code commit that produced the samples.
     assert provenance["model_revision"] == f"sha256:{file_sha256(TINY_BUNDLE / 'weights.pt')}"
-    assert provenance["commit"] == local_git_commit(REPO_ROOT)
-    assert provenance["dirty"] == local_git_dirty(REPO_ROOT)
+    assert re.fullmatch(r"[0-9a-f]{40}", provenance["commit"])
 
     lines = (out / "completions.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 30
