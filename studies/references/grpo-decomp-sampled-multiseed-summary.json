@@ -45,18 +45,10 @@
     },
     "comparisons": {
       "real-vs-random-validity": {
-        "mean_effect": 0.8465277777777778,
-        "confidence_interval_95": {
-          "lower": 0.5462135063357911,
-          "upper": 1.1468420492197644
-        }
+        "mean_effect": 0.8465277777777778
       },
       "real-vs-random-exact": {
-        "mean_effect": 0.08888888888888889,
-        "confidence_interval_95": {
-          "lower": 0.06032686849292984,
-          "upper": 0.11745090928484794
-        }
+        "mean_effect": 0.08888888888888889
       }
     }
   }

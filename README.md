@@ -42,9 +42,11 @@ The RLVR result is narrow and useful. In the paired
 [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp) study, six
 real-reward seeds beat six same-budget random-reward placebo seeds on held-out
 valid-expression rate: **85.4% vs 0.8%** (`+84.7 pp`, 95% CI
-`[+54.6, +114.7]`). Exact solving improves too, more modestly (`+8.9 pp`, 95%
-CI `[+6.0, +11.7]`). For this 214M model, the main gain is better Countdown
-form.
+`[+60.6, +96.9]`, sign-flip permutation `p = 0.031`). Exact solving improves
+too, more modestly (`+8.9 pp`, 95% CI `[+4.4, +13.9]`). Intervals come from a
+seed-and-problem bootstrap; with six seeds, `p = 0.031` is the smallest
+two-sided p the permutation test can return. For this 214M model, the main gain
+is better Countdown form.
 
 ## Why 214M?
 

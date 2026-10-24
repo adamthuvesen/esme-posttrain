@@ -330,8 +330,8 @@
     {
       "comparison_id": "real-vs-random-validity",
       "confidence_interval_95": {
-        "lower": 0.5462135063357922,
-        "upper": 1.1468420492197633
+        "lower": 0.6062413194444444,
+        "upper": 0.9694444444444444
       },
       "mean_effect": 0.8465277777777778,
       "metric": "valid_expression_rate",
@@ -343,6 +343,7 @@
         218,
         219
       ],
+      "permutation_p_value": 0.03125,
       "reference_arm": "random_reward",
       "seed_effects": [
         {
@@ -375,8 +376,8 @@
     {
       "comparison_id": "real-vs-random-exact",
       "confidence_interval_95": {
-        "lower": 0.060326868492929966,
-        "upper": 0.11745090928484785
+        "lower": 0.044444444444444446,
+        "upper": 0.1388888888888889
       },
       "mean_effect": 0.0888888888888889,
       "metric": "any_exact_solve_rate",
@@ -388,6 +389,7 @@
         218,
         219
       ],
+      "permutation_p_value": 0.03125,
       "reference_arm": "random_reward",
       "seed_effects": [
         {
@@ -425,6 +427,7 @@
       "paired_seeds": [
         214
       ],
+      "permutation_p_value": null,
       "reference_arm": "chat_baseline",
       "seed_effects": [
         {
@@ -438,7 +441,7 @@
   "compatibility_errors": [],
   "compatible": true,
   "complete": true,
-  "confidence_interval_method": "paired_student_t_95",
+  "confidence_interval_method": "seed_problem_bootstrap_95",
   "decoding": {
     "max_new_tokens": 12,
     "n": 16,
@@ -458,6 +461,11 @@
     }
   ],
   "hypothesis": "Verifier-reward GRPO improves held-out Countdown validity and exact solving beyond a random-reward placebo.",
+  "inference": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 0,
+    "permutation_test": "exact two-sided sign-flip over seed-level paired effects"
+  },
   "missing_seeds": {},
   "primary_metric": "valid_expression_rate",
   "provenance": [
@@ -651,13 +659,13 @@
     },
     {
       "path": "studies/references/grpo-decomp-sampled-multiseed-summary.json",
-      "sha256": "daa7ecea735d2ff13f1366f81d2a472abc9f89dbcce3be492d09b570a2fc4e90"
+      "sha256": "b138d6f51bf095df95963bc9f34f9e47fa3c9dbd9365eed7ef3c0008c15b7126"
     }
   ],
   "sample_budget": 480,
   "schema_version": 1,
   "study_id": "rlvr-countdown-placebo-six-seed",
-  "study_specification_sha256": "f533b528181c6f0bdf4e68b84f8467f2c4f975c1541f9233775b1e246273d101",
+  "study_specification_sha256": "220b7368540bb722b929fd9e438860b3c97f33b60786a07f90ca08e0b7a6068a",
   "supported_claims": [
     "Across six training seeds, the verifier-reward arm has a higher held-out Countdown valid-expression rate than the random-reward arm.",
     "The exact-solve gain is positive but smaller than the valid-expression gain; this study does not support a claim of broad reasoning improvement."

@@ -22,11 +22,7 @@
     },
     "comparisons": {
       "treatment-vs-control-validity": {
-        "mean_effect": 0.5,
-        "confidence_interval_95": {
-          "lower": 0.5,
-          "upper": 0.5
-        }
+        "mean_effect": 0.5
       }
     }
   }

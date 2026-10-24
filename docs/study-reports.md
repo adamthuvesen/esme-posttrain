@@ -11,10 +11,23 @@ arms. Missing treatment or control seeds, mismatched task manifests, different s
 counts, or different decoding settings force a rejected verdict with no supported
 claims.
 
-The current confidence interval method is `paired_student_t_95`: a two-sided 95%
-Student t interval over seed-level paired effects. The training seed is the unit of
-analysis. This matches the six-seed RLVR placebo study and avoids pretending that the
-samples generated within one training run are independent model replications.
+The training seed is the unit of analysis. Samples generated within one training run
+are not independent model replications, so each comparison pairs the arms by seed and
+reports two numbers:
+
+- `seed_problem_bootstrap_95`: a two-level percentile bootstrap. Each resample draws
+  training seeds with replacement, then draws problems with replacement inside each
+  drawn seed, using the same problems for both arms. The interval is the 2.5th and
+  97.5th percentile of 10,000 resampled mean effects, with a fixed resampling seed.
+  A rate difference can never leave `[-1, 1]`. A paired Student t interval did leave
+  it: with six seeds and one outlier, it gave an upper bound of `+114.7%`.
+- An exact two-sided sign-flip permutation p-value over the seed-level paired effects.
+  With `n` seeds, the smallest possible p is `2 / 2**n`, which is `0.031` for six
+  seeds. The Markdown report prints that floor beside the p-value.
+
+A percentile bootstrap over six seeds tends to give an interval that is too narrow.
+The permutation p-value makes no distributional assumption, so read the two together.
+The acceptance rule still gates on the interval's lower bound.
 
 The Countdown CompletionSet scorer matches the decomposition contract: it reads the
 expression inside `\boxed{...}`, rejects decimal tokens with leading zeroes, and then

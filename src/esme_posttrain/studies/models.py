@@ -25,7 +25,7 @@ class StudyMetric(StrEnum):
 
 
 class ConfidenceIntervalMethod(StrEnum):
-    PAIRED_STUDENT_T_95 = "paired_student_t_95"
+    SEED_PROBLEM_BOOTSTRAP_95 = "seed_problem_bootstrap_95"
 
 
 class HashedArtifact(_StrictModel):

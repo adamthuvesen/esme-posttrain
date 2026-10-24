@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 from pydantic import ValidationError
 
@@ -12,7 +13,10 @@ from esme_posttrain.studies.models import StudySpecification
 from esme_posttrain.studies.report import (
     StudyReportError,
     _compare_projection,
+    _paired_problem_effects,
     _score_countdown_sample,
+    _seed_problem_bootstrap_95,
+    _sign_flip_permutation_p,
     generate_study_report,
     load_study_specification,
 )
@@ -54,6 +58,30 @@ def test_generates_accepted_json_and_markdown_from_hashed_artifacts(tmp_path: Pa
     assert "[study.report.json](study.report.json)" in markdown
     assert "fixture-preempted" in markdown
     assert json.loads(generated.json_path.read_text(encoding="utf-8")) == generated.payload
+
+
+def test_bootstrap_interval_stays_inside_rate_bounds_with_an_outlier_seed() -> None:
+    # The shape of the six-seed placebo study: five seeds near +96 pp, one at +26 pp.
+    # A paired t interval on these seed effects reaches past +100 pp.
+    seed_effects = [0.26, 0.97, 0.96, 0.96, 0.96, 0.96]
+    problem_effects = np.array([[effect] * 30 for effect in seed_effects])
+
+    interval = _seed_problem_bootstrap_95(problem_effects)
+
+    assert -1.0 <= interval["lower"] < np.mean(seed_effects) < interval["upper"] <= 1.0
+
+
+def test_sign_flip_p_value_is_exact() -> None:
+    assert _sign_flip_permutation_p([0.1] * 6) == pytest.approx(2 / 64)
+    assert _sign_flip_permutation_p([0.1, -0.1]) == pytest.approx(1.0)
+
+
+def test_comparison_rejects_arms_scored_on_different_problems() -> None:
+    treatment = {"p1": {"valid_expression_rate": 1.0}}
+    reference = {"p2": {"valid_expression_rate": 0.0}}
+
+    with pytest.raises(StudyReportError, match="do not share one problem set"):
+        _paired_problem_effects("c", [(treatment, reference)], "valid_expression_rate")
 
 
 def test_specification_rejects_unknown_fields() -> None:
@@ -247,10 +275,7 @@ def test_checked_real_report_matches_grpo_decomp_projection() -> None:
             for name, arm in report["arms"].items()
         },
         "comparisons": {
-            comparison["comparison_id"]: {
-                "mean_effect": comparison["mean_effect"],
-                "confidence_interval_95": comparison["confidence_interval_95"],
-            }
+            comparison["comparison_id"]: {"mean_effect": comparison["mean_effect"]}
             for comparison in report["comparisons"]
         },
     }

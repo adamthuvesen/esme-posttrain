@@ -11,7 +11,7 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 - Complete: yes
 - Compatible: yes
-- Confidence interval: `paired_student_t_95`
+- Confidence interval: `seed_problem_bootstrap_95`
 - Sample budget per run: 480
 - Evidence warning: real_reward seed 214 has no comparable cost artifact
 - Evidence warning: random_reward seed 214 has no training manifest
@@ -98,7 +98,8 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 - Metric: `valid_expression_rate`
 - Mean effect: +84.7%
-- 95% CI: [+54.6%, +114.7%]
+- 95% CI: [+60.6%, +96.9%]
+- Sign-flip permutation p (two-sided): 0.0312 (smallest possible with these seeds: 0.0312)
 - Paired seeds: 214, 215, 216, 217, 218, 219
 - [Comparison data](rlvr-placebo.report.json)
 
@@ -106,7 +107,8 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 - Metric: `any_exact_solve_rate`
 - Mean effect: +8.9%
-- 95% CI: [+6.0%, +11.7%]
+- 95% CI: [+4.4%, +13.9%]
+- Sign-flip permutation p (two-sided): 0.0312 (smallest possible with these seeds: 0.0312)
 - Paired seeds: 214, 215, 216, 217, 218, 219
 - [Comparison data](rlvr-placebo.report.json)
 
@@ -115,6 +117,7 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 - Metric: `valid_expression_rate`
 - Mean effect: +26.2%
 - 95% CI: n/a
+- Sign-flip permutation p (two-sided): n/a
 - Paired seeds: 214
 - [Comparison data](rlvr-placebo.report.json)
 
@@ -177,4 +180,4 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 - `runs/multiseed/seed219-placebo/cost.json` — `1059a74fa31bc7aed4da116e71e9fd3fcf2bf2e404340297bd21838bba639ceb`
 - `runs/decomp-sampled/base__esme-countdown/completions.jsonl` — `04877330a37afd092993399751d232daff33740bdff49290be33783980282b72`
 - `runs/decomp-sampled/base__esme-countdown/provenance.json` — `5f5cfe7d00a1e799ef02a5e720bcc0c9f8b3ec243bbbad860f61cda20916dac2`
-- `studies/references/grpo-decomp-sampled-multiseed-summary.json` — `daa7ecea735d2ff13f1366f81d2a472abc9f89dbcce3be492d09b570a2fc4e90`
+- `studies/references/grpo-decomp-sampled-multiseed-summary.json` — `b138d6f51bf095df95963bc9f34f9e47fa3c9dbd9365eed7ef3c0008c15b7126`

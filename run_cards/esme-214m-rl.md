@@ -195,7 +195,12 @@ Aggregate arm means:
 | random (placebo, random reward) | 0.8% | 0.1% | 0.8% | 1.7% | 0.50/30 |
 
 Seed-level tests (unit = training seed, n=6): valid-expression separation is **+84.7 pp,
-95% CI [+54.6, +114.7]**. Any-exact separation is **+8.9 pp, 95% CI [+6.0, +11.7]**.
+95% CI [+60.6, +96.9]**. Any-exact separation is **+8.9 pp, 95% CI [+4.4, +13.9]**. Both
+have an exact sign-flip permutation p of 0.031, the smallest two-sided value six seeds
+allow. The intervals come from a bootstrap that resamples seeds, then problems within each
+seed (`studies/rlvr-placebo.report.md`). The paired Student t interval first reported here,
+[+54.6, +114.7], went above the 100 pp ceiling a rate difference can reach, so it was
+replaced.
 
 **Reading:** real verifier reward is now separable from random-reward placebo across seeds
 on sampled held-out Countdown validity. Seed 214 was the low-validity outlier; seeds 215-219
