@@ -82,6 +82,17 @@ builder in `src/esme_posttrain/rl/countdown_heldout.py`, selection seed 4126).
 - `Esme-214M-Chat`: `exports/esme-214m-chat/`, the exported DPO best
   checkpoint, the exact artifact GRPO warm-started from.
 
+**Re-verified 2026-10-24.** The step-234 bundle above later failed its own manifest
+weights hash, so every cell was re-run on hash-verified bundles:
+
+- RL: the step-240 bundle rebuilt from run `v2-ccb6287-1`'s training checkpoint with
+  `rlvr-checkpoint-bundle`. It is tensor-identical to the trainer's own step-240 export
+  (weights sha256 `b35cdfb5…`). Steps 234 and 240 score identically on acceptance.
+- Chat: weights sha256 `3e7c1a45…`, the warm-start hash every RL run recorded.
+
+All twelve 12-token numbers in the tables above reproduce exactly. The re-run reports
+are under gitignored `artifacts/verified-heldout/`.
+
 ## Execution and spend
 
 - All evals ran locally on CPU: **local, $0**. No private training function was

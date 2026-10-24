@@ -101,7 +101,9 @@ The accepted `Esme-214M-RL` gain is decomposed with the `grpo-decomp` harness by
 comparing three arms on the held-out `heldout_fresh` Countdown set:
 
 - **base**: `exports/esme-214m-chat` (pre-RL).
-- **correct**: `exports/esme-214m-rl-caff0a1` (real verifier reward).
+- **correct**: `exports/esme-214m-rl-caff0a1` (real verifier reward). This export held
+  the step-22 bundle of run `caff0a1`, not the accepted step-234 model; see the fixed-step
+  re-score below.
 - **random**: the same recipe/budget with `grpo.reward_mode = "random"`: the reward is
   drawn (seeded via `random_reward_seed`) uniformly over the same three-level support
   {invalid, valid, exact}, independent of the completion. Any gain it shows is
@@ -269,9 +271,10 @@ effect is consistent across seeds (p at its floor), but it rests on those three 
 so its interval over a fresh draw of problems reaches zero. The supported claim is "RL
 sharpened form." An exact-solve gain needs a larger held-out set before it is claimed.
 
-**Open issue:** the `caff0a1` and `v2-ccb6287-1` bundles on the volume fail their own
-manifest weights hash, although both files are complete and load. Bundles from those
-two runs need a re-export before they are used as evidence again.
+**Legacy bundles:** the exported `caff0a1` and `v2-ccb6287-1` bundles fail their own
+manifest weights hash, although both files are complete and load. No current result
+depends on them: the studies and the held-out docs use bundles rebuilt from training
+checkpoints and verified by hash.
 
 ## Stability ablation (2026-10-24)
 
