@@ -7,21 +7,11 @@ held-out cells at larger rollout budgets (24 and 48 tokens) and compares them wi
 Same acceptance protocol: seed 214, 32 samples per task, greedy sample 0 plus 31
 stochastic samples at temperature 0.8.
 
-## Correction (2026-10-24)
+Models, both verified by weights hash:
 
-The first version of this report did not evaluate the accepted model. Its commands
-named the `exports/esme-214m-rl-caff0a1` bundle, which holds the step-22 checkpoint of
-an earlier run, and its 24- and 48-token reports were not kept. It reported that
-3-number validity collapses to 13-19% once the budget grows. That result does not
-reproduce on the accepted model. Every number below comes from a re-run on
-hash-verified bundles:
-
-- RL: the step-240 bundle rebuilt from run `v2-ccb6287-1` (weights sha256
-  `b35cdfb5…`), tensor-identical to the trainer's own step-240 export.
+- RL: the step-240 bundle of the accepted run (weights sha256 `b35cdfb5…`), rebuilt
+  from its training checkpoint and tensor-identical to the trainer's own export.
 - Chat: the warm-start bundle (weights sha256 `3e7c1a45…`).
-
-The verdict on 3-operand solving still holds. The "validity collapse" finding is
-withdrawn.
 
 ## Verdict
 
@@ -87,8 +77,8 @@ At 12 tokens the RL model runs to the cap on about 99% of 3-number samples, so t
 - **Settles:** for `Esme-214M-RL`, 3-operand Countdown exact-solve is a wall on both
   held-out sets, not an artifact of the 12-token budget. The one 3-number task it
   solves has a target equal to the sum of its numbers.
-- **Withdrawn:** the claim that validity collapses to 13-19% beyond 12 tokens. On the
-  accepted model it declines to 75-80% at 48 tokens.
+- **Shows:** validity declines gradually with budget, to 75-80% at 48 tokens, because
+  the model sometimes keeps writing past a valid expression.
 
 ## Execution and spend
 

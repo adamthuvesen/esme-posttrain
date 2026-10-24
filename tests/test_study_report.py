@@ -13,7 +13,6 @@ from esme_posttrain.cli import main
 from esme_posttrain.studies.models import StudySpecification
 from esme_posttrain.studies.report import (
     StudyReportError,
-    _compare_projection,
     _p_value,
     _paired_problem_effects,
     _score_countdown_sample,
@@ -25,8 +24,6 @@ from esme_posttrain.studies.report import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_SPEC = REPO_ROOT / "fixtures" / "studies" / "study.json"
-REAL_REPORT = REPO_ROOT / "studies" / "rlvr-placebo.report.json"
-REAL_REFERENCE = REPO_ROOT / "studies" / "references" / "grpo-decomp-sampled-multiseed-summary.json"
 
 
 def _payload() -> dict[str, object]:
@@ -293,31 +290,22 @@ def test_study_report_cli_writes_both_formats(
     assert Path(payload["markdown_path"]).is_file()
 
 
-def test_checked_real_report_matches_grpo_decomp_projection() -> None:
-    report = json.loads(REAL_REPORT.read_text(encoding="utf-8"))
-    reference = json.loads(REAL_REFERENCE.read_text(encoding="utf-8"))
-    study_path = REPO_ROOT / "studies" / "rlvr-placebo.json"
+@pytest.mark.parametrize(
+    "study_path",
+    sorted(
+        path
+        for path in (REPO_ROOT / "studies").glob("*.json")
+        if "report" not in path.name and "summary" not in path.name
+    ),
+    ids=lambda path: path.stem,
+)
+def test_committed_report_matches_its_study_specification(study_path: Path) -> None:
+    report_path = study_path.with_name(f"{study_path.stem}.report.json")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     study = json.loads(study_path.read_text(encoding="utf-8"))
-    actual = {
-        "seeds": [run["seed"] for run in report["arms"]["real_reward"]["runs"]],
-        "arms": {
-            name: {
-                "mean_metrics": arm["mean_metrics"],
-                "per_seed": {str(run["seed"]): run["metrics"] for run in arm["runs"]},
-            }
-            for name, arm in report["arms"].items()
-        },
-        "comparisons": {
-            comparison["comparison_id"]: {"mean_effect": comparison["mean_effect"]}
-            for comparison in report["comparisons"]
-        },
-    }
-    errors: list[str] = []
 
-    _compare_projection(reference["report_projection"], actual, "reference_summary", errors)
-
-    assert errors == []
     assert (
         report["study_specification_sha256"] == hashlib.sha256(study_path.read_bytes()).hexdigest()
     )
-    assert report["supported_claims"] == study["allowed_claims"]
+    expected_claims = study["allowed_claims"] if report["verdict"] == "accepted" else []
+    assert report["supported_claims"] == expected_claims

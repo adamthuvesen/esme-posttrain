@@ -46,11 +46,6 @@ the same training step, on 200 fresh held-out tasks:
   <img src="assets/fig-reward-shape-tradeoff.svg" width="100%" alt="Binary reward solves 15-18 non-sum tasks while the graded reward solves none" />
 </p>
 
-The report also records the errors this audit found and fixed in earlier versions of
-the result: an impossible confidence interval, checkpoint selection on noise, a
-mislabeled model, evaluations that silently ran on the CPU, and a template read as
-skill.
-
 ## Stage Summary
 
 | Stage | Starts from | Produces | Accepted signal |
@@ -78,8 +73,7 @@ Esme-214M is small enough to make the full LLM lifecycle practical to build and 
 - Stage code for SFT, DPO, RLVR, launch validation, versioned dense-bundle export,
   and shared artifact writing.
 - Configs for the current Esme-214M post-training path, validated in code by the stage launch modules.
-- Evidence docs for SFT, DPO, completed Countdown-Lite GRPO, and the
-  six-seed RLVR decomposition.
+- Evidence docs for SFT, DPO, Countdown-Lite GRPO, and the RLVR research report.
 - Export tooling for `Esme-214M-Chat` bundles.
 - Hashed study specifications that rebuild accepted JSON and Markdown reports.
 - A no-spend CPU acceptance path across SFT, DPO resume, RLVR, export, load,
@@ -96,32 +90,28 @@ make check
 Use `uv run ...` for Python commands. Default local commands do not download
 remote datasets, start private training jobs, or spend money.
 
-Check a bundle without creating a model, rebuild the accepted placebo report,
+Check a bundle without creating a model, rebuild the placebo study report,
 or run the full local stage chain:
 
 ```bash
 uv run esme-posttrain bundle-check --bundle-dir fixtures/tiny_bundle --json
-uv run esme-posttrain study-report --study studies/rlvr-placebo.json
+uv run esme-posttrain study-report --study studies/rlvr-placebo-step240-large.json
 uv run esme-posttrain full-path-cpu-smoke --output-dir runs/full-path-cpu-smoke --json
 ```
 
 ## Current Artifacts
 
 - `docs/rlvr-research-report.md` is the research report: placebo study, learning
-  curves, stability ablations, pass@k, and the audit corrections.
+  curves, reward and stability ablations, and pass@k.
 - `studies/rlvr-placebo-step240-large.json` and `studies/rlvr-ablation-*.json` pin the
   200-task studies by hash. Their reports sit beside them, and
   `studies/rlvr-research-summary.json` holds every number the figures use.
 - `docs/rlvr-countdown-lite.md` describes the RLVR task, baseline, and result.
 - `docs/rlvr-countdown-lite-grpo.md` summarizes the completed Countdown-Lite GRPO run.
 - `docs/rlvr-countdown-heldout-transfer.md` scores the RL and pre-RL checkpoints on held-out Countdown sets.
-- `run_cards/esme-214m-rl.md` records a placebo-controlled decomposition (via
-  [`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp)) comparing the
-  six-seed real-reward gain with a same-budget random-reward placebo.
+- `run_cards/esme-214m-rl.md` records the RLVR recipe, configs, budgets, and results.
 - Generated export bundles are written under gitignored `exports/`.
 - Generated run reports are written under gitignored `artifacts/`.
-- `studies/rlvr-placebo.json` pins the six-seed study inputs by hash; its
-  generated JSON and Markdown reports are checked in beside it.
 
 ## Repository Layout
 

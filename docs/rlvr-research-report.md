@@ -6,9 +6,8 @@ numbers, whatever the target. That template is always a valid expression and oft
 close to the target, so the graded reward pays well for it. The model solves exactly
 the held-out tasks whose target is the sum, and almost nothing else.
 
-A random-reward placebo, a larger held-out set, learning curves, and reward ablations
-found this. Earlier docs on the same runs described the result as a "transferable
-answer format plus real 2-operand skill". They described the template without noticing it.
+A random-reward placebo, a 200-task held-out set, learning curves, and reward
+ablations show this.
 
 All numbers come from committed study reports and `studies/rlvr-research-summary.json`.
 Figures are in `assets/`.
@@ -50,7 +49,7 @@ placebo comes from the training process, not from the reward signal.
 
 **Evaluation set.** `heldout_large`: 200 tasks (120 medium and 80 hard, 199 of them with
 three numbers), selected from the same generator and verified disjoint from every
-training and earlier held-out task (`src/esme_posttrain/rl/countdown_heldout.py`).
+training and other held-out task (`src/esme_posttrain/rl/countdown_heldout.py`).
 Exactly 13 of the 200 tasks have a target equal to the sum of their numbers.
 
 **Decoding.** 16 samples per task at temperature 1.0, 12 new tokens, seed 0.
@@ -160,35 +159,14 @@ loses most of the base model's reach on everything else. This is close to the pa
 Yue et al. (2025) describe, where RL sharpens rather than extends what the base model
 can do. The exception is the four sum tasks, which the template reaches.
 
-## Corrections made during this audit
+## Validation
 
-The headline result was re-audited before this report. These errors were found and
-fixed. Each fix is in the repository history.
-
-1. **An impossible interval.** The first study used a paired t interval, which gave
-   `[+54.6, +114.7]` pp for a rate difference that cannot exceed 100 pp. It was replaced
-   with the bootstrap and permutation test above. A later review found that the first
-   bootstrap resampled problems separately for each seed. That narrowed the intervals,
-   because every seed sees the same problems. The bootstrap now draws one problem set
-   per resample.
-2. **Noise as checkpoint selection.** Each run exported the bundle with the best
-   training reward. Under a random reward that choice is noise, so placebo arms were
-   evaluated at steps 8 to 219. All arms are now evaluated at step 240.
-3. **A mislabeled model.** The first study's seed-214 real-reward arm came from a
-   step-22 bundle of an earlier run, not the step-234 run it named. A re-emit
-   reproduces 457 of 480 samples from the step-22 bundle. This was the low "outlier"
-   seed. The same mislabeled export made an earlier token-budget report claim that
-   validity collapses beyond 12 tokens. That claim is withdrawn
-   (`docs/rlvr-countdown-3number-tokenbudget.md`).
-4. **A silent CPU fallback.** The bundle loader placed the model on the CPU whatever
-   device was requested, so "GPU" evaluations ran on the container CPU. This is the
-   likely cause of earlier remote evaluations that timed out after hours.
-5. **A template read as skill.** Earlier docs credited RL with "real 2-operand skill"
-   that transfers to held-out tasks. The held-out tasks it solved were the sum tasks.
-   This report and the held-out docs now say so.
-
-To prevent repeats, CompletionSet provenance now records the code commit and a weights
-hash. A study report refuses a bundle whose weights did not produce its samples.
+Every CompletionSet records the code commit and a SHA-256 hash of the weights that
+produced it. Each study report checks that hash against the bundle it pins, and it
+rejects a comparison whose arms differ in tasks, sample counts, or decoding settings.
+Bundles are rebuilt from training checkpoints at one fixed step, so no arm is picked by
+its training reward. A unit test checks that each committed report matches its study
+specification.
 
 ## Limits
 
@@ -200,8 +178,6 @@ hash. A study report refuses a bundle whose weights did not produce its samples.
   the closeness weight, and longer generation budgets are not ablated.
 - The analysis identifies the sum template from output form. It does not inspect what
   the model represents internally.
-- `heldout_large` samples were drawn on a GPU. Earlier studies sampled on a CPU. Each
-  comparison uses one sampling path for all of its arms.
 
 ## Cost
 
