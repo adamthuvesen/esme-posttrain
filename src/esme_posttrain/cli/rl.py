@@ -5,6 +5,7 @@ from pathlib import Path
 
 from esme_posttrain.cli.output import Payload, emit_payload, exit_with_error
 from esme_posttrain.launch.config_guards import LaunchError
+from esme_posttrain.rl.checkpoint_bundle import CheckpointBundleRequest, export_checkpoint_bundle
 from esme_posttrain.rl.countdown_heldout import write_countdown_heldout_dataset
 from esme_posttrain.rl.countdown_lite import CountdownLiteError, write_countdown_lite_dataset
 from esme_posttrain.rl.countdown_lite_baseline import (
@@ -134,6 +135,30 @@ def add_rl_parsers(subparsers: argparse._SubParsersAction) -> None:
     emit_completions.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     emit_completions.set_defaults(handler=_handle_emit_decomp_completions)
 
+    checkpoint_bundle = subparsers.add_parser(
+        "rlvr-checkpoint-bundle",
+        help="Rebuild a dense bundle from a GRPO training checkpoint at that checkpoint's step.",
+    )
+    checkpoint_bundle.add_argument(
+        "--checkpoint", type=Path, required=True, help="GRPO training checkpoint (.pt)."
+    )
+    checkpoint_bundle.add_argument(
+        "--template-bundle",
+        type=Path,
+        required=True,
+        help="The run's exported bundle; supplies the tokenizer and bundle identity.",
+    )
+    checkpoint_bundle.add_argument(
+        "--out", dest="output_dir", type=Path, required=True, help="Bundle directory to write."
+    )
+    checkpoint_bundle.add_argument(
+        "--expected-step", type=int, default=None, help="Fail unless the checkpoint is this step."
+    )
+    checkpoint_bundle.add_argument(
+        "--json", action="store_true", help="Emit machine-readable JSON."
+    )
+    checkpoint_bundle.set_defaults(handler=_handle_checkpoint_bundle)
+
 
 def _handle_rlvr_dry_run(args: argparse.Namespace) -> int:
     try:
@@ -220,6 +245,26 @@ def _handle_emit_decomp_completions(args: argparse.Namespace) -> int:
     except DecompEmitterError as exc:
         exit_with_error(str(exc))
     emit_payload(payload, json_output=args.json, formatter=_format_emit_decomp_completions)
+    return 0
+
+
+def _handle_checkpoint_bundle(args: argparse.Namespace) -> int:
+    try:
+        payload = export_checkpoint_bundle(
+            CheckpointBundleRequest(
+                checkpoint_path=args.checkpoint,
+                template_bundle_dir=args.template_bundle,
+                output_dir=args.output_dir,
+                expected_step=args.expected_step,
+            )
+        )
+    except ValueError as exc:
+        exit_with_error(str(exc))
+    emit_payload(
+        payload,
+        json_output=args.json,
+        formatter=lambda p: "\n".join(f"{key}: {value}" for key, value in p.items()),
+    )
     return 0
 
 
