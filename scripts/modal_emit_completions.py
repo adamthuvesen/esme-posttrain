@@ -29,7 +29,7 @@ from esme_posttrain.rl.launch import MODAL_VOLUME
 
 VOLUME_MOUNT = Path("/posttrain")
 # The account shares a small GPU quota with other work; keep this runner narrow.
-MAX_CONTAINERS = 2
+MAX_CONTAINERS = 3
 JOB_KEYS = {"label", "split", "n", "temperature", "max_new_tokens", "seed"}
 
 try:
