@@ -164,8 +164,8 @@ can do. The exception is the four sum tasks, which the template reaches.
 Every CompletionSet records the code commit and a SHA-256 hash of the weights that
 produced it. Each study report checks that hash against the bundle it pins, and it
 rejects a comparison whose arms differ in tasks, sample counts, or decoding settings.
-Bundles are rebuilt from training checkpoints at one fixed step, so no arm is picked by
-its training reward. A unit test checks that each committed report matches its study
+RL bundles are rebuilt from training checkpoints at one fixed step, so no arm is picked
+by its training reward. A unit test checks that each committed report matches its study
 specification.
 
 ## Limits

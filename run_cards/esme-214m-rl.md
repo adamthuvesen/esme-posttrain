@@ -143,8 +143,8 @@ to the seed 215-217 real-reward runs.
 - **Evaluation:** the same rebuild, sampling, and `heldout_large` protocol as the
   placebo control. Sampling runs on 1x A10G per job, at most 3 jobs at once
   (`scripts/modal_emit_completions.py`).
-- **Studies:** `studies/rlvr-ablation-{binary,closeness,nostab,stdnorm}.json`, each
-  against the matched real-reward seeds.
+- **Studies:** `studies/rlvr-ablation-{binary,nostab,stdnorm}.json`, each against the
+  matched real-reward seeds.
 
 Step-240 results on `heldout_large`, mean of seeds 215-217:
 

@@ -37,8 +37,9 @@ acceptance rule gates on the interval's lower bound.
 A run may also pin `evaluated_bundle_manifest`: the manifest of the bundle its
 completions were sampled from. The report then checks that the bundle's weights hash
 matches the `model_revision` in the CompletionSet provenance, and shows the evaluated
-training step. Every committed study pins it, because every arm is evaluated at one
-fixed step. GRPO exports the bundle with the best `train/reward_mean`, and under a
+training step. Every treatment and control run in the committed studies pins it,
+because those arms are evaluated at one fixed step. The Chat baseline arm uses the
+exported Chat bundle and pins no manifest. GRPO exports the bundle with the best `train/reward_mean`, and under a
 random reward that choice is noise. `rlvr-checkpoint-bundle` rebuilds a bundle from the
 periodic training checkpoint at any step:
 
