@@ -13,7 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.bundle import file_sha256, load_dense_backbone_bundle
+from esme_posttrain.launch.modal_cli import local_git_commit, local_git_dirty
 from esme_posttrain.rl import full as full_module
 from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows
 from esme_posttrain.rl.decomp_emitter import (
@@ -142,6 +143,10 @@ def test_emitter_writes_valid_completion_set_schema(tmp_path: Path) -> None:
     assert provenance["dataset"]["config"] == "heldout_fresh"
     assert provenance["n_problems"] == 30
     assert provenance["sampling"]["n"] == 2
+    # Provenance pins the exact weights and the code commit that produced the samples.
+    assert provenance["model_revision"] == f"sha256:{file_sha256(TINY_BUNDLE / 'weights.pt')}"
+    assert provenance["commit"] == local_git_commit(REPO_ROOT)
+    assert provenance["dirty"] == local_git_dirty(REPO_ROOT)
 
     lines = (out / "completions.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 30
