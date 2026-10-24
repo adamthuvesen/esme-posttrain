@@ -313,6 +313,10 @@ def run_countdown_lite_grpo_job(
                 stratified_difficulty_sampling=bool(
                     grpo_settings.get("stratified_difficulty_sampling", False)
                 ),
+                advantage_normalization=cast(
+                    Literal["mean", "std"],
+                    grpo_settings.get("advantage_normalization", "mean"),
+                ),
                 write_final_bundle=final_eval_required,
                 precision=precision,
                 device=device.type,

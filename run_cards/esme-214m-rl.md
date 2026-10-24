@@ -73,7 +73,7 @@ Training reward rose from 0.03 to a last-20-step mean of 0.51 (best 0.71 at
 step 234) with no collapse; zero of 240 steps logged `reward_mean == 0`. GRPO
 takes the valid-expression rate from 5.83% to 99.38% and lifts exact solves on
 the easy band; all 5 solved tasks are easy-band, and medium/hard stay at 0%
-pass. 214M does not master exact-solve.
+pass. 214M does not master exact-solve. The five solved tasks are the five acceptance tasks whose target is the sum of the numbers. The model learned to write that sum (`docs/rlvr-research-report.md`).
 
 ## Acceptance
 
@@ -101,7 +101,9 @@ The accepted `Esme-214M-RL` gain is decomposed with the `grpo-decomp` harness by
 comparing three arms on the held-out `heldout_fresh` Countdown set:
 
 - **base**: `exports/esme-214m-chat` (pre-RL).
-- **correct**: `exports/esme-214m-rl-caff0a1` (real verifier reward).
+- **correct**: `exports/esme-214m-rl-caff0a1` (real verifier reward). This export held
+  the step-22 bundle of run `caff0a1`, not the accepted step-234 model; see the fixed-step
+  re-score below.
 - **random**: the same recipe/budget with `grpo.reward_mode = "random"`: the reward is
   drawn (seeded via `random_reward_seed`) uniformly over the same three-level support
   {invalid, valid, exact}, independent of the completion. Any gain it shows is
@@ -269,6 +271,55 @@ effect is consistent across seeds (p at its floor), but it rests on those three 
 so its interval over a fresh draw of problems reaches zero. The supported claim is "RL
 sharpened form." An exact-solve gain needs a larger held-out set before it is claimed.
 
-**Open issue:** the `caff0a1` and `v2-ccb6287-1` bundles on the volume fail their own
-manifest weights hash, although both files are complete and load. Bundles from those
-two runs need a re-export before they are used as evidence again.
+**Legacy bundles:** the exported `caff0a1` and `v2-ccb6287-1` bundles fail their own
+manifest weights hash, although both files are complete and load. No current result
+depends on them: the studies and the held-out docs use bundles rebuilt from training
+checkpoints and verified by hash.
+
+## Stability ablation (2026-10-24)
+
+**Question:** which parts of the GRPO stability bundle produce the held-out validity gain?
+The accepted recipe combines a graded reward, Dr. GRPO mean-only advantages, zero-variance
+resampling, a success-replay buffer, and stratified difficulty sampling. Each ablation
+removes one part and keeps everything else equal to the seed 215-217 real-reward runs.
+
+| Arm | Change from the accepted recipe | Configs |
+| --- | --- | --- |
+| `binary` | Reward is 1.0 for an exact solve and 0.0 otherwise (no valid, format, or closeness credit). | `configs/esme-214m-rl-abl-binary-seed{215,216,217}.json` |
+| `nostab` | No zero-variance resampling, no replay buffer, no stratified sampling. | `configs/esme-214m-rl-abl-nostab-seed{215,216,217}.json` |
+| `stdnorm` | Advantages divided by the group standard deviation, as in the original GRPO. | `configs/esme-214m-rl-abl-stdnorm-seed{215,216,217}.json` |
+
+- **Control:** the existing seed 215-217 real-reward runs, scored at step 240.
+- **Dataset:** the committed Countdown-Lite train split (300 tasks); no download.
+- **Budget per run:** 240 steps, 8x16 rollouts, `max_new_tokens 12`, at most 5,300,000
+  rollout tokens. Training only (`skip_acceptance_eval`).
+- **Hardware:** 1x A100 per run on the private training account; 9 runs.
+- **Expected duration and cost:** about 30 minutes and $0.75-$1.15 per run, from the
+  multiseed receipts; about $7-$10 total. Hard stop $2.10 per run with a 1-hour timeout ($18.90 worst case),
+  inside the $25 approved for this campaign on 2026-10-24.
+- **Evaluation sampling:** `scripts/modal_emit_completions.py` rebuilds and samples
+  checkpoints on 1x A10G per job, at most 3 containers at once. Expected cost: a few
+  dollars for the 200-task set, learning curves, and pass@k. Same $25 approval.
+- **Artifacts:** each run's step-240 training checkpoint is rebuilt with
+  `rlvr-checkpoint-bundle`, sampled with the placebo study's decoding settings, and
+  scored with the study report against the matched real-reward seeds.
+
+### Ablation result (2026-10-24)
+
+All nine runs completed 240 steps for $8.84 in total. Each step-240 checkpoint was
+rebuilt and sampled on `heldout_large` (200 tasks, 16 samples, temperature 1.0):
+
+| Arm | Valid | Problems solved (of 200) | Report |
+| --- | ---: | ---: | --- |
+| Full recipe (seeds 215-217) | 98.0% | 13.0 | |
+| `binary` | 59.2% | 28.3 | `studies/rlvr-ablation-binary.report.md` |
+| `nostab` | 97.3% | 13.3 | `studies/rlvr-ablation-nostab.report.md` |
+| `stdnorm` | 97.9% | 13.0 | `studies/rlvr-ablation-stdnorm.report.md` |
+
+The graded reward is the component that matters. With it, every run collapses to one
+template, the sum of all the numbers, which solves only the 13 tasks whose target is
+that sum. With the binary reward the model writes the sum on half of its samples and
+also solves 15-18 other tasks. The stability techniques change validity by under 1 pp
+and leave the solved set unchanged. The advantage normalization changes nothing.
+Evaluation sampling on A10Gs cost about $6, estimated from container hours. Analysis:
+`docs/rlvr-research-report.md`.

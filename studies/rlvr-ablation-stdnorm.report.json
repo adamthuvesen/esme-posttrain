@@ -1,0 +1,451 @@
+{
+  "allowed_claims": [
+    "Std-normalized advantages and mean-only advantages give the same held-out results at training step 240."
+  ],
+  "arms": {
+    "ablation_stdnorm": {
+      "mean_metrics": {
+        "any_exact_solve_rate": 0.065,
+        "exact_solve_rate": 0.06270833333333332,
+        "valid_expression_rate": 0.9790625
+      },
+      "role": "control",
+      "runs": [
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.065,
+            "any_exact_solved": 13,
+            "exact_solve_rate": 0.0628125,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.9790625
+          },
+          "seed": 215,
+          "training": {
+            "elapsed_seconds": 1665.899571033,
+            "estimated_cost_usd": 0.9712194499122392,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        },
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.065,
+            "any_exact_solved": 13,
+            "exact_solve_rate": 0.0625,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.9803125
+          },
+          "seed": 216,
+          "training": {
+            "elapsed_seconds": 1724.476937959,
+            "estimated_cost_usd": 1.005370054830097,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        },
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.065,
+            "any_exact_solved": 13,
+            "exact_solve_rate": 0.0628125,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.9778125
+          },
+          "seed": 217,
+          "training": {
+            "elapsed_seconds": 1736.1658220000002,
+            "estimated_cost_usd": 1.0121846742260001,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        }
+      ],
+      "training_summary": {
+        "estimated_cost_usd": 2.9887741789683364,
+        "runs_with_cost": 3,
+        "runs_with_token_budget": 3,
+        "training_token_budget": 15900000
+      }
+    },
+    "chat_baseline": {
+      "mean_metrics": {
+        "any_exact_solve_rate": 0.015,
+        "exact_solve_rate": 0.0009375,
+        "valid_expression_rate": 0.0140625
+      },
+      "role": "baseline",
+      "runs": [
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.015,
+            "any_exact_solved": 3,
+            "exact_solve_rate": 0.0009375,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.0140625
+          },
+          "seed": 214,
+          "training": {
+            "elapsed_seconds": null,
+            "estimated_cost_usd": null,
+            "evaluated_step": null,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": null,
+            "training_token_budget": null
+          }
+        }
+      ],
+      "training_summary": {
+        "estimated_cost_usd": 0,
+        "runs_with_cost": 0,
+        "runs_with_token_budget": 0,
+        "training_token_budget": 0
+      }
+    },
+    "full_recipe": {
+      "mean_metrics": {
+        "any_exact_solve_rate": 0.065,
+        "exact_solve_rate": 0.0625,
+        "valid_expression_rate": 0.98
+      },
+      "role": "treatment",
+      "runs": [
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.065,
+            "any_exact_solved": 13,
+            "exact_solve_rate": 0.0628125,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.98
+          },
+          "seed": 215,
+          "training": {
+            "elapsed_seconds": 1715.038651946,
+            "estimated_cost_usd": 0.9998675340845182,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        },
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.065,
+            "any_exact_solved": 13,
+            "exact_solve_rate": 0.0628125,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.9825
+          },
+          "seed": 216,
+          "training": {
+            "elapsed_seconds": 1925.111088701,
+            "estimated_cost_usd": 1.1223397647126832,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        },
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.065,
+            "any_exact_solved": 13,
+            "exact_solve_rate": 0.061875,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.9775
+          },
+          "seed": 217,
+          "training": {
+            "elapsed_seconds": 1707.017423852,
+            "estimated_cost_usd": 0.9951911581057162,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        }
+      ],
+      "training_summary": {
+        "estimated_cost_usd": 3.117398456902918,
+        "runs_with_cost": 3,
+        "runs_with_token_budget": 3,
+        "training_token_budget": 15900000
+      }
+    }
+  },
+  "comparisons": [
+    {
+      "comparison_id": "full-vs-ablation-validity",
+      "confidence_interval_95": {
+        "lower": -0.001875,
+        "upper": 0.0035416666666666665
+      },
+      "mean_effect": 0.0009375000000000355,
+      "metric": "valid_expression_rate",
+      "paired_seeds": [
+        215,
+        216,
+        217
+      ],
+      "permutation_p_value": 0.5,
+      "reference_arm": "ablation_stdnorm",
+      "seed_effects": [
+        {
+          "effect": 0.0009375000000000355,
+          "seed": 215
+        },
+        {
+          "effect": 0.002187500000000009,
+          "seed": 216
+        },
+        {
+          "effect": -0.00031249999999993783,
+          "seed": 217
+        }
+      ],
+      "treatment_arm": "full_recipe"
+    },
+    {
+      "comparison_id": "full-vs-ablation-exact-sample",
+      "confidence_interval_95": {
+        "lower": -0.0014583333333333334,
+        "upper": 0.000625
+      },
+      "mean_effect": -0.0002083333333333335,
+      "metric": "exact_solve_rate",
+      "paired_seeds": [
+        215,
+        216,
+        217
+      ],
+      "permutation_p_value": 1.0,
+      "reference_arm": "ablation_stdnorm",
+      "seed_effects": [
+        {
+          "effect": 0.0,
+          "seed": 215
+        },
+        {
+          "effect": 0.00031249999999999334,
+          "seed": 216
+        },
+        {
+          "effect": -0.0009374999999999939,
+          "seed": 217
+        }
+      ],
+      "treatment_arm": "full_recipe"
+    },
+    {
+      "comparison_id": "full-vs-ablation-exact",
+      "confidence_interval_95": {
+        "lower": 0.0,
+        "upper": 0.0
+      },
+      "mean_effect": 0.0,
+      "metric": "any_exact_solve_rate",
+      "paired_seeds": [
+        215,
+        216,
+        217
+      ],
+      "permutation_p_value": 1.0,
+      "reference_arm": "ablation_stdnorm",
+      "seed_effects": [
+        {
+          "effect": 0.0,
+          "seed": 215
+        },
+        {
+          "effect": 0.0,
+          "seed": 216
+        },
+        {
+          "effect": 0.0,
+          "seed": 217
+        }
+      ],
+      "treatment_arm": "full_recipe"
+    }
+  ],
+  "compatibility_errors": [],
+  "compatible": true,
+  "complete": true,
+  "confidence_interval_method": "seed_problem_bootstrap_95",
+  "decoding": {
+    "max_new_tokens": 12,
+    "n": 16,
+    "seed": 0,
+    "temperature": 1.0,
+    "top_p": 1.0
+  },
+  "evidence_warnings": [
+    "full_recipe seed 215 has no training manifest",
+    "full_recipe seed 216 has no training manifest",
+    "full_recipe seed 217 has no training manifest",
+    "ablation_stdnorm seed 215 has no training manifest",
+    "ablation_stdnorm seed 216 has no training manifest",
+    "ablation_stdnorm seed 217 has no training manifest"
+  ],
+  "excluded_runs": [],
+  "hypothesis": "The accepted GRPO recipe outperforms the same recipe with std-normalized advantages on 200 fresh held-out Countdown tasks at training step 240.",
+  "inference": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 0,
+    "permutation_test": "exact two-sided sign-flip over seed-level paired effects"
+  },
+  "missing_seeds": {},
+  "primary_metric": "valid_expression_rate",
+  "provenance": [
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed215-step240/completions.jsonl",
+      "sha256": "42ac3c982c72ab221869adaceea84662b3d5eb4399393e3af1e97c991b6e9b73"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed215-step240/provenance.json",
+      "sha256": "274c6f95237b08a8df7874eae9096f8af588e83ebaa225f90da908af5d7e71cc"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed215-step240/bundle-manifest.json",
+      "sha256": "a73aa795812b561c4ac1bffba7a403def30896d88918e10e94a8a12bc657c300"
+    },
+    {
+      "path": "runs/multiseed/seed215-real/cost.json",
+      "sha256": "711b3145cdc93181c05ea0333f4d2b715faa83583e6753de5c5382a546f147b0"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed216-step240/completions.jsonl",
+      "sha256": "9d27b945d4c920e2cb954a67389dcc9eaad17b634e351294fab6226ef415ac81"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed216-step240/provenance.json",
+      "sha256": "b9cb746f2e2414bab097c41a4b7bbeb19065c8f3b1d806526b05a5f2e0247e8d"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed216-step240/bundle-manifest.json",
+      "sha256": "437f18283999bf4d8c9ff427b23187fe11c58cc04cc71b18597fb9c9df9988d7"
+    },
+    {
+      "path": "runs/multiseed/seed216-real/cost.json",
+      "sha256": "c636fc7a3fc344ec5811d2861a42885b7f6b27d01cca6ecd42d32ce9bbd1fd15"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed217-step240/completions.jsonl",
+      "sha256": "7c9315b9b8d8265f37653ec1670fa8233364a2d9a105b0b6e6180b4732849643"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed217-step240/provenance.json",
+      "sha256": "ab1511f17ff72cf8956262952142fb23a2a761402414ba2e971020c9f2e28539"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed217-step240/bundle-manifest.json",
+      "sha256": "88ae6d58011bb77690b0090923f7a1ca52f1ff9c9833ad25f68a133968e0c87b"
+    },
+    {
+      "path": "runs/multiseed/seed217-real/cost.json",
+      "sha256": "07762084cde98585028f86e0329b0a7c3dcb7421bf43bad2e8b05b8d31444889"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-stdnorm-seed215-step240/completions.jsonl",
+      "sha256": "ba4a7529dd4b6927c7e817dd926e2513dcd7d872bbc1586b3246f2477fcb5bea"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-stdnorm-seed215-step240/provenance.json",
+      "sha256": "9cb9d3bf5112ec28afa6ef55167d519fd6a4adadd6510372812f82af93759f32"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-stdnorm-seed215-step240/bundle-manifest.json",
+      "sha256": "3211cf2cbcbe7cb7588d0fc264199007a13abbe6d032ee7f91aa4f562487142e"
+    },
+    {
+      "path": "runs/ablation-launch/cost/esme-214m-rlvr-abl-stdnorm-seed215-grpo.json",
+      "sha256": "124f6e4d9b4a5a7f01c6a7ff25deff5038ab5a853902279eec6c182bb3f8e32e"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-stdnorm-seed216-step240/completions.jsonl",
+      "sha256": "904900f3f6228f90aa72685fb782fbde60a4d9a67666e6aea76ac911e7f8510d"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-stdnorm-seed216-step240/provenance.json",
+      "sha256": "60b4b4d765e26b482b7a0e258f14aaf65dcb119f9cc28ca210d1ee269c5ac746"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-stdnorm-seed216-step240/bundle-manifest.json",
+      "sha256": "df560ed56dda8fa6e3493c0c54c3640dff5b19922b47a05cce2ea84eecd908d9"
+    },
+    {
+      "path": "runs/ablation-launch/cost/esme-214m-rlvr-abl-stdnorm-seed216-grpo.json",
+      "sha256": "e8510c94c272501b6c032a134b093a765eff17a7afa9a645c6a9356b7ccc024e"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-stdnorm-seed217-step240/completions.jsonl",
+      "sha256": "b0c03a65b8e420c9082a5ad5403171c8f9da683303dc242eb2c08f8883b3b01f"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-stdnorm-seed217-step240/provenance.json",
+      "sha256": "26cc3e4bcf45372f0289efba164563733ecd831b91345128ef4c649a2376a72e"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-stdnorm-seed217-step240/bundle-manifest.json",
+      "sha256": "cfebe5ce5e3ba29d45d42ad07eb4a906ecff0730bd7226b061640e2fd6cccef0"
+    },
+    {
+      "path": "runs/ablation-launch/cost/esme-214m-rlvr-abl-stdnorm-seed217-grpo.json",
+      "sha256": "6b1a0ddc752d19090753d463a4ac0d7163a52c227eea3dff9050e856830c43ad"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-chat/completions.jsonl",
+      "sha256": "d58c2a1aef5114e2f577ddeac59a9d4a598a1818af16a1941c488bd05e2f7529"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-chat/provenance.json",
+      "sha256": "3e2546d1e854e702a6284030cf2e062ee98527f1f286f1e6849873b45569e8d4"
+    }
+  ],
+  "sample_budget": 3200,
+  "schema_version": 1,
+  "study_id": "rlvr-countdown-ablation-stdnorm",
+  "study_specification_sha256": "546446db28e702d8ba3e7fc562f4aadbbb3048e1947cb738fe87fb561ffc6909",
+  "supported_claims": [],
+  "task_manifest_ids": [
+    "heldout_large+164ed5a000dbe017"
+  ],
+  "title": "GRPO stability ablation: std-normalized advantages",
+  "verdict": "rejected",
+  "verdict_reasons": [
+    "95% confidence interval lower bound does not exceed 0.0"
+  ]
+}

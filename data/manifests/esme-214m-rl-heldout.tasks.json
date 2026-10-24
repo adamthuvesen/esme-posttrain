@@ -2,7 +2,7 @@
   "schema_version": 1,
   "manifest_type": "rl_tasks",
   "name": "esme_214m_rl_countdown_heldout",
-  "sample_budget": 60,
+  "sample_budget": 260,
   "reward_definitions": [
     {
       "name": "countdown_lite_exact_solve",
@@ -22,6 +22,11 @@
       "path": "../rl/countdown_heldout/heldout_shift.jsonl",
       "format": "jsonl",
       "records": 30
+    },
+    {
+      "path": "../rl/countdown_heldout/heldout_large.jsonl",
+      "format": "jsonl",
+      "records": 200
     }
   ]
 }

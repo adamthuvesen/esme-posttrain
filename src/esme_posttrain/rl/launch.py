@@ -77,6 +77,7 @@ OPTIONAL_GRPO_KEYS = frozenset(
         "stratified_difficulty_sampling",
         "reward_mode",
         "random_reward_seed",
+        "advantage_normalization",
     }
 )
 OPTIONAL_REWARD_POLICY_KEYS = frozenset({"format_expression_reward", "closeness_weight"})
@@ -757,6 +758,11 @@ def _validate_grpo(payload: dict[str, Any]) -> dict[str, Any]:
         payload["stratified_difficulty_sampling"], bool
     ):
         raise LaunchError("grpo.stratified_difficulty_sampling must be a boolean")
+    if "advantage_normalization" in payload and payload["advantage_normalization"] not in {
+        "mean",
+        "std",
+    }:
+        raise LaunchError("grpo.advantage_normalization must be mean or std")
     if "reward_mode" in payload and payload["reward_mode"] not in {"verifier", "random"}:
         raise LaunchError("grpo.reward_mode must be verifier or random")
     if "random_reward_seed" in payload:

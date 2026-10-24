@@ -230,3 +230,21 @@ def _read_json(path: Path) -> dict[str, object]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
     return payload
+
+
+ACCELERATOR = (
+    "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else None
+)
+
+
+@pytest.mark.skipif(ACCELERATOR is None, reason="needs a CUDA or MPS device")
+def test_bundle_loader_places_the_model_on_the_requested_device() -> None:
+    # Regression: the model used to stay on the CPU whatever map_location said, so
+    # "CUDA" evals ran every forward pass on the container CPU.
+    assert ACCELERATOR is not None
+    loaded = load_dense_backbone_bundle(
+        Path(__file__).resolve().parents[1] / "fixtures" / "tiny_bundle",
+        map_location=ACCELERATOR,
+    )
+
+    assert next(loaded.model.parameters()).device.type == ACCELERATOR

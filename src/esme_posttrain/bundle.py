@@ -144,6 +144,9 @@ def load_dense_backbone_bundle(
 
     model = DenseBackbone(bundle.config)
     model.load_state_dict(_require_json_object(weights.get("state_dict"), "weights.state_dict"))
+    # load_state_dict copies into the CPU-built model; without this move, a CUDA
+    # map_location still runs every forward pass on the CPU.
+    model.to(map_location)
     model.eval()
     return LoadedBundle(bundle=bundle, model=model, tokenizer=tokenizer)
 

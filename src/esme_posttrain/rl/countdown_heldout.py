@@ -8,6 +8,9 @@ numbers tuple + target, the same key the Countdown-Lite generator dedups on):
   2-3, targets 0-64), re-ranked with a new selection seed and restricted to
   tasks the original dataset never selected. The easy bucket is capped by the
   remaining unseen population (see ``FRESH_COUNTS``).
+- ``heldout_large``: 200 more fresh-unseen medium and hard tasks from the same
+  distribution, disjoint from ``heldout_fresh`` too. Nearly all are 3-number tasks,
+  so this set has the power to test 3-operand exact solving, which 30 tasks cannot.
 - ``heldout_shift``: one modest distribution shift on the target axis the
   generator exposes: targets 65-128 instead of 0-64, with numbers, widths,
   and operators unchanged. Targets above 64 are unreachable in the original
@@ -34,6 +37,10 @@ from esme_posttrain.rl.countdown_lite import (
 HELDOUT_SEED = 4126
 FRESH_SPLIT = "heldout_fresh"
 SHIFT_SPLIT = "heldout_shift"
+LARGE_SPLIT = "heldout_large"
+LARGE_SEED = 7319
+# Keeps the acceptance medium:hard ratio (3:2); the easy population is exhausted.
+LARGE_COUNTS = (("medium", 120), ("hard", 80))
 # The acceptance eval mix is 10 easy / 12 medium / 8 hard, but the committed
 # dataset already consumed 110 of the 115 unique easy tasks the generator can
 # produce, so the fresh set takes the entire remaining easy population (5) and
@@ -53,13 +60,28 @@ def countdown_lite_task_keys() -> frozenset[TaskKey]:
 
 def build_heldout_fresh_tasks() -> tuple[CountdownTask, ...]:
     used_keys = countdown_lite_task_keys()
+    return _select_unused_tasks(FRESH_SPLIT, FRESH_COUNTS, HELDOUT_SEED, used_keys)
+
+
+def build_heldout_large_tasks() -> tuple[CountdownTask, ...]:
+    fresh_keys = {(task.numbers, task.target) for task in build_heldout_fresh_tasks()}
+    used_keys = countdown_lite_task_keys() | fresh_keys
+    return _select_unused_tasks(LARGE_SPLIT, LARGE_COUNTS, LARGE_SEED, used_keys)
+
+
+def _select_unused_tasks(
+    split: str,
+    counts: tuple[tuple[str, int], ...],
+    seed: int,
+    used_keys: frozenset[TaskKey],
+) -> tuple[CountdownTask, ...]:
     pools = _candidate_pools()
     tasks: list[CountdownTask] = []
-    for difficulty, count in FRESH_COUNTS:
+    for difficulty, count in counts:
         unused = [item for item in pools[difficulty] if (item[0], item[1]) not in used_keys]
         unused.sort(
             key=lambda item: (
-                stable_task_score(HELDOUT_SEED, difficulty, *item),
+                stable_task_score(seed, difficulty, *item),
                 item[0],
                 item[1],
             )
@@ -67,20 +89,20 @@ def build_heldout_fresh_tasks() -> tuple[CountdownTask, ...]:
         selected = unused[:count]
         if len(selected) != count:
             raise CountdownLiteError(
-                f"not enough unused {difficulty} tasks for {FRESH_SPLIT}: {len(selected)}"
+                f"not enough unused {difficulty} tasks for {split}: {len(selected)}"
             )
         for index, (numbers, target, solution) in enumerate(selected):
             tasks.append(
                 CountdownTask(
-                    task_id=f"countdown_heldout_fresh_{difficulty}_{index:04d}",
-                    split=FRESH_SPLIT,
+                    task_id=f"countdown_{split}_{difficulty}_{index:04d}",
+                    split=split,
                     difficulty=difficulty,
                     numbers=numbers,
                     target=target,
                     solution=solution,
                 )
             )
-    _require_disjoint(tasks, used_keys, set_name=FRESH_SPLIT)
+    _require_disjoint(tasks, used_keys, set_name=split)
     return tuple(tasks)
 
 
@@ -130,16 +152,23 @@ def write_countdown_heldout_dataset(repo_root: Path) -> dict[str, object]:
     repo_root = repo_root.expanduser().resolve()
     fresh_tasks = build_heldout_fresh_tasks()
     shift_tasks = build_heldout_shift_tasks()
-    fresh_keys = {(task.numbers, task.target) for task in fresh_tasks}
-    shift_keys = {(task.numbers, task.target) for task in shift_tasks}
-    overlap = fresh_keys & shift_keys
-    if overlap:
-        raise CountdownLiteError(f"held-out sets overlap on {len(overlap)} task keys")
+    large_tasks = build_heldout_large_tasks()
+    split_tasks = (
+        (FRESH_SPLIT, fresh_tasks),
+        (SHIFT_SPLIT, shift_tasks),
+        (LARGE_SPLIT, large_tasks),
+    )
+    seen: set[TaskKey] = set()
+    for _, tasks in split_tasks:
+        keys = {(task.numbers, task.target) for task in tasks}
+        if keys & seen:
+            raise CountdownLiteError(f"held-out sets overlap on {len(keys & seen)} task keys")
+        seen |= keys
 
     data_dir = repo_root / "data" / "rl" / "countdown_heldout"
     data_dir.mkdir(parents=True, exist_ok=True)
     split_counts: dict[str, int] = {}
-    for split, tasks in ((FRESH_SPLIT, fresh_tasks), (SHIFT_SPLIT, shift_tasks)):
+    for split, tasks in split_tasks:
         rows = [task.to_row() for task in tasks]
         split_counts[split] = len(rows)
         with (data_dir / f"{split}.jsonl").open("w", encoding="utf-8") as handle:
@@ -150,7 +179,7 @@ def write_countdown_heldout_dataset(repo_root: Path) -> dict[str, object]:
         "schema_version": 1,
         "manifest_type": "rl_tasks",
         "name": "esme_214m_rl_countdown_heldout",
-        "sample_budget": len(fresh_tasks) + len(shift_tasks),
+        "sample_budget": sum(split_counts.values()),
         "reward_definitions": [
             {
                 "name": COUNTDOWN_REWARD_NAME,
@@ -169,7 +198,7 @@ def write_countdown_heldout_dataset(repo_root: Path) -> dict[str, object]:
                 "format": "jsonl",
                 "records": split_counts[split],
             }
-            for split in (FRESH_SPLIT, SHIFT_SPLIT)
+            for split, _ in split_tasks
         ],
     }
     manifest_path = repo_root / "data" / "manifests" / "esme-214m-rl-heldout.tasks.json"
@@ -178,7 +207,7 @@ def write_countdown_heldout_dataset(repo_root: Path) -> dict[str, object]:
     return {
         "manifest_path": str(manifest_path),
         "data_dir": str(data_dir),
-        "records": len(fresh_tasks) + len(shift_tasks),
+        "records": sum(split_counts.values()),
         "split_counts": split_counts,
     }
 
