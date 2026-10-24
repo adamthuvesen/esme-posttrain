@@ -323,3 +323,18 @@ also solves 15-18 other tasks. The stability techniques change validity by under
 and leave the solved set unchanged. The advantage normalization changes nothing.
 Evaluation sampling on A10Gs cost about $6, estimated from container hours. Analysis:
 `docs/rlvr-research-report.md`.
+
+### Follow-up: closeness-only reward (2026-10-24)
+
+**Question:** which part of the graded reward pays for the sum template? The accepted
+reward gives 0.3 for any valid expression, whatever the target, plus up to 0.3 for
+closeness to the target. This arm keeps the closeness credit and removes the flat 0.3.
+
+- **Configs:** `configs/esme-214m-rl-abl-closeness-seed{215,216,217}.json`. The reward is
+  1.0 for an exact solve, `0.3 * exp(-|value - target| / target)` for any other valid
+  expression, and 0 otherwise. Everything else matches the binary arm.
+- **Reading:** if the sum template still dominates, closeness alone pays for it. If the
+  run looks like the binary arm, the flat valid credit pays for it.
+- **Budget:** 3 runs, same hardware, budget, and hard stop as the ablation above
+  (about $3); about $1 of A10G evaluation sampling. Inside the $25 approved on
+  2026-10-24, with about $10 of it left. First runs on the Python 3.13 image.
