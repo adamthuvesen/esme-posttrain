@@ -98,7 +98,7 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 - Metric: `valid_expression_rate`
 - Mean effect: +84.7%
-- 95% CI: [+60.6%, +96.9%]
+- 95% CI: [+59.9%, +97.5%]
 - Sign-flip permutation p (two-sided): 0.0312 (smallest possible with these seeds: 0.0312)
 - Paired seeds: 214, 215, 216, 217, 218, 219
 - [Comparison data](rlvr-placebo.report.json)
@@ -107,7 +107,7 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 - Metric: `any_exact_solve_rate`
 - Mean effect: +8.9%
-- 95% CI: [+4.4%, +13.9%]
+- 95% CI: [+0.6%, +20.0%]
 - Sign-flip permutation p (two-sided): 0.0312 (smallest possible with these seeds: 0.0312)
 - Paired seeds: 214, 215, 216, 217, 218, 219
 - [Comparison data](rlvr-placebo.report.json)

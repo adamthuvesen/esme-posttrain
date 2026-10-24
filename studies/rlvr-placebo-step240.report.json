@@ -1,7 +1,7 @@
 {
   "allowed_claims": [
     "Across six training seeds, the verifier-reward arm has a higher held-out Countdown valid-expression rate than the random-reward arm.",
-    "The exact-solve gain is positive but smaller than the valid-expression gain; this study does not support a claim of broad reasoning improvement."
+    "The exact-solve mean effect is positive but its 95% interval reaches zero and rests on three problems; this study does not support an exact-solve or broad reasoning claim."
   ],
   "arms": {
     "chat_baseline": {
@@ -343,8 +343,8 @@
     {
       "comparison_id": "real-vs-random-validity",
       "confidence_interval_95": {
-        "lower": 0.9534722222222223,
-        "upper": 0.9701388888888889
+        "lower": 0.9451388888888889,
+        "upper": 0.978125
       },
       "mean_effect": 0.9621527777777779,
       "metric": "valid_expression_rate",
@@ -389,8 +389,8 @@
     {
       "comparison_id": "real-vs-random-exact",
       "confidence_interval_95": {
-        "lower": 0.03333333333333333,
-        "upper": 0.11680555555555354
+        "lower": 0.0,
+        "upper": 0.17222222222222222
       },
       "mean_effect": 0.07222222222222223,
       "metric": "any_exact_solve_rate",
@@ -722,10 +722,10 @@
   "sample_budget": 480,
   "schema_version": 1,
   "study_id": "rlvr-countdown-placebo-six-seed-step240",
-  "study_specification_sha256": "c46fd7400ed56ba89748aea4fb6edf55d53494b5bc3e4e56c5cbce4888786234",
+  "study_specification_sha256": "2c7143062b059acdd625634bdbed8efc8a2d5ea754d31a7ff65f7ec5b92f4c9b",
   "supported_claims": [
     "Across six training seeds, the verifier-reward arm has a higher held-out Countdown valid-expression rate than the random-reward arm.",
-    "The exact-solve gain is positive but smaller than the valid-expression gain; this study does not support a claim of broad reasoning improvement."
+    "The exact-solve mean effect is positive but its 95% interval reaches zero and rests on three problems; this study does not support an exact-solve or broad reasoning claim."
   ],
   "task_manifest_ids": [
     "heldout_fresh+e6e671c24ca56d27"

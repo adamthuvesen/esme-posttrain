@@ -98,7 +98,7 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 - Metric: `valid_expression_rate`
 - Mean effect: +96.2%
-- 95% CI: [+95.3%, +97.0%]
+- 95% CI: [+94.5%, +97.8%]
 - Sign-flip permutation p (two-sided): 0.0312 (smallest possible with these seeds: 0.0312)
 - Paired seeds: 214, 215, 216, 217, 218, 219
 - [Comparison data](rlvr-placebo-step240.report.json)
@@ -107,7 +107,7 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 - Metric: `any_exact_solve_rate`
 - Mean effect: +7.2%
-- 95% CI: [+3.3%, +11.7%]
+- 95% CI: [+0.0%, +17.2%]
 - Sign-flip permutation p (two-sided): 0.0312 (smallest possible with these seeds: 0.0312)
 - Paired seeds: 214, 215, 216, 217, 218, 219
 - [Comparison data](rlvr-placebo-step240.report.json)
@@ -125,7 +125,7 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 ## Supported claims
 
 - Across six training seeds, the verifier-reward arm has a higher held-out Countdown valid-expression rate than the random-reward arm.
-- The exact-solve gain is positive but smaller than the valid-expression gain; this study does not support a claim of broad reasoning improvement.
+- The exact-solve mean effect is positive but its 95% interval reaches zero and rests on three problems; this study does not support an exact-solve or broad reasoning claim.
 
 ## Excluded runs
 

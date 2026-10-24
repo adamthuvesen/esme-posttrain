@@ -198,10 +198,11 @@ Aggregate arm means:
 | random (placebo, random reward) | 0.8% | 0.1% | 0.8% | 1.7% | 0.50/30 |
 
 Seed-level tests (unit = training seed, n=6): valid-expression separation is **+84.7 pp,
-95% CI [+60.6, +96.9]**. Any-exact separation is **+8.9 pp, 95% CI [+4.4, +13.9]**. Both
+95% CI [+59.9, +97.5]**. Any-exact separation is **+8.9 pp, 95% CI [+0.6, +20.0]**. Both
 have an exact sign-flip permutation p of 0.031, the smallest two-sided value six seeds
-allow. The intervals come from a bootstrap that resamples seeds, then problems within each
-seed (`studies/rlvr-placebo.report.md`). The paired Student t interval first reported here,
+allow. The intervals come from a bootstrap that resamples seeds and, independently, one
+shared set of problems (`studies/rlvr-placebo.report.md`). The paired Student t interval
+first reported here,
 [+54.6, +114.7], went above the 100 pp ceiling a rate difference can reach, so it was
 replaced.
 
@@ -256,16 +257,17 @@ changes during the run touched only the study report code and docs.
 | 218 | 97.1% | 1.7% | 3/30 | 2/30 |
 | 219 | 96.9% | 1.2% | 3/30 | 2/30 |
 
-- Validity: **+96.2 pp, 95% CI [+95.3, +97.0]**, sign-flip p = 0.031.
-- Any-exact: **+7.2 pp, 95% CI [+3.3, +11.7]**, sign-flip p = 0.031.
+- Validity: **+96.2 pp, 95% CI [+94.5, +97.8]**, sign-flip p = 0.031.
+- Any-exact: **+7.2 pp, 95% CI [+0.0, +17.2]**, sign-flip p = 0.031.
 
 **Reading:** At a matched training budget, real verifier reward moves held-out validity
 from near base to about 97% on every seed; the random-reward placebo does not move it.
 The exact-solve gain is narrow. Every real seed solves the same three problems:
 `easy_0000` (1, 9 → 10), `easy_0002` (1, 3 → 4), and `medium_0004`. Placebo seeds
-sometimes solve the two easy ones, and the base model solves `easy_0002`. The supported
-claim is still "RL sharpened form, with a small exact-solve gain," now without the
-selection and provenance defects.
+sometimes solve the two easy ones, and the base model solves `easy_0002`. The exact-solve
+effect is consistent across seeds (p at its floor), but it rests on those three problems,
+so its interval over a fresh draw of problems reaches zero. The supported claim is "RL
+sharpened form." An exact-solve gain needs a larger held-out set before it is claimed.
 
 **Open issue:** the `caff0a1` and `v2-ccb6287-1` bundles on the volume fail their own
 manifest weights hash, although both files are complete and load. Bundles from those

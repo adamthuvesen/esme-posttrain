@@ -13,7 +13,7 @@
   },
   "allowed_claims": [
     "Across six training seeds, the verifier-reward arm has a higher held-out Countdown valid-expression rate than the random-reward arm.",
-    "The exact-solve gain is positive but smaller than the valid-expression gain; this study does not support a claim of broad reasoning improvement."
+    "The exact-solve mean effect is positive but its 95% interval reaches zero and rests on three problems; this study does not support an exact-solve or broad reasoning claim."
   ],
   "arms": [
     {

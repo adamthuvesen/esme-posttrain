@@ -181,7 +181,18 @@ def _read_run(
     if run.evaluated_bundle_manifest is not None:
         path = _artifact_path(run.evaluated_bundle_manifest.path, root)
         artifacts.append(_check_artifact(path, run.evaluated_bundle_manifest.sha256, root))
-        training["evaluated_step"] = _read_json(path).get("checkpoint_step")
+        bundle_manifest = _read_json(path)
+        try:
+            evaluated_step = int(bundle_manifest["checkpoint_step"])
+            weights_sha256 = str(bundle_manifest["files"]["weights"]["sha256"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise StudyReportError(f"evaluated bundle manifest {path} is malformed") from error
+        # The bundle manifest is only evidence if its weights produced these samples.
+        if provenance.get("model_revision") != f"sha256:{weights_sha256}":
+            raise StudyReportError(
+                f"seed {run.seed} completions were not sampled from the weights in {path}"
+            )
+        training["evaluated_step"] = evaluated_step
     if run.cost is not None:
         path = _artifact_path(run.cost.path, root)
         artifacts.append(_check_artifact(path, run.cost.sha256, root))
@@ -528,15 +539,15 @@ def _paired_problem_effects(
 
 
 def _seed_problem_bootstrap_95(problem_effects: np.ndarray) -> dict[str, float]:
-    # Two-level percentile bootstrap: resample training seeds, then problems within
-    # each drawn seed. Rates stay inside [-1, 1] by construction, unlike a t interval.
+    # Two-way percentile bootstrap. Seeds and problems are crossed: every seed is scored
+    # on the same problems, so one problem draw per resample is shared by all seeds.
+    # Drawing problems separately per seed would average away the problem-level
+    # variance and narrow the interval. Rates stay inside [-1, 1] by construction.
     seed_count, problem_count = problem_effects.shape
     rng = np.random.default_rng(BOOTSTRAP_SEED)
     seed_draws = rng.integers(0, seed_count, size=(BOOTSTRAP_RESAMPLES, seed_count))
-    problem_draws = rng.integers(
-        0, problem_count, size=(BOOTSTRAP_RESAMPLES, seed_count, problem_count)
-    )
-    resampled = problem_effects[seed_draws[:, :, None], problem_draws]
+    problem_draws = rng.integers(0, problem_count, size=(BOOTSTRAP_RESAMPLES, problem_count))
+    resampled = problem_effects[seed_draws[:, :, None], problem_draws[:, None, :]]
     means = resampled.mean(axis=(1, 2))
     lower, upper = np.quantile(means, [0.025, 0.975])
     return {"lower": float(lower), "upper": float(upper)}
@@ -751,7 +762,9 @@ def _p_value(comparison: dict[str, Any]) -> str:
     p_value = comparison["permutation_p_value"]
     if p_value is None:
         return "n/a"
-    floor = 2 / 2 ** len(comparison["paired_seeds"])
+    # A zero seed effect is unchanged by a sign flip, so only nonzero effects count.
+    nonzero = sum(1 for item in comparison["seed_effects"] if item["effect"] != 0.0)
+    floor = 2 / 2**nonzero if nonzero else 1.0
     return f"{p_value:.4f} (smallest possible with these seeds: {floor:.4f})"
 
 

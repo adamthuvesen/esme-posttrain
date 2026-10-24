@@ -343,8 +343,8 @@
     {
       "comparison_id": "real-vs-random-validity",
       "confidence_interval_95": {
-        "lower": 0.6062413194444444,
-        "upper": 0.9694444444444444
+        "lower": 0.5989583333333334,
+        "upper": 0.975
       },
       "mean_effect": 0.8465277777777778,
       "metric": "valid_expression_rate",
@@ -389,8 +389,8 @@
     {
       "comparison_id": "real-vs-random-exact",
       "confidence_interval_95": {
-        "lower": 0.044444444444444446,
-        "upper": 0.1388888888888889
+        "lower": 0.005555555555555556,
+        "upper": 0.2
       },
       "mean_effect": 0.0888888888888889,
       "metric": "any_exact_solve_rate",

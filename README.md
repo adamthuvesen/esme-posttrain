@@ -41,12 +41,13 @@ The reward is verifier-backed. Style rewards are out of scope.
 The RLVR result is narrow and useful. Six real-reward GRPO seeds and six
 random-reward placebo seeds were all evaluated at the same training step (240)
 on held-out Countdown tasks. The real-reward arms write a valid expression
-**97.2% vs 0.9%** of the time (`+96.2 pp`, 95% CI `[+95.3, +97.0]`, sign-flip
-permutation `p = 0.031`). Exact solving improves less (`+7.2 pp`, 95% CI
-`[+3.3, +11.7]`), and every real seed solves the same three problems, two of
-them two-number sums. Intervals come from a seed-and-problem bootstrap; with
-six seeds, `p = 0.031` is the smallest two-sided p the permutation test can
-return. For this 214M model, the main gain is better Countdown form
+**97.2% vs 0.9%** of the time (`+96.2 pp`, 95% CI `[+94.5, +97.8]`, sign-flip
+permutation `p = 0.031`). Exact solving is not an established gain: the mean
+effect is `+7.2 pp`, but the 95% CI `[+0.0, +17.2]` reaches zero, and every real
+seed solves the same three problems, two of them two-number sums. Intervals come
+from a bootstrap that resamples both seeds and problems; with six seeds,
+`p = 0.031` is the smallest two-sided p the permutation test can return. For
+this 214M model, the gain is better Countdown form
 ([fixed-step report](studies/rlvr-placebo-step240.report.md)).
 
 An earlier version of this study picked each arm's checkpoint by its best

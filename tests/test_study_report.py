@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,7 @@ from esme_posttrain.studies.models import StudySpecification
 from esme_posttrain.studies.report import (
     StudyReportError,
     _compare_projection,
+    _p_value,
     _paired_problem_effects,
     _score_countdown_sample,
     _seed_problem_bootstrap_95,
@@ -74,6 +76,37 @@ def test_bootstrap_interval_stays_inside_rate_bounds_with_an_outlier_seed() -> N
 def test_sign_flip_p_value_is_exact() -> None:
     assert _sign_flip_permutation_p([0.1] * 6) == pytest.approx(2 / 64)
     assert _sign_flip_permutation_p([0.1, -0.1]) == pytest.approx(1.0)
+
+
+def test_p_value_floor_ignores_zero_seed_effects() -> None:
+    comparison = {
+        "permutation_p_value": _sign_flip_permutation_p([0.1] * 5 + [0.0]),
+        "paired_seeds": list(range(6)),
+        "seed_effects": [{"effect": effect} for effect in [0.1] * 5 + [0.0]],
+    }
+
+    assert _p_value(comparison) == "0.0625 (smallest possible with these seeds: 0.0625)"
+
+
+def test_evaluated_bundle_must_match_the_sampled_weights(tmp_path: Path) -> None:
+    shutil.copytree(REPO_ROOT / "fixtures" / "studies", tmp_path / "fixtures" / "studies")
+    manifest_path = tmp_path / "bundle-manifest.json"
+    manifest_path.write_text(
+        json.dumps({"checkpoint_step": 240, "files": {"weights": {"sha256": "b" * 64}}}),
+        encoding="utf-8",
+    )
+    payload = _payload()
+    arms = payload["arms"]
+    assert isinstance(arms, list)
+    arms[0]["runs"][0]["evaluated_bundle_manifest"] = {
+        "path": "bundle-manifest.json",
+        "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+    }
+    spec_path = _write_spec(tmp_path, payload)
+
+    # The fixture provenance names no model_revision, so it cannot match these weights.
+    with pytest.raises(StudyReportError, match="were not sampled from the weights"):
+        generate_study_report(spec_path, output_dir=tmp_path / "output", repo_root=tmp_path)
 
 
 def test_comparison_rejects_arms_scored_on_different_problems() -> None:
