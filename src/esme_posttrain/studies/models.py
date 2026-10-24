@@ -46,6 +46,9 @@ class StudyRunSpec(_StrictModel):
     completions: HashedArtifact
     provenance: HashedArtifact
     training_manifest: HashedArtifact | None = None
+    # The bundle the completions were sampled from, when it is not the run's selected
+    # bundle (for example, a fixed-step rebuild from a training checkpoint).
+    evaluated_bundle_manifest: HashedArtifact | None = None
     cost: HashedArtifact | None = None
     training_token_budget: int | None = Field(default=None, ge=0)
 

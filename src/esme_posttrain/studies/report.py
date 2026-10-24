@@ -177,6 +177,11 @@ def _read_run(
                 "selected_metric_value": manifest.get("selected_metric_value"),
             }
         )
+    training["evaluated_step"] = training["selected_step"]
+    if run.evaluated_bundle_manifest is not None:
+        path = _artifact_path(run.evaluated_bundle_manifest.path, root)
+        artifacts.append(_check_artifact(path, run.evaluated_bundle_manifest.sha256, root))
+        training["evaluated_step"] = _read_json(path).get("checkpoint_step")
     if run.cost is not None:
         path = _artifact_path(run.cost.path, root)
         artifacts.append(_check_artifact(path, run.cost.sha256, root))
@@ -655,14 +660,18 @@ def _render_markdown(payload: dict[str, Any], *, json_filename: str) -> str:
                 "",
                 f"[Table data]({json_filename})",
                 "",
-                "| Seed | Train status | Selected step | Selected metric | Token budget |",
-                "| ---: | --- | ---: | ---: | ---: |",
+                "| Seed | Train status | Selected step | Selected metric | Evaluated step "
+                "| Token budget |",
+                "| ---: | --- | ---: | ---: | ---: | ---: |",
             ]
         )
         for run in arm["runs"]:
             training = run["training"]
             status = training["status"] or "n/a"
             step = training["selected_step"] if training["selected_step"] is not None else "n/a"
+            evaluated = (
+                training["evaluated_step"] if training["evaluated_step"] is not None else "n/a"
+            )
             selected_metric = (
                 f"{training['selected_metric_name']}={training['selected_metric_value']:.4f}"
                 if training["selected_metric_name"] is not None
@@ -675,7 +684,8 @@ def _render_markdown(payload: dict[str, Any], *, json_filename: str) -> str:
                 else "n/a"
             )
             lines.append(
-                f"| {run['seed']} | {status} | {step} | {selected_metric} | {token_budget} |"
+                f"| {run['seed']} | {status} | {step} | {selected_metric} | {evaluated} "
+                f"| {token_budget} |"
             )
         lines.extend(["", f"[Table data]({json_filename})", ""])
 

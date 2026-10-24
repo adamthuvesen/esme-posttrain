@@ -32,14 +32,14 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 [Table data](rlvr-placebo.report.json)
 
-| Seed | Train status | Selected step | Selected metric | Token budget |
-| ---: | --- | ---: | ---: | ---: |
-| 214 | n/a | 234 | train/reward_mean=0.7142 | 5300000 |
-| 215 | complete | 234 | train/reward_mean=0.7211 | 5300000 |
-| 216 | complete | 234 | train/reward_mean=0.7166 | 5300000 |
-| 217 | complete | 234 | train/reward_mean=0.7250 | 5300000 |
-| 218 | complete | 159 | train/reward_mean=0.7109 | 5300000 |
-| 219 | complete | 234 | train/reward_mean=0.7059 | 5300000 |
+| Seed | Train status | Selected step | Selected metric | Evaluated step | Token budget |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 214 | n/a | 234 | train/reward_mean=0.7142 | 234 | 5300000 |
+| 215 | complete | 234 | train/reward_mean=0.7211 | 234 | 5300000 |
+| 216 | complete | 234 | train/reward_mean=0.7166 | 234 | 5300000 |
+| 217 | complete | 234 | train/reward_mean=0.7250 | 234 | 5300000 |
+| 218 | complete | 159 | train/reward_mean=0.7109 | 159 | 5300000 |
+| 219 | complete | 234 | train/reward_mean=0.7059 | 234 | 5300000 |
 
 [Table data](rlvr-placebo.report.json)
 
@@ -56,14 +56,14 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 [Table data](rlvr-placebo.report.json)
 
-| Seed | Train status | Selected step | Selected metric | Token budget |
-| ---: | --- | ---: | ---: | ---: |
-| 214 | n/a | n/a | n/a | 5300000 |
-| 215 | complete | 49 | train/reward_mean=0.5242 | 5300000 |
-| 216 | complete | 219 | train/reward_mean=0.5219 | 5300000 |
-| 217 | complete | 112 | train/reward_mean=0.5398 | 5300000 |
-| 218 | complete | 8 | train/reward_mean=0.5297 | 5300000 |
-| 219 | complete | 162 | train/reward_mean=0.5375 | 5300000 |
+| Seed | Train status | Selected step | Selected metric | Evaluated step | Token budget |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 214 | n/a | n/a | n/a | n/a | 5300000 |
+| 215 | complete | 49 | train/reward_mean=0.5242 | 49 | 5300000 |
+| 216 | complete | 219 | train/reward_mean=0.5219 | 219 | 5300000 |
+| 217 | complete | 112 | train/reward_mean=0.5398 | 112 | 5300000 |
+| 218 | complete | 8 | train/reward_mean=0.5297 | 8 | 5300000 |
+| 219 | complete | 162 | train/reward_mean=0.5375 | 162 | 5300000 |
 
 [Table data](rlvr-placebo.report.json)
 
@@ -75,9 +75,9 @@ Verifier-reward GRPO improves held-out Countdown validity and exact solving beyo
 
 [Table data](rlvr-placebo.report.json)
 
-| Seed | Train status | Selected step | Selected metric | Token budget |
-| ---: | --- | ---: | ---: | ---: |
-| 214 | n/a | n/a | n/a | n/a |
+| Seed | Train status | Selected step | Selected metric | Evaluated step | Token budget |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 214 | n/a | n/a | n/a | n/a | n/a |
 
 [Table data](rlvr-placebo.report.json)
 
