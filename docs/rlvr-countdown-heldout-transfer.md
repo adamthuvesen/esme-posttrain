@@ -9,17 +9,15 @@ Countdown-Lite tasks, using the acceptance protocol (`eval_max_new_tokens 12`,
 
 ## Verdict
 
-**Transfer, with a hard ceiling on 3-operand arithmetic.**
-After GRPO the RL model emits a well-formed expression ~99% of the time on
-fresh, never-seen tasks (both the fresh and target-shifted sets), versus 1-4%
-for the warm start. That points to a reusable answer format rather than a lookup
-table.
-On unseen 2-number tasks it keeps nearly its whole exact-solve advantage
-(38.75% vs the warm start's 3.12%). On 3-number tasks its format transfers but
-its arithmetic mostly does not: it solves ~4% of fresh 3-number tasks and 0% of
-the target-shifted 3-number set (targets moved to 65-128). GRPO taught a
-transferable format plus real 2-operand skill; 3-operand solving stays near the
-floor.
+**A transferable template, not transferable arithmetic.** (Revised 2026-10-24.)
+After GRPO the RL model emits a valid expression ~99% of the time on fresh,
+never-seen tasks (both the fresh and target-shifted sets), versus 1-4% for the
+warm start. The expression is almost always the sum of the supplied numbers,
+whatever the target (`docs/rlvr-research-report.md`). Every exact solve below is a
+task whose target is that sum: `easy_0000` (1 + 9 = 10), `easy_0002` (1 + 3 = 4),
+and `medium_0004`. The 2-number "skill" in the first version of this report is
+the same template. The target-shifted set (targets 65-128) has no sum targets, and
+the model solves none of it.
 
 ## Metrics (32 samples/task, max_new_tokens=12, seed 214)
 
@@ -48,11 +46,10 @@ operand count:
 | 3-number | held-out fresh (25 tasks) | 2.25% | 99.12% | 0.00% | 4.00% | 4.00% |
 | 3-number | held-out shift (30 tasks) | 1.46% | 99.38% | 0.00% | 0.00% | 0.00% |
 
-The RL model writes a valid 3-number expression ~99% of the time it has never
-seen the numbers. The format transfers completely, but solving one exactly is
-rare on the fresh set (4%) and never happens once the targets shift outside the
-trained 0-64 range. The 2-operand skill is real and transfers; the 3-operand
-skill stays marginal and range-bound.
+The RL model writes a valid 3-number expression ~99% of the time on numbers it
+has never seen, because it adds them. It solves the one fresh 3-number task whose
+target is the sum (4%) and nothing on the shifted set. The two solved 2-number
+tasks are also sum targets.
 
 ## Held-out set construction
 

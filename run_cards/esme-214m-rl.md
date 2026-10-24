@@ -295,8 +295,11 @@ removes one part and keeps everything else equal to the seed 215-217 real-reward
   rollout tokens. Training only (`skip_acceptance_eval`).
 - **Hardware:** 1x A100 per run on the private training account; 9 runs.
 - **Expected duration and cost:** about 30 minutes and $0.75-$1.15 per run, from the
-  multiseed receipts; about $9-$10 total. Hard stop $2.10 per run with a 1-hour timeout ($18.90 worst case),
+  multiseed receipts; about $7-$10 total. Hard stop $2.10 per run with a 1-hour timeout ($18.90 worst case),
   inside the $25 approved for this campaign on 2026-10-24.
+- **Evaluation sampling:** `scripts/modal_emit_completions.py` rebuilds and samples
+  checkpoints on 1x A10G per job, at most 3 containers at once. Expected cost: a few
+  dollars for the 200-task set, learning curves, and pass@k. Same $25 approval.
 - **Artifacts:** each run's step-240 training checkpoint is rebuilt with
   `rlvr-checkpoint-bundle`, sampled with the placebo study's decoding settings, and
   scored with the study report against the matched real-reward seeds.
@@ -313,7 +316,10 @@ rebuilt and sampled on `heldout_large` (200 tasks, 16 samples, temperature 1.0):
 | `nostab` | 97.3% | 13.3 | `studies/rlvr-ablation-nostab.report.md` |
 | `stdnorm` | 97.9% | 13.0 | `studies/rlvr-ablation-stdnorm.report.md` |
 
-The graded reward is the component that matters: without it the model is valid far less
-often but solves more than twice as many distinct problems. The stability techniques and
-the advantage normalization have no measurable effect at this scale. Analysis:
+The graded reward is the component that matters. With it, every run collapses to one
+template, the sum of all the numbers, which solves only the 13 tasks whose target is
+that sum. With the binary reward the model writes the sum on half of its samples and
+also solves 15-18 other tasks. The stability techniques change validity by under 1 pp
+and leave the solved set unchanged. The advantage normalization changes nothing.
+Evaluation sampling on A10Gs cost about $6, estimated from container hours. Analysis:
 `docs/rlvr-research-report.md`.

@@ -30,7 +30,10 @@ exact-solve does not rise: 4.00% → 3.62% → 3.25% on the fresh set at 12, 24,
 tokens, and 0.00% at every budget on the target-shifted set. Validity falls gradually
 as the budget grows (99% → 89% → 75% on fresh 3-number tasks): with room to keep
 writing, the model sometimes continues past a valid expression and corrupts it. The
-2-number control keeps its skill at every budget (pass@32 40%).
+2-number control holds at every budget (pass@32 40%), but both of its solved tasks
+have a target equal to the sum of the numbers. The RL model mostly writes that sum
+(`docs/rlvr-research-report.md`), so the control measures the sum template, not
+2-operand arithmetic.
 
 ## 3-number cells
 
@@ -81,9 +84,9 @@ At 12 tokens the RL model runs to the cap on about 99% of 3-number samples, so t
 
 ## What this settles
 
-- **Settles:** for `Esme-214M-RL`, 3-operand Countdown exact-solve is a capability
-  wall on both held-out sets, not an artifact of the 12-token budget. GRPO taught a
-  transferable answer format plus real 2-operand skill.
+- **Settles:** for `Esme-214M-RL`, 3-operand Countdown exact-solve is a wall on both
+  held-out sets, not an artifact of the 12-token budget. The one 3-number task it
+  solves has a target equal to the sum of its numbers.
 - **Withdrawn:** the claim that validity collapses to 13-19% beyond 12 tokens. On the
   accepted model it declines to 75-80% at 48 tokens.
 

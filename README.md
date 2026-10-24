@@ -23,31 +23,32 @@ and GRPO against verifier rewards.
 ## Research Findings
 
 [What GRPO Teaches a 214M Model on Countdown](docs/rlvr-research-report.md) is the
-main result. Six real-reward GRPO seeds were compared with six random-reward placebo
-seeds at the same training step, on 200 fresh held-out tasks:
+main result. GRPO with the graded reward taught the model one move: **add all the
+numbers**. Six real-reward seeds were compared with six random-reward placebo seeds at
+the same training step, on 200 fresh held-out tasks:
 
-- **The reward signal produces the gain.** Valid expressions rise from 1.3% to 97.9%
-  (`+96.6 pp`, 95% CI `[+95.9, +97.3]`, sign-flip `p = 0.031`). Problems solved rise
-  from 1.2% to 6.6% (`+5.4 pp`, CI `[+2.2, +9.0]`). The placebo does not move.
-- **Coverage peaks early, then contracts.** Distinct problems solved peak at step 40
-  (19 of 200) and fall to 13 by step 240, while per-sample accuracy keeps rising. All
-  six seeds converge on the same 13 problems.
-- **The reward shape controls the tradeoff.** A binary exact-only reward is valid only
-  59% of the time but solves 28 problems, more than twice the graded reward. Removing
-  the stability techniques or switching to std-normalized advantages changes nothing.
-- **RL sharpens what the base model can reach.** RL leads pass@k up to k = 64. At
-  k = 256 the base model solves 14.0% of tasks and the RL model 9.5%.
+- **The reward signal causes the change.** Valid expressions rise from 1.3% to 97.9%
+  (`+96.6 pp`, 95% CI `[+95.9, +97.3]`, sign-flip `p = 0.031`). The placebo does not move.
+- **The change is a reward hack.** 98% of samples are the sum of the numbers, whatever
+  the target. The sum is always valid and often close, so the graded reward pays about
+  0.54 for it. The model solves exactly the 13 tasks whose target is the sum.
+- **Training converges on the hack.** At step 40 the model solves 7 tasks that are not
+  sums. By step 200 it solves none.
+- **The reward shape controls it.** With a binary exact-only reward, the model adds the
+  numbers only half the time and solves 15-18 tasks that are not sums. Removing the
+  stability techniques or switching to std-normalized advantages changes nothing.
 
 <p>
-  <img src="assets/fig-learning-curves.svg" width="100%" alt="Problems solved peak at step 40 and contract while validity rises to 98%" />
+  <img src="assets/fig-learning-curves.svg" width="100%" alt="The sum template takes over the samples and the non-sum solves disappear" />
 </p>
 <p>
-  <img src="assets/fig-reward-shape-tradeoff.svg" width="100%" alt="Binary reward solves twice as many problems at lower validity" />
+  <img src="assets/fig-reward-shape-tradeoff.svg" width="100%" alt="Binary reward solves 15-18 non-sum tasks while the graded reward solves none" />
 </p>
 
 The report also records the errors this audit found and fixed in earlier versions of
 the result: an impossible confidence interval, checkpoint selection on noise, a
-mislabeled model, and evaluations that silently ran on the CPU.
+mislabeled model, evaluations that silently ran on the CPU, and a template read as
+skill.
 
 ## Stage Summary
 
@@ -55,7 +56,7 @@ mislabeled model, and evaluations that silently ran on the CPU.
 | --- | --- | --- | --- |
 | SFT | `Esme-214M-Base` | `Esme-214M-Instruct` | Held-out response loss bottoms cleanly, no collapse ([run card](run_cards/esme-214m-sft-multiturn.md)). |
 | DPO | `Esme-214M-Instruct` | `Esme-214M-Chat` | Held-out preference accuracy climbs then plateaus ([run card](run_cards/esme-214m-chat-dpo.md)). |
-| RLVR | `Esme-214M-Chat` | `Esme-214M-RL` | Verifier reward makes Countdown outputs valid much more often, with a smaller exact-solve lift ([run card](run_cards/esme-214m-rl.md)). |
+| RLVR | `Esme-214M-Chat` | `Esme-214M-RL` | Verifier reward beats a random-reward placebo; the model learns a sum-of-numbers template ([report](docs/rlvr-research-report.md), [run card](run_cards/esme-214m-rl.md)). |
 
 SFT teaches chat format, turn-taking, and basic instruction following. DPO
 trains the model to prefer chosen answers over rejected answers, without
@@ -120,18 +121,6 @@ uv run esme-posttrain full-path-cpu-smoke --output-dir runs/full-path-cpu-smoke 
 - Generated run reports are written under gitignored `artifacts/`.
 - `studies/rlvr-placebo.json` pins the six-seed study inputs by hash; its
   generated JSON and Markdown reports are checked in beside it.
-
-## Verifier Evidence
-
-**Reading note:** This chart shows narrow verifier-scored Countdown-Lite
-behavior, not broad capability. The strongest signal is valid-expression
-transfer; exact solving improves too, but more modestly.
-<p>
-  <img src="assets/fig-grpo-countdown-evidence.svg" width="100%" alt="Countdown-Lite evidence: acceptance and unseen-task transfer" />
-</p>
-
-This figure is rendered by `scripts/plot_run_telemetry.py` from the accepted run
-artifacts.
 
 ## Repository Layout
 

@@ -2,10 +2,15 @@
   "schema_version": 1,
   "task_set": "heldout_large",
   "tasks": 200,
+  "sum_tasks": 13,
   "decoding": "n=16 (pass@k: n=256), temperature 1.0, 12 new tokens, seed 0",
   "chat": {
     "valid_expression_rate": 0.0140625,
-    "problems_solved": 3
+    "exact_solve_rate": 0.0009375,
+    "problems_solved": 3,
+    "sum_template_rate": 0.0078125,
+    "solved_sum_tasks": 2,
+    "solved_other_tasks": 1
   },
   "arms_step240": {
     "placebo": {
@@ -15,43 +20,63 @@
           "seed": 214,
           "valid_expression_rate": 0.0115625,
           "exact_solve_rate": 0.000625,
-          "problems_solved": 2
+          "problems_solved": 2,
+          "sum_template_rate": 0.004375,
+          "solved_sum_tasks": 1,
+          "solved_other_tasks": 1
         },
         {
           "seed": 215,
           "valid_expression_rate": 0.0084375,
           "exact_solve_rate": 0.000625,
-          "problems_solved": 2
+          "problems_solved": 2,
+          "sum_template_rate": 0.0040625,
+          "solved_sum_tasks": 1,
+          "solved_other_tasks": 1
         },
         {
           "seed": 216,
           "valid_expression_rate": 0.0165625,
           "exact_solve_rate": 0.000625,
-          "problems_solved": 2
+          "problems_solved": 2,
+          "sum_template_rate": 0.011875,
+          "solved_sum_tasks": 1,
+          "solved_other_tasks": 1
         },
         {
           "seed": 217,
           "valid_expression_rate": 0.0128125,
           "exact_solve_rate": 0.0009375,
-          "problems_solved": 3
+          "problems_solved": 3,
+          "sum_template_rate": 0.0075,
+          "solved_sum_tasks": 2,
+          "solved_other_tasks": 1
         },
         {
           "seed": 218,
           "valid_expression_rate": 0.0140625,
           "exact_solve_rate": 0.0009375,
-          "problems_solved": 3
+          "problems_solved": 3,
+          "sum_template_rate": 0.0075,
+          "solved_sum_tasks": 2,
+          "solved_other_tasks": 1
         },
         {
           "seed": 219,
           "valid_expression_rate": 0.01375,
           "exact_solve_rate": 0.000625,
-          "problems_solved": 2
+          "problems_solved": 2,
+          "sum_template_rate": 0.0075,
+          "solved_sum_tasks": 1,
+          "solved_other_tasks": 1
         }
       ],
       "mean_valid_expression_rate": 0.012864583333333334,
       "mean_problems_solved": 2.3333333333333335,
+      "mean_sum_template_rate": 0.0071354166666666675,
       "problems_solved_by_any_seed": 3,
-      "problems_solved_by_every_seed": 2
+      "problems_solved_by_every_seed": 2,
+      "solved_by_any_seed_and_no_full_recipe_seed": 3
     },
     "real": {
       "name": "Full recipe",
@@ -60,43 +85,63 @@
           "seed": 214,
           "valid_expression_rate": 0.98125,
           "exact_solve_rate": 0.0628125,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.97875,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         },
         {
           "seed": 215,
           "valid_expression_rate": 0.98,
           "exact_solve_rate": 0.0628125,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.9784375,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         },
         {
           "seed": 216,
           "valid_expression_rate": 0.9825,
           "exact_solve_rate": 0.0628125,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.9803125,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         },
         {
           "seed": 217,
           "valid_expression_rate": 0.9775,
           "exact_solve_rate": 0.061875,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.9746875,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         },
         {
           "seed": 218,
           "valid_expression_rate": 0.978125,
           "exact_solve_rate": 0.0628125,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.975625,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         },
         {
           "seed": 219,
           "valid_expression_rate": 0.975,
           "exact_solve_rate": 0.0625,
-          "problems_solved": 14
+          "problems_solved": 14,
+          "sum_template_rate": 0.971875,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 1
         }
       ],
       "mean_valid_expression_rate": 0.9790625,
       "mean_problems_solved": 13.166666666666666,
+      "mean_sum_template_rate": 0.9766145833333333,
       "problems_solved_by_any_seed": 14,
-      "problems_solved_by_every_seed": 13
+      "problems_solved_by_every_seed": 13,
+      "solved_by_any_seed_and_no_full_recipe_seed": 0
     },
     "nostab": {
       "name": "No stability techniques",
@@ -105,25 +150,36 @@
           "seed": 215,
           "valid_expression_rate": 0.97375,
           "exact_solve_rate": 0.0621875,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.970625,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         },
         {
           "seed": 216,
           "valid_expression_rate": 0.9721875,
           "exact_solve_rate": 0.0615625,
-          "problems_solved": 14
+          "problems_solved": 14,
+          "sum_template_rate": 0.96875,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 1
         },
         {
           "seed": 217,
           "valid_expression_rate": 0.97375,
           "exact_solve_rate": 0.0621875,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.97125,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         }
       ],
       "mean_valid_expression_rate": 0.9732291666666667,
       "mean_problems_solved": 13.333333333333334,
+      "mean_sum_template_rate": 0.9702083333333333,
       "problems_solved_by_any_seed": 14,
-      "problems_solved_by_every_seed": 13
+      "problems_solved_by_every_seed": 13,
+      "solved_by_any_seed_and_no_full_recipe_seed": 0
     },
     "stdnorm": {
       "name": "Std-normalized advantages",
@@ -132,25 +188,36 @@
           "seed": 215,
           "valid_expression_rate": 0.9790625,
           "exact_solve_rate": 0.0628125,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.9775,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         },
         {
           "seed": 216,
           "valid_expression_rate": 0.9803125,
           "exact_solve_rate": 0.0625,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.97875,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         },
         {
           "seed": 217,
           "valid_expression_rate": 0.9778125,
           "exact_solve_rate": 0.0628125,
-          "problems_solved": 13
+          "problems_solved": 13,
+          "sum_template_rate": 0.9759375,
+          "solved_sum_tasks": 13,
+          "solved_other_tasks": 0
         }
       ],
       "mean_valid_expression_rate": 0.9790625,
       "mean_problems_solved": 13.0,
+      "mean_sum_template_rate": 0.9773958333333334,
       "problems_solved_by_any_seed": 13,
-      "problems_solved_by_every_seed": 13
+      "problems_solved_by_every_seed": 13,
+      "solved_by_any_seed_and_no_full_recipe_seed": 0
     },
     "binary": {
       "name": "Binary exact-only reward",
@@ -159,25 +226,36 @@
           "seed": 215,
           "valid_expression_rate": 0.595,
           "exact_solve_rate": 0.036875,
-          "problems_solved": 28
+          "problems_solved": 28,
+          "sum_template_rate": 0.5175,
+          "solved_sum_tasks": 12,
+          "solved_other_tasks": 16
         },
         {
           "seed": 216,
           "valid_expression_rate": 0.5709375,
           "exact_solve_rate": 0.038125,
-          "problems_solved": 30
+          "problems_solved": 30,
+          "sum_template_rate": 0.4696875,
+          "solved_sum_tasks": 12,
+          "solved_other_tasks": 18
         },
         {
           "seed": 217,
           "valid_expression_rate": 0.609375,
           "exact_solve_rate": 0.0390625,
-          "problems_solved": 27
+          "problems_solved": 27,
+          "sum_template_rate": 0.5134375,
+          "solved_sum_tasks": 12,
+          "solved_other_tasks": 15
         }
       ],
       "mean_valid_expression_rate": 0.5917708333333334,
       "mean_problems_solved": 28.333333333333332,
+      "mean_sum_template_rate": 0.5002083333333333,
       "problems_solved_by_any_seed": 31,
-      "problems_solved_by_every_seed": 25
+      "problems_solved_by_every_seed": 25,
+      "solved_by_any_seed_and_no_full_recipe_seed": 18
     }
   },
   "learning_curves": {
@@ -185,100 +263,174 @@
       {
         "step": 20,
         "valid_expression_rate": 0.068125,
-        "problems_solved": 7.666666666666667
+        "exact_solve_rate": 0.0038541666666666668,
+        "problems_solved": 7.666666666666667,
+        "sum_template_rate": 0.05145833333333333,
+        "solved_sum_tasks": 5.666666666666667,
+        "solved_other_tasks": 2.0
       },
       {
         "step": 40,
         "valid_expression_rate": 0.31364583333333335,
-        "problems_solved": 19.333333333333332
+        "exact_solve_rate": 0.021979166666666664,
+        "problems_solved": 19.333333333333332,
+        "sum_template_rate": 0.28541666666666665,
+        "solved_sum_tasks": 12.0,
+        "solved_other_tasks": 7.333333333333333
       },
       {
         "step": 60,
         "valid_expression_rate": 0.648125,
-        "problems_solved": 18.666666666666668
+        "exact_solve_rate": 0.04052083333333333,
+        "problems_solved": 18.666666666666668,
+        "sum_template_rate": 0.6307291666666667,
+        "solved_sum_tasks": 12.0,
+        "solved_other_tasks": 6.666666666666667
       },
       {
         "step": 80,
         "valid_expression_rate": 0.8416666666666667,
-        "problems_solved": 15.333333333333334
+        "exact_solve_rate": 0.050625,
+        "problems_solved": 15.333333333333334,
+        "sum_template_rate": 0.8310416666666667,
+        "solved_sum_tasks": 13.0,
+        "solved_other_tasks": 2.3333333333333335
       },
       {
         "step": 100,
         "valid_expression_rate": 0.9112499999999999,
-        "problems_solved": 15.0
+        "exact_solve_rate": 0.05447916666666667,
+        "problems_solved": 15.0,
+        "sum_template_rate": 0.9032291666666667,
+        "solved_sum_tasks": 13.0,
+        "solved_other_tasks": 2.0
       },
       {
         "step": 120,
         "valid_expression_rate": 0.9436458333333334,
-        "problems_solved": 14.0
+        "exact_solve_rate": 0.05791666666666667,
+        "problems_solved": 14.0,
+        "sum_template_rate": 0.9395833333333333,
+        "solved_sum_tasks": 13.0,
+        "solved_other_tasks": 1.0
       },
       {
         "step": 160,
         "valid_expression_rate": 0.97125,
-        "problems_solved": 13.666666666666666
+        "exact_solve_rate": 0.06197916666666667,
+        "problems_solved": 13.666666666666666,
+        "sum_template_rate": 0.9683333333333334,
+        "solved_sum_tasks": 13.0,
+        "solved_other_tasks": 0.6666666666666666
       },
       {
         "step": 200,
         "valid_expression_rate": 0.9797916666666667,
-        "problems_solved": 13.0
+        "exact_solve_rate": 0.06239583333333334,
+        "problems_solved": 13.0,
+        "sum_template_rate": 0.9773958333333334,
+        "solved_sum_tasks": 13.0,
+        "solved_other_tasks": 0.0
       },
       {
         "step": 240,
         "valid_expression_rate": 0.98,
-        "problems_solved": 13.0
+        "exact_solve_rate": 0.0625,
+        "problems_solved": 13.0,
+        "sum_template_rate": 0.9778125000000001,
+        "solved_sum_tasks": 13.0,
+        "solved_other_tasks": 0.0
       }
     ],
     "placebo": [
       {
         "step": 20,
         "valid_expression_rate": 0.014166666666666666,
-        "problems_solved": 3.0
+        "exact_solve_rate": 0.0009375,
+        "problems_solved": 3.0,
+        "sum_template_rate": 0.008229166666666668,
+        "solved_sum_tasks": 2.0,
+        "solved_other_tasks": 1.0
       },
       {
         "step": 40,
         "valid_expression_rate": 0.012395833333333333,
-        "problems_solved": 3.0
+        "exact_solve_rate": 0.0009375,
+        "problems_solved": 3.0,
+        "sum_template_rate": 0.007083333333333333,
+        "solved_sum_tasks": 2.0,
+        "solved_other_tasks": 1.0
       },
       {
         "step": 60,
         "valid_expression_rate": 0.011666666666666667,
-        "problems_solved": 2.3333333333333335
+        "exact_solve_rate": 0.0007291666666666666,
+        "problems_solved": 2.3333333333333335,
+        "sum_template_rate": 0.007083333333333333,
+        "solved_sum_tasks": 1.6666666666666667,
+        "solved_other_tasks": 0.6666666666666666
       },
       {
         "step": 80,
         "valid_expression_rate": 0.012187499999999999,
-        "problems_solved": 2.3333333333333335
+        "exact_solve_rate": 0.0007291666666666666,
+        "problems_solved": 2.3333333333333335,
+        "sum_template_rate": 0.0071875,
+        "solved_sum_tasks": 1.6666666666666667,
+        "solved_other_tasks": 0.6666666666666666
       },
       {
         "step": 100,
         "valid_expression_rate": 0.012708333333333334,
-        "problems_solved": 2.3333333333333335
+        "exact_solve_rate": 0.0007291666666666667,
+        "problems_solved": 2.3333333333333335,
+        "sum_template_rate": 0.0078125,
+        "solved_sum_tasks": 1.6666666666666667,
+        "solved_other_tasks": 0.6666666666666666
       },
       {
         "step": 120,
         "valid_expression_rate": 0.012187499999999999,
-        "problems_solved": 2.3333333333333335
+        "exact_solve_rate": 0.0007291666666666667,
+        "problems_solved": 2.3333333333333335,
+        "sum_template_rate": 0.0075,
+        "solved_sum_tasks": 1.6666666666666667,
+        "solved_other_tasks": 0.6666666666666666
       },
       {
         "step": 160,
         "valid_expression_rate": 0.011979166666666666,
-        "problems_solved": 2.3333333333333335
+        "exact_solve_rate": 0.0007291666666666667,
+        "problems_solved": 2.3333333333333335,
+        "sum_template_rate": 0.007604166666666666,
+        "solved_sum_tasks": 1.3333333333333333,
+        "solved_other_tasks": 1.0
       },
       {
         "step": 200,
         "valid_expression_rate": 0.012499999999999999,
-        "problems_solved": 2.3333333333333335
+        "exact_solve_rate": 0.0007291666666666667,
+        "problems_solved": 2.3333333333333335,
+        "sum_template_rate": 0.0077083333333333335,
+        "solved_sum_tasks": 1.3333333333333333,
+        "solved_other_tasks": 1.0
       },
       {
         "step": 240,
         "valid_expression_rate": 0.012604166666666666,
-        "problems_solved": 2.3333333333333335
+        "exact_solve_rate": 0.0007291666666666667,
+        "problems_solved": 2.3333333333333335,
+        "sum_template_rate": 0.0078125,
+        "solved_sum_tasks": 1.3333333333333333,
+        "solved_other_tasks": 1.0
       }
     ]
   },
   "pass_at_k": {
     "chat": {
       "samples_per_problem": 256,
+      "problems_solved": 28,
+      "solved_sum_tasks": 9,
       "pass_at_k": {
         "1": 0.00115234375,
         "2": 0.002294883578431372,
@@ -293,6 +445,8 @@
     },
     "real": {
       "samples_per_problem": 256,
+      "problems_solved": 19,
+      "solved_sum_tasks": 13,
       "pass_at_k": {
         "1": 0.06251953125,
         "2": 0.06489261642156863,
@@ -304,6 +458,11 @@
         "128": 0.08,
         "256": 0.095
       }
+    },
+    "overlap": {
+      "both": 11,
+      "chat_only": 17,
+      "rl_only": 8
     }
   }
 }
