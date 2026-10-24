@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "primary_metric": "valid_expression_rate",
+  "task_manifest_ids": [
+    "heldout_large+164ed5a000dbe017"
+  ],
+  "sample_budget": 3200,
+  "decoding": {
+    "max_new_tokens": 12,
+    "n": 16,
+    "seed": 0,
+    "temperature": 1.0,
+    "top_p": 1.0
+  },
+  "confidence_interval_method": "seed_problem_bootstrap_95",
+  "study_id": "rlvr-countdown-ablation-binary",
+  "title": "GRPO stability ablation: a binary exact-only reward",
+  "hypothesis": "The accepted GRPO recipe outperforms the same recipe with a binary exact-only reward on 200 fresh held-out Countdown tasks at training step 240.",
+  "arms": [
+    {
+      "name": "full_recipe",
+      "role": "treatment",
+      "runs": [
+        {
+          "seed": 215,
+          "completions": {
+            "path": "runs/gpu-emit/batch1/heldout_large-real-seed215-step240/completions.jsonl",
+            "sha256": "42ac3c982c72ab221869adaceea84662b3d5eb4399393e3af1e97c991b6e9b73"
+          },
+          "provenance": {
+            "path": "runs/gpu-emit/batch1/heldout_large-real-seed215-step240/provenance.json",
+            "sha256": "274c6f95237b08a8df7874eae9096f8af588e83ebaa225f90da908af5d7e71cc"
+          },
+          "evaluated_bundle_manifest": {
+            "path": "runs/gpu-emit/batch1/heldout_large-real-seed215-step240/bundle-manifest.json",
+            "sha256": "a73aa795812b561c4ac1bffba7a403def30896d88918e10e94a8a12bc657c300"
+          },
+          "training_token_budget": 5300000,
+          "cost": {
+            "path": "runs/multiseed/seed215-real/cost.json",
+            "sha256": "711b3145cdc93181c05ea0333f4d2b715faa83583e6753de5c5382a546f147b0"
+          }
+        },
+        {
+          "seed": 216,
+          "completions": {
+            "path": "runs/gpu-emit/batch1/heldout_large-real-seed216-step240/completions.jsonl",
+            "sha256": "9d27b945d4c920e2cb954a67389dcc9eaad17b634e351294fab6226ef415ac81"
+          },
+          "provenance": {
+            "path": "runs/gpu-emit/batch1/heldout_large-real-seed216-step240/provenance.json",
+            "sha256": "b9cb746f2e2414bab097c41a4b7bbeb19065c8f3b1d806526b05a5f2e0247e8d"
+          },
+          "evaluated_bundle_manifest": {
+            "path": "runs/gpu-emit/batch1/heldout_large-real-seed216-step240/bundle-manifest.json",
+            "sha256": "437f18283999bf4d8c9ff427b23187fe11c58cc04cc71b18597fb9c9df9988d7"
+          },
+          "training_token_budget": 5300000,
+          "cost": {
+            "path": "runs/multiseed/seed216-real/cost.json",
+            "sha256": "c636fc7a3fc344ec5811d2861a42885b7f6b27d01cca6ecd42d32ce9bbd1fd15"
+          }
+        },
+        {
+          "seed": 217,
+          "completions": {
+            "path": "runs/gpu-emit/batch1/heldout_large-real-seed217-step240/completions.jsonl",
+            "sha256": "7c9315b9b8d8265f37653ec1670fa8233364a2d9a105b0b6e6180b4732849643"
+          },
+          "provenance": {
+            "path": "runs/gpu-emit/batch1/heldout_large-real-seed217-step240/provenance.json",
+            "sha256": "ab1511f17ff72cf8956262952142fb23a2a761402414ba2e971020c9f2e28539"
+          },
+          "evaluated_bundle_manifest": {
+            "path": "runs/gpu-emit/batch1/heldout_large-real-seed217-step240/bundle-manifest.json",
+            "sha256": "88ae6d58011bb77690b0090923f7a1ca52f1ff9c9833ad25f68a133968e0c87b"
+          },
+          "training_token_budget": 5300000,
+          "cost": {
+            "path": "runs/multiseed/seed217-real/cost.json",
+            "sha256": "07762084cde98585028f86e0329b0a7c3dcb7421bf43bad2e8b05b8d31444889"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ablation_binary",
+      "role": "control",
+      "runs": [
+        {
+          "seed": 215,
+          "completions": {
+            "path": "runs/gpu-emit/batch1/heldout_large-binary-seed215-step240/completions.jsonl",
+            "sha256": "5d4d0f0084bc9739b0203c935385bddac84bee9a7e342add5dc13116fff75cfc"
+          },
+          "provenance": {
+            "path": "runs/gpu-emit/batch1/heldout_large-binary-seed215-step240/provenance.json",
+            "sha256": "5a51aedeecdedf6a4b2271cc2c62db53f2f54e42aece0ccc9a12fded7e61461c"
+          },
+          "evaluated_bundle_manifest": {
+            "path": "runs/gpu-emit/batch1/heldout_large-binary-seed215-step240/bundle-manifest.json",
+            "sha256": "851b9b52e52d9edb9c2e4b6fc037f50b98110fe0a94765f09889b4e6c479e50a"
+          },
+          "training_token_budget": 5300000,
+          "cost": {
+            "path": "runs/ablation-launch/cost/esme-214m-rlvr-abl-binary-seed215-grpo.json",
+            "sha256": "32965c62447043a245b2c28fdd0f7c6f28699bf43cc6267bfdf0c41cb25b5249"
+          }
+        },
+        {
+          "seed": 216,
+          "completions": {
+            "path": "runs/gpu-emit/batch1/heldout_large-binary-seed216-step240/completions.jsonl",
+            "sha256": "8d65f52909c67b165b293d12e4dd082a9f6bf5a101772fc95099717e63cf0cc8"
+          },
+          "provenance": {
+            "path": "runs/gpu-emit/batch1/heldout_large-binary-seed216-step240/provenance.json",
+            "sha256": "71d299ab7272f8b178056541cc17027be64a81066da686f4cdeabb5bebaa052e"
+          },
+          "evaluated_bundle_manifest": {
+            "path": "runs/gpu-emit/batch1/heldout_large-binary-seed216-step240/bundle-manifest.json",
+            "sha256": "a91392617c2542a4e8f7387c1ca23665a668cc39536059d71f36c889cc25f8e5"
+          },
+          "training_token_budget": 5300000,
+          "cost": {
+            "path": "runs/ablation-launch/cost/esme-214m-rlvr-abl-binary-seed216-grpo.json",
+            "sha256": "847f18b07a3228a9cd21a4ccdd720b36fb751ea742757b2d8c3aca4da6ed6036"
+          }
+        },
+        {
+          "seed": 217,
+          "completions": {
+            "path": "runs/gpu-emit/batch1/heldout_large-binary-seed217-step240/completions.jsonl",
+            "sha256": "9d0c52cd5fb6fbc12f12c173b86729ca7e8bad588644be206cbccac26a898ce2"
+          },
+          "provenance": {
+            "path": "runs/gpu-emit/batch1/heldout_large-binary-seed217-step240/provenance.json",
+            "sha256": "966ad063b3e88441ad0d6e392c1e7cea1964e6837fbdfd8071c1d9914b3e7c60"
+          },
+          "evaluated_bundle_manifest": {
+            "path": "runs/gpu-emit/batch1/heldout_large-binary-seed217-step240/bundle-manifest.json",
+            "sha256": "518fb1340159b4aa3faa6c70e5ac4b38ce8270bd9010046941ba31b8e588eac9"
+          },
+          "training_token_budget": 5300000,
+          "cost": {
+            "path": "runs/ablation-launch/cost/esme-214m-rlvr-abl-binary-seed217-grpo.json",
+            "sha256": "2d850e77fd316a036769f95774033e99d4038eb1780699c54846e8e231b193e4"
+          }
+        }
+      ]
+    },
+    {
+      "name": "chat_baseline",
+      "role": "baseline",
+      "runs": [
+        {
+          "seed": 214,
+          "completions": {
+            "path": "runs/gpu-emit/batch1/heldout_large-chat/completions.jsonl",
+            "sha256": "d58c2a1aef5114e2f577ddeac59a9d4a598a1818af16a1941c488bd05e2f7529"
+          },
+          "provenance": {
+            "path": "runs/gpu-emit/batch1/heldout_large-chat/provenance.json",
+            "sha256": "3e2546d1e854e702a6284030cf2e062ee98527f1f286f1e6849873b45569e8d4"
+          }
+        }
+      ]
+    }
+  ],
+  "included_seeds": [
+    215,
+    216,
+    217
+  ],
+  "comparisons": [
+    {
+      "comparison_id": "full-vs-ablation-validity",
+      "metric": "valid_expression_rate",
+      "reference_arm": "ablation_binary",
+      "treatment_arm": "full_recipe"
+    },
+    {
+      "comparison_id": "full-vs-ablation-exact-sample",
+      "metric": "exact_solve_rate",
+      "reference_arm": "ablation_binary",
+      "treatment_arm": "full_recipe"
+    },
+    {
+      "comparison_id": "full-vs-ablation-exact",
+      "metric": "any_exact_solve_rate",
+      "reference_arm": "ablation_binary",
+      "treatment_arm": "full_recipe"
+    }
+  ],
+  "acceptance_rule": {
+    "comparison_id": "full-vs-ablation-validity",
+    "minimum_effect": 0.0,
+    "require_ci_lower_above": 0.0
+  },
+  "allowed_claims": [
+    "Removing the graded reward (binary exact-only reward) lowers held-out validity at training step 240.",
+    "The binary-reward arm solves more distinct held-out problems than the full recipe at training step 240."
+  ]
+}

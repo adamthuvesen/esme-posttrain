@@ -1,0 +1,309 @@
+{
+  "schema_version": 1,
+  "task_set": "heldout_large",
+  "tasks": 200,
+  "decoding": "n=16 (pass@k: n=256), temperature 1.0, 12 new tokens, seed 0",
+  "chat": {
+    "valid_expression_rate": 0.0140625,
+    "problems_solved": 3
+  },
+  "arms_step240": {
+    "placebo": {
+      "name": "Random-reward placebo",
+      "runs": [
+        {
+          "seed": 214,
+          "valid_expression_rate": 0.0115625,
+          "exact_solve_rate": 0.000625,
+          "problems_solved": 2
+        },
+        {
+          "seed": 215,
+          "valid_expression_rate": 0.0084375,
+          "exact_solve_rate": 0.000625,
+          "problems_solved": 2
+        },
+        {
+          "seed": 216,
+          "valid_expression_rate": 0.0165625,
+          "exact_solve_rate": 0.000625,
+          "problems_solved": 2
+        },
+        {
+          "seed": 217,
+          "valid_expression_rate": 0.0128125,
+          "exact_solve_rate": 0.0009375,
+          "problems_solved": 3
+        },
+        {
+          "seed": 218,
+          "valid_expression_rate": 0.0140625,
+          "exact_solve_rate": 0.0009375,
+          "problems_solved": 3
+        },
+        {
+          "seed": 219,
+          "valid_expression_rate": 0.01375,
+          "exact_solve_rate": 0.000625,
+          "problems_solved": 2
+        }
+      ],
+      "mean_valid_expression_rate": 0.012864583333333334,
+      "mean_problems_solved": 2.3333333333333335,
+      "problems_solved_by_any_seed": 3,
+      "problems_solved_by_every_seed": 2
+    },
+    "real": {
+      "name": "Full recipe",
+      "runs": [
+        {
+          "seed": 214,
+          "valid_expression_rate": 0.98125,
+          "exact_solve_rate": 0.0628125,
+          "problems_solved": 13
+        },
+        {
+          "seed": 215,
+          "valid_expression_rate": 0.98,
+          "exact_solve_rate": 0.0628125,
+          "problems_solved": 13
+        },
+        {
+          "seed": 216,
+          "valid_expression_rate": 0.9825,
+          "exact_solve_rate": 0.0628125,
+          "problems_solved": 13
+        },
+        {
+          "seed": 217,
+          "valid_expression_rate": 0.9775,
+          "exact_solve_rate": 0.061875,
+          "problems_solved": 13
+        },
+        {
+          "seed": 218,
+          "valid_expression_rate": 0.978125,
+          "exact_solve_rate": 0.0628125,
+          "problems_solved": 13
+        },
+        {
+          "seed": 219,
+          "valid_expression_rate": 0.975,
+          "exact_solve_rate": 0.0625,
+          "problems_solved": 14
+        }
+      ],
+      "mean_valid_expression_rate": 0.9790625,
+      "mean_problems_solved": 13.166666666666666,
+      "problems_solved_by_any_seed": 14,
+      "problems_solved_by_every_seed": 13
+    },
+    "nostab": {
+      "name": "No stability techniques",
+      "runs": [
+        {
+          "seed": 215,
+          "valid_expression_rate": 0.97375,
+          "exact_solve_rate": 0.0621875,
+          "problems_solved": 13
+        },
+        {
+          "seed": 216,
+          "valid_expression_rate": 0.9721875,
+          "exact_solve_rate": 0.0615625,
+          "problems_solved": 14
+        },
+        {
+          "seed": 217,
+          "valid_expression_rate": 0.97375,
+          "exact_solve_rate": 0.0621875,
+          "problems_solved": 13
+        }
+      ],
+      "mean_valid_expression_rate": 0.9732291666666667,
+      "mean_problems_solved": 13.333333333333334,
+      "problems_solved_by_any_seed": 14,
+      "problems_solved_by_every_seed": 13
+    },
+    "stdnorm": {
+      "name": "Std-normalized advantages",
+      "runs": [
+        {
+          "seed": 215,
+          "valid_expression_rate": 0.9790625,
+          "exact_solve_rate": 0.0628125,
+          "problems_solved": 13
+        },
+        {
+          "seed": 216,
+          "valid_expression_rate": 0.9803125,
+          "exact_solve_rate": 0.0625,
+          "problems_solved": 13
+        },
+        {
+          "seed": 217,
+          "valid_expression_rate": 0.9778125,
+          "exact_solve_rate": 0.0628125,
+          "problems_solved": 13
+        }
+      ],
+      "mean_valid_expression_rate": 0.9790625,
+      "mean_problems_solved": 13.0,
+      "problems_solved_by_any_seed": 13,
+      "problems_solved_by_every_seed": 13
+    },
+    "binary": {
+      "name": "Binary exact-only reward",
+      "runs": [
+        {
+          "seed": 215,
+          "valid_expression_rate": 0.595,
+          "exact_solve_rate": 0.036875,
+          "problems_solved": 28
+        },
+        {
+          "seed": 216,
+          "valid_expression_rate": 0.5709375,
+          "exact_solve_rate": 0.038125,
+          "problems_solved": 30
+        },
+        {
+          "seed": 217,
+          "valid_expression_rate": 0.609375,
+          "exact_solve_rate": 0.0390625,
+          "problems_solved": 27
+        }
+      ],
+      "mean_valid_expression_rate": 0.5917708333333334,
+      "mean_problems_solved": 28.333333333333332,
+      "problems_solved_by_any_seed": 31,
+      "problems_solved_by_every_seed": 25
+    }
+  },
+  "learning_curves": {
+    "real": [
+      {
+        "step": 20,
+        "valid_expression_rate": 0.068125,
+        "problems_solved": 7.666666666666667
+      },
+      {
+        "step": 40,
+        "valid_expression_rate": 0.31364583333333335,
+        "problems_solved": 19.333333333333332
+      },
+      {
+        "step": 60,
+        "valid_expression_rate": 0.648125,
+        "problems_solved": 18.666666666666668
+      },
+      {
+        "step": 80,
+        "valid_expression_rate": 0.8416666666666667,
+        "problems_solved": 15.333333333333334
+      },
+      {
+        "step": 100,
+        "valid_expression_rate": 0.9112499999999999,
+        "problems_solved": 15.0
+      },
+      {
+        "step": 120,
+        "valid_expression_rate": 0.9436458333333334,
+        "problems_solved": 14.0
+      },
+      {
+        "step": 160,
+        "valid_expression_rate": 0.97125,
+        "problems_solved": 13.666666666666666
+      },
+      {
+        "step": 200,
+        "valid_expression_rate": 0.9797916666666667,
+        "problems_solved": 13.0
+      },
+      {
+        "step": 240,
+        "valid_expression_rate": 0.98,
+        "problems_solved": 13.0
+      }
+    ],
+    "placebo": [
+      {
+        "step": 20,
+        "valid_expression_rate": 0.014166666666666666,
+        "problems_solved": 3.0
+      },
+      {
+        "step": 40,
+        "valid_expression_rate": 0.012395833333333333,
+        "problems_solved": 3.0
+      },
+      {
+        "step": 60,
+        "valid_expression_rate": 0.011666666666666667,
+        "problems_solved": 2.3333333333333335
+      },
+      {
+        "step": 80,
+        "valid_expression_rate": 0.012187499999999999,
+        "problems_solved": 2.3333333333333335
+      },
+      {
+        "step": 100,
+        "valid_expression_rate": 0.012708333333333334,
+        "problems_solved": 2.3333333333333335
+      },
+      {
+        "step": 120,
+        "valid_expression_rate": 0.012187499999999999,
+        "problems_solved": 2.3333333333333335
+      },
+      {
+        "step": 160,
+        "valid_expression_rate": 0.011979166666666666,
+        "problems_solved": 2.3333333333333335
+      },
+      {
+        "step": 200,
+        "valid_expression_rate": 0.012499999999999999,
+        "problems_solved": 2.3333333333333335
+      },
+      {
+        "step": 240,
+        "valid_expression_rate": 0.012604166666666666,
+        "problems_solved": 2.3333333333333335
+      }
+    ]
+  },
+  "pass_at_k": {
+    "chat": {
+      "samples_per_problem": 256,
+      "pass_at_k": {
+        "1": 0.00115234375,
+        "2": 0.002294883578431372,
+        "4": 0.00455097019531257,
+        "8": 0.00895004508631534,
+        "16": 0.01731795283458117,
+        "32": 0.032497180429163434,
+        "64": 0.05775737423265434,
+        "128": 0.09445633539622801,
+        "256": 0.14
+      }
+    },
+    "real": {
+      "samples_per_problem": 256,
+      "pass_at_k": {
+        "1": 0.06251953125,
+        "2": 0.06489261642156863,
+        "4": 0.06545746777438684,
+        "8": 0.06593748485217052,
+        "16": 0.06687499999998524,
+        "32": 0.06875,
+        "64": 0.0725,
+        "128": 0.08,
+        "256": 0.095
+      }
+    }
+  }
+}

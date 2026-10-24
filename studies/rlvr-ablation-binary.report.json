@@ -1,0 +1,453 @@
+{
+  "allowed_claims": [
+    "Removing the graded reward (binary exact-only reward) lowers held-out validity at training step 240.",
+    "The binary-reward arm solves more distinct held-out problems than the full recipe at training step 240."
+  ],
+  "arms": {
+    "ablation_binary": {
+      "mean_metrics": {
+        "any_exact_solve_rate": 0.1416666666666667,
+        "exact_solve_rate": 0.03802083333333333,
+        "valid_expression_rate": 0.5917708333333334
+      },
+      "role": "control",
+      "runs": [
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.14,
+            "any_exact_solved": 28,
+            "exact_solve_rate": 0.036875,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.595
+          },
+          "seed": 215,
+          "training": {
+            "elapsed_seconds": 2021.952355826,
+            "estimated_cost_usd": 1.1787982234465582,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        },
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.15,
+            "any_exact_solved": 30,
+            "exact_solve_rate": 0.038125,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.5709375
+          },
+          "seed": 216,
+          "training": {
+            "elapsed_seconds": 2018.6936266910002,
+            "estimated_cost_usd": 1.1768983843608531,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        },
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.135,
+            "any_exact_solved": 27,
+            "exact_solve_rate": 0.0390625,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.609375
+          },
+          "seed": 217,
+          "training": {
+            "elapsed_seconds": 2059.04809384,
+            "estimated_cost_usd": 1.2004250387087203,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        }
+      ],
+      "training_summary": {
+        "estimated_cost_usd": 3.5561216465161314,
+        "runs_with_cost": 3,
+        "runs_with_token_budget": 3,
+        "training_token_budget": 15900000
+      }
+    },
+    "chat_baseline": {
+      "mean_metrics": {
+        "any_exact_solve_rate": 0.015,
+        "exact_solve_rate": 0.0009375,
+        "valid_expression_rate": 0.0140625
+      },
+      "role": "baseline",
+      "runs": [
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.015,
+            "any_exact_solved": 3,
+            "exact_solve_rate": 0.0009375,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.0140625
+          },
+          "seed": 214,
+          "training": {
+            "elapsed_seconds": null,
+            "estimated_cost_usd": null,
+            "evaluated_step": null,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": null,
+            "training_token_budget": null
+          }
+        }
+      ],
+      "training_summary": {
+        "estimated_cost_usd": 0,
+        "runs_with_cost": 0,
+        "runs_with_token_budget": 0,
+        "training_token_budget": 0
+      }
+    },
+    "full_recipe": {
+      "mean_metrics": {
+        "any_exact_solve_rate": 0.065,
+        "exact_solve_rate": 0.0625,
+        "valid_expression_rate": 0.98
+      },
+      "role": "treatment",
+      "runs": [
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.065,
+            "any_exact_solved": 13,
+            "exact_solve_rate": 0.0628125,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.98
+          },
+          "seed": 215,
+          "training": {
+            "elapsed_seconds": 1715.038651946,
+            "estimated_cost_usd": 0.9998675340845182,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        },
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.065,
+            "any_exact_solved": 13,
+            "exact_solve_rate": 0.0628125,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.9825
+          },
+          "seed": 216,
+          "training": {
+            "elapsed_seconds": 1925.111088701,
+            "estimated_cost_usd": 1.1223397647126832,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        },
+        {
+          "metrics": {
+            "any_exact_solve_rate": 0.065,
+            "any_exact_solved": 13,
+            "exact_solve_rate": 0.061875,
+            "problem_count": 200,
+            "sample_count": 3200,
+            "samples_per_problem": 16,
+            "valid_expression_rate": 0.9775
+          },
+          "seed": 217,
+          "training": {
+            "elapsed_seconds": 1707.017423852,
+            "estimated_cost_usd": 0.9951911581057162,
+            "evaluated_step": 240,
+            "selected_metric_name": null,
+            "selected_metric_value": null,
+            "selected_step": null,
+            "status": "complete",
+            "training_token_budget": 5300000
+          }
+        }
+      ],
+      "training_summary": {
+        "estimated_cost_usd": 3.117398456902918,
+        "runs_with_cost": 3,
+        "runs_with_token_budget": 3,
+        "training_token_budget": 15900000
+      }
+    }
+  },
+  "comparisons": [
+    {
+      "comparison_id": "full-vs-ablation-validity",
+      "confidence_interval_95": {
+        "lower": 0.3515625,
+        "upper": 0.4267708333333333
+      },
+      "mean_effect": 0.3882291666666667,
+      "metric": "valid_expression_rate",
+      "paired_seeds": [
+        215,
+        216,
+        217
+      ],
+      "permutation_p_value": 0.25,
+      "reference_arm": "ablation_binary",
+      "seed_effects": [
+        {
+          "effect": 0.385,
+          "seed": 215
+        },
+        {
+          "effect": 0.41156250000000005,
+          "seed": 216
+        },
+        {
+          "effect": 0.36812500000000004,
+          "seed": 217
+        }
+      ],
+      "treatment_arm": "full_recipe"
+    },
+    {
+      "comparison_id": "full-vs-ablation-exact-sample",
+      "confidence_interval_95": {
+        "lower": 0.0059375,
+        "upper": 0.045523437499999965
+      },
+      "mean_effect": 0.024479166666666663,
+      "metric": "exact_solve_rate",
+      "paired_seeds": [
+        215,
+        216,
+        217
+      ],
+      "permutation_p_value": 0.25,
+      "reference_arm": "ablation_binary",
+      "seed_effects": [
+        {
+          "effect": 0.025937499999999995,
+          "seed": 215
+        },
+        {
+          "effect": 0.024687499999999994,
+          "seed": 216
+        },
+        {
+          "effect": 0.0228125,
+          "seed": 217
+        }
+      ],
+      "treatment_arm": "full_recipe"
+    },
+    {
+      "comparison_id": "full-vs-ablation-exact",
+      "confidence_interval_95": {
+        "lower": -0.11666666666666667,
+        "upper": -0.04
+      },
+      "mean_effect": -0.07666666666666667,
+      "metric": "any_exact_solve_rate",
+      "paired_seeds": [
+        215,
+        216,
+        217
+      ],
+      "permutation_p_value": 0.25,
+      "reference_arm": "ablation_binary",
+      "seed_effects": [
+        {
+          "effect": -0.07500000000000001,
+          "seed": 215
+        },
+        {
+          "effect": -0.08499999999999999,
+          "seed": 216
+        },
+        {
+          "effect": -0.07,
+          "seed": 217
+        }
+      ],
+      "treatment_arm": "full_recipe"
+    }
+  ],
+  "compatibility_errors": [],
+  "compatible": true,
+  "complete": true,
+  "confidence_interval_method": "seed_problem_bootstrap_95",
+  "decoding": {
+    "max_new_tokens": 12,
+    "n": 16,
+    "seed": 0,
+    "temperature": 1.0,
+    "top_p": 1.0
+  },
+  "evidence_warnings": [
+    "full_recipe seed 215 has no training manifest",
+    "full_recipe seed 216 has no training manifest",
+    "full_recipe seed 217 has no training manifest",
+    "ablation_binary seed 215 has no training manifest",
+    "ablation_binary seed 216 has no training manifest",
+    "ablation_binary seed 217 has no training manifest"
+  ],
+  "excluded_runs": [],
+  "hypothesis": "The accepted GRPO recipe outperforms the same recipe with a binary exact-only reward on 200 fresh held-out Countdown tasks at training step 240.",
+  "inference": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 0,
+    "permutation_test": "exact two-sided sign-flip over seed-level paired effects"
+  },
+  "missing_seeds": {},
+  "primary_metric": "valid_expression_rate",
+  "provenance": [
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed215-step240/completions.jsonl",
+      "sha256": "42ac3c982c72ab221869adaceea84662b3d5eb4399393e3af1e97c991b6e9b73"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed215-step240/provenance.json",
+      "sha256": "274c6f95237b08a8df7874eae9096f8af588e83ebaa225f90da908af5d7e71cc"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed215-step240/bundle-manifest.json",
+      "sha256": "a73aa795812b561c4ac1bffba7a403def30896d88918e10e94a8a12bc657c300"
+    },
+    {
+      "path": "runs/multiseed/seed215-real/cost.json",
+      "sha256": "711b3145cdc93181c05ea0333f4d2b715faa83583e6753de5c5382a546f147b0"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed216-step240/completions.jsonl",
+      "sha256": "9d27b945d4c920e2cb954a67389dcc9eaad17b634e351294fab6226ef415ac81"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed216-step240/provenance.json",
+      "sha256": "b9cb746f2e2414bab097c41a4b7bbeb19065c8f3b1d806526b05a5f2e0247e8d"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed216-step240/bundle-manifest.json",
+      "sha256": "437f18283999bf4d8c9ff427b23187fe11c58cc04cc71b18597fb9c9df9988d7"
+    },
+    {
+      "path": "runs/multiseed/seed216-real/cost.json",
+      "sha256": "c636fc7a3fc344ec5811d2861a42885b7f6b27d01cca6ecd42d32ce9bbd1fd15"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed217-step240/completions.jsonl",
+      "sha256": "7c9315b9b8d8265f37653ec1670fa8233364a2d9a105b0b6e6180b4732849643"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed217-step240/provenance.json",
+      "sha256": "ab1511f17ff72cf8956262952142fb23a2a761402414ba2e971020c9f2e28539"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-real-seed217-step240/bundle-manifest.json",
+      "sha256": "88ae6d58011bb77690b0090923f7a1ca52f1ff9c9833ad25f68a133968e0c87b"
+    },
+    {
+      "path": "runs/multiseed/seed217-real/cost.json",
+      "sha256": "07762084cde98585028f86e0329b0a7c3dcb7421bf43bad2e8b05b8d31444889"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-binary-seed215-step240/completions.jsonl",
+      "sha256": "5d4d0f0084bc9739b0203c935385bddac84bee9a7e342add5dc13116fff75cfc"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-binary-seed215-step240/provenance.json",
+      "sha256": "5a51aedeecdedf6a4b2271cc2c62db53f2f54e42aece0ccc9a12fded7e61461c"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-binary-seed215-step240/bundle-manifest.json",
+      "sha256": "851b9b52e52d9edb9c2e4b6fc037f50b98110fe0a94765f09889b4e6c479e50a"
+    },
+    {
+      "path": "runs/ablation-launch/cost/esme-214m-rlvr-abl-binary-seed215-grpo.json",
+      "sha256": "32965c62447043a245b2c28fdd0f7c6f28699bf43cc6267bfdf0c41cb25b5249"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-binary-seed216-step240/completions.jsonl",
+      "sha256": "8d65f52909c67b165b293d12e4dd082a9f6bf5a101772fc95099717e63cf0cc8"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-binary-seed216-step240/provenance.json",
+      "sha256": "71d299ab7272f8b178056541cc17027be64a81066da686f4cdeabb5bebaa052e"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-binary-seed216-step240/bundle-manifest.json",
+      "sha256": "a91392617c2542a4e8f7387c1ca23665a668cc39536059d71f36c889cc25f8e5"
+    },
+    {
+      "path": "runs/ablation-launch/cost/esme-214m-rlvr-abl-binary-seed216-grpo.json",
+      "sha256": "847f18b07a3228a9cd21a4ccdd720b36fb751ea742757b2d8c3aca4da6ed6036"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-binary-seed217-step240/completions.jsonl",
+      "sha256": "9d0c52cd5fb6fbc12f12c173b86729ca7e8bad588644be206cbccac26a898ce2"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-binary-seed217-step240/provenance.json",
+      "sha256": "966ad063b3e88441ad0d6e392c1e7cea1964e6837fbdfd8071c1d9914b3e7c60"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-binary-seed217-step240/bundle-manifest.json",
+      "sha256": "518fb1340159b4aa3faa6c70e5ac4b38ce8270bd9010046941ba31b8e588eac9"
+    },
+    {
+      "path": "runs/ablation-launch/cost/esme-214m-rlvr-abl-binary-seed217-grpo.json",
+      "sha256": "2d850e77fd316a036769f95774033e99d4038eb1780699c54846e8e231b193e4"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-chat/completions.jsonl",
+      "sha256": "d58c2a1aef5114e2f577ddeac59a9d4a598a1818af16a1941c488bd05e2f7529"
+    },
+    {
+      "path": "runs/gpu-emit/batch1/heldout_large-chat/provenance.json",
+      "sha256": "3e2546d1e854e702a6284030cf2e062ee98527f1f286f1e6849873b45569e8d4"
+    }
+  ],
+  "sample_budget": 3200,
+  "schema_version": 1,
+  "study_id": "rlvr-countdown-ablation-binary",
+  "study_specification_sha256": "636ccaeae836cf781f7dee89a6336222811c5391f8a6c9f1b67a5207b54b5f19",
+  "supported_claims": [
+    "Removing the graded reward (binary exact-only reward) lowers held-out validity at training step 240.",
+    "The binary-reward arm solves more distinct held-out problems than the full recipe at training step 240."
+  ],
+  "task_manifest_ids": [
+    "heldout_large+164ed5a000dbe017"
+  ],
+  "title": "GRPO stability ablation: a binary exact-only reward",
+  "verdict": "accepted",
+  "verdict_reasons": []
+}

@@ -300,3 +300,20 @@ removes one part and keeps everything else equal to the seed 215-217 real-reward
 - **Artifacts:** each run's step-240 training checkpoint is rebuilt with
   `rlvr-checkpoint-bundle`, sampled with the placebo study's decoding settings, and
   scored with the study report against the matched real-reward seeds.
+
+### Ablation result (2026-10-24)
+
+All nine runs completed 240 steps for $8.84 in total. Each step-240 checkpoint was
+rebuilt and sampled on `heldout_large` (200 tasks, 16 samples, temperature 1.0):
+
+| Arm | Valid | Problems solved (of 200) | Report |
+| --- | ---: | ---: | --- |
+| Full recipe (seeds 215-217) | 98.0% | 13.0 | |
+| `binary` | 59.2% | 28.3 | `studies/rlvr-ablation-binary.report.md` |
+| `nostab` | 97.3% | 13.3 | `studies/rlvr-ablation-nostab.report.md` |
+| `stdnorm` | 97.9% | 13.0 | `studies/rlvr-ablation-stdnorm.report.md` |
+
+The graded reward is the component that matters: without it the model is valid far less
+often but solves more than twice as many distinct problems. The stability techniques and
+the advantage normalization have no measurable effect at this scale. Analysis:
+`docs/rlvr-research-report.md`.
