@@ -29,6 +29,23 @@ A percentile bootstrap over six seeds tends to give an interval that is too narr
 The permutation p-value makes no distributional assumption, so read the two together.
 The acceptance rule still gates on the interval's lower bound.
 
+A run may also pin `evaluated_bundle_manifest`: the manifest of the bundle its
+completions were sampled from. Use this when that bundle is not the run's selected
+bundle. The report shows both the step the training run selected and the step that was
+evaluated. Without it, the evaluated step is the selected step.
+
+`studies/rlvr-placebo-step240.json` uses this to evaluate every arm at training step
+240. GRPO exports only the bundle with the best `train/reward_mean`. Under a random
+reward that choice is noise, so the six-seed placebo arms were evaluated at steps 8 to
+219, not at the end of the training budget. `rlvr-checkpoint-bundle` rebuilds a bundle
+from the periodic training checkpoint at any step:
+
+```bash
+uv run esme-posttrain rlvr-checkpoint-bundle \
+  --checkpoint <run>/checkpoints/step-000240/checkpoint.pt \
+  --template-bundle <run>/bundle --out <bundle-dir> --expected-step 240
+```
+
 The Countdown CompletionSet scorer matches the decomposition contract: it reads the
 expression inside `\boxed{...}`, rejects decimal tokens with leading zeroes, and then
 applies the in-repo Countdown number-use and arithmetic verifier. This detail is pinned
