@@ -25,7 +25,7 @@ class StudyMetric(StrEnum):
 
 
 class ConfidenceIntervalMethod(StrEnum):
-    PAIRED_STUDENT_T_95 = "paired_student_t_95"
+    SEED_PROBLEM_BOOTSTRAP_95 = "seed_problem_bootstrap_95"
 
 
 class HashedArtifact(_StrictModel):
@@ -46,6 +46,9 @@ class StudyRunSpec(_StrictModel):
     completions: HashedArtifact
     provenance: HashedArtifact
     training_manifest: HashedArtifact | None = None
+    # The bundle the completions were sampled from, when it is not the run's selected
+    # bundle (for example, a fixed-step rebuild from a training checkpoint).
+    evaluated_bundle_manifest: HashedArtifact | None = None
     cost: HashedArtifact | None = None
     training_token_budget: int | None = Field(default=None, ge=0)
 

@@ -9,12 +9,20 @@ artifacts are well formed and honest.
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import torch
 
-from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.bundle import file_sha256, load_dense_backbone_bundle
 from esme_posttrain.rl import full as full_module
+from esme_posttrain.rl.checkpoint_bundle import (
+    CheckpointBundleError,
+    CheckpointBundleRequest,
+    export_checkpoint_bundle,
+)
 from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows
 from esme_posttrain.rl.decomp_emitter import (
     ESME_COUNTDOWN_SOURCE,
@@ -29,6 +37,7 @@ from esme_posttrain.rl.grpo import (
     run_countdown_lite_grpo,
 )
 from esme_posttrain.rl.launch import load_rlvr_config
+from esme_posttrain.training.checkpointing import load_training_checkpoint
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TINY_BUNDLE = REPO_ROOT / "fixtures" / "tiny_bundle"
@@ -76,6 +85,84 @@ def _run_tiny_grpo(output_dir: Path, *, reward_mode: str) -> Path:
         _tiny_config(output_dir, reward_mode=reward_mode),
     )
     return result.bundle_dir
+
+
+def test_checkpoint_bundle_carries_the_checkpoint_weights_and_step(tmp_path: Path) -> None:
+    loaded = load_dense_backbone_bundle(TINY_BUNDLE)
+    reference = load_dense_backbone_bundle(TINY_BUNDLE).model
+    config = replace(_tiny_config(tmp_path / "run", reward_mode="verifier"), checkpoint_interval=1)
+    result = run_countdown_lite_grpo(
+        loaded.model,
+        reference,
+        loaded.tokenizer,
+        load_countdown_lite_rows(TINY_MANIFEST, split="train"),
+        config,
+    )
+    checkpoint_path = tmp_path / "run" / "checkpoints" / "step-000001" / "checkpoint.pt"
+
+    summary = export_checkpoint_bundle(
+        CheckpointBundleRequest(
+            checkpoint_path=checkpoint_path,
+            template_bundle_dir=result.bundle_dir,
+            output_dir=tmp_path / "step1-bundle",
+            expected_step=1,
+        )
+    )
+
+    rebuilt = load_dense_backbone_bundle(Path(summary["bundle_dir"]))
+    checkpoint = load_training_checkpoint(checkpoint_path)
+    assert rebuilt.bundle.manifest["checkpoint_step"] == 1
+    assert rebuilt.bundle.manifest["provenance"]["training_checkpoint"]["step"] == 1
+    for name, tensor in checkpoint.model.state_dict().items():
+        assert torch.equal(rebuilt.model.state_dict()[name], tensor)
+
+    with pytest.raises(CheckpointBundleError, match="is step 1, expected 2"):
+        export_checkpoint_bundle(
+            CheckpointBundleRequest(
+                checkpoint_path=checkpoint_path,
+                template_bundle_dir=result.bundle_dir,
+                output_dir=tmp_path / "wrong-step",
+                expected_step=2,
+            )
+        )
+
+    # A legacy template (2026-07 runs) has no top-level source fields; its identity
+    # comes from the embedded warm-start manifest.
+    legacy = tmp_path / "legacy-template"
+    legacy.mkdir()
+    (legacy / "tokenizer.json").write_bytes((result.bundle_dir / "tokenizer.json").read_bytes())
+    manifest = json.loads((result.bundle_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest.pop("source_checkpoint")
+    manifest.pop("source_checkpoint_sha256")
+    manifest["provenance"]["source_manifest"] = {
+        "model": {"id": "esme-214m-chat", "name": "Esme-214M-Chat"},
+        "files": {"weights": {"sha256": "a" * 64}},
+    }
+    (legacy / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    export_checkpoint_bundle(
+        CheckpointBundleRequest(
+            checkpoint_path=checkpoint_path,
+            template_bundle_dir=legacy,
+            output_dir=tmp_path / "legacy-bundle",
+        )
+    )
+    legacy_manifest = json.loads(
+        (tmp_path / "legacy-bundle" / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert legacy_manifest["source_checkpoint"] == "esme-214m-chat/weights.pt"
+    assert legacy_manifest["source_checkpoint_sha256"] == "a" * 64
+    assert legacy_manifest["provenance"]["starts_from"] == "Esme-214M-Chat"
+
+    manifest["model_config"]["layers"] += 1
+    (legacy / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(CheckpointBundleError, match=r"\['layers'\]"):
+        export_checkpoint_bundle(
+            CheckpointBundleRequest(
+                checkpoint_path=checkpoint_path,
+                template_bundle_dir=legacy,
+                output_dir=tmp_path / "mismatched-bundle",
+            )
+        )
 
 
 def test_random_reward_draw_is_signal_free_and_over_support() -> None:
@@ -142,6 +229,9 @@ def test_emitter_writes_valid_completion_set_schema(tmp_path: Path) -> None:
     assert provenance["dataset"]["config"] == "heldout_fresh"
     assert provenance["n_problems"] == 30
     assert provenance["sampling"]["n"] == 2
+    # Provenance pins the exact weights and the code commit that produced the samples.
+    assert provenance["model_revision"] == f"sha256:{file_sha256(TINY_BUNDLE / 'weights.pt')}"
+    assert re.fullmatch(r"[0-9a-f]{40}", provenance["commit"])
 
     lines = (out / "completions.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 30

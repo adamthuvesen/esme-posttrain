@@ -120,7 +120,7 @@
       "treatment_arm": "treatment"
     }
   ],
-  "confidence_interval_method": "paired_student_t_95",
+  "confidence_interval_method": "seed_problem_bootstrap_95",
   "decoding": {
     "max_new_tokens": 12,
     "n": 2,
@@ -142,7 +142,7 @@
   "primary_metric": "valid_expression_rate",
   "reference_summary": {
     "path": "fixtures/studies/reference-summary.json",
-    "sha256": "dfde949053cd0624f1071c31201561224fd029f0ca9f86ac4719be395b708db8"
+    "sha256": "6ca4c3e9a1928b733385f6108696b53709dafa804ca61aa1c8709cca3f583a01"
   },
   "sample_budget": 4,
   "schema_version": 1,

@@ -38,13 +38,23 @@ The current RLVR target is Countdown-Lite: generate a short arithmetic
 expression that uses each supplied number exactly once and reaches the target.
 The reward is verifier-backed. Style rewards are out of scope.
 
-The RLVR result is narrow and useful. In the paired
-[`grpo-decomp`](https://github.com/adamthuvesen/grpo-decomp) study, six
-real-reward seeds beat six same-budget random-reward placebo seeds on held-out
-valid-expression rate: **85.4% vs 0.8%** (`+84.7 pp`, 95% CI
-`[+54.6, +114.7]`). Exact solving improves too, more modestly (`+8.9 pp`, 95%
-CI `[+6.0, +11.7]`). For this 214M model, the main gain is better Countdown
-form.
+The RLVR result is narrow and useful. Six real-reward GRPO seeds and six
+random-reward placebo seeds were all evaluated at the same training step (240)
+on held-out Countdown tasks. The real-reward arms write a valid expression
+**97.2% vs 0.9%** of the time (`+96.2 pp`, 95% CI `[+94.5, +97.8]`, sign-flip
+permutation `p = 0.031`). Exact solving is not an established gain: the mean
+effect is `+7.2 pp`, but the 95% CI `[+0.0, +17.2]` reaches zero, and every real
+seed solves the same three problems, two of them two-number sums. Intervals come
+from a bootstrap that resamples both seeds and problems; with six seeds,
+`p = 0.031` is the smallest two-sided p the permutation test can return. For
+this 214M model, the gain is better Countdown form
+([fixed-step report](studies/rlvr-placebo-step240.report.md)).
+
+An earlier version of this study picked each arm's checkpoint by its best
+training reward, which is noise under a random reward. Its seed-214 treatment
+completions also came from a 22-step model in a different run. The
+[RL run card](run_cards/esme-214m-rl.md#fixed-step-re-score-2026-10-24) records
+how both problems were found and fixed.
 
 ## Why 214M?
 

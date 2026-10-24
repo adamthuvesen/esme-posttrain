@@ -11,10 +11,46 @@ arms. Missing treatment or control seeds, mismatched task manifests, different s
 counts, or different decoding settings force a rejected verdict with no supported
 claims.
 
-The current confidence interval method is `paired_student_t_95`: a two-sided 95%
-Student t interval over seed-level paired effects. The training seed is the unit of
-analysis. This matches the six-seed RLVR placebo study and avoids pretending that the
-samples generated within one training run are independent model replications.
+The training seed is the unit of analysis. Samples generated within one training run
+are not independent model replications, so each comparison pairs the arms by seed and
+reports two numbers:
+
+- `seed_problem_bootstrap_95`: a two-way percentile bootstrap. Seeds and problems are
+  crossed, because every seed is scored on the same problems. Each resample draws
+  training seeds with replacement and, independently, one set of problems with
+  replacement. That problem set is shared by every drawn seed and both arms. The
+  interval is the 2.5th and 97.5th percentile of 10,000 resampled mean effects, with
+  a fixed resampling seed. A rate difference can never leave `[-1, 1]`. A paired
+  Student t interval did leave it: with six seeds and one outlier, it gave an upper
+  bound of `+114.7%`.
+- An exact two-sided sign-flip permutation p-value over the seed-level paired effects.
+  With `n` seeds whose effects are nonzero, the smallest possible p is `2 / 2**n`,
+  which is `0.031` for six seeds. The Markdown report prints that floor beside the
+  p-value.
+
+The two numbers answer different questions. The permutation p asks whether the effect
+holds across training seeds on these exact problems. The bootstrap interval also asks
+whether it would hold on a fresh draw of problems. When an effect rests on a few
+problems, the p can be at its floor while the interval reaches zero. A percentile
+bootstrap over six seeds also tends to give an interval that is too narrow. The
+acceptance rule gates on the interval's lower bound.
+
+A run may also pin `evaluated_bundle_manifest`: the manifest of the bundle its
+completions were sampled from. Use this when that bundle is not the run's selected
+bundle. The report shows both the step the training run selected and the step that was
+evaluated. Without it, the evaluated step is the selected step.
+
+`studies/rlvr-placebo-step240.json` uses this to evaluate every arm at training step
+240. GRPO exports only the bundle with the best `train/reward_mean`. Under a random
+reward that choice is noise, so the six-seed placebo arms were evaluated at steps 8 to
+219, not at the end of the training budget. `rlvr-checkpoint-bundle` rebuilds a bundle
+from the periodic training checkpoint at any step:
+
+```bash
+uv run esme-posttrain rlvr-checkpoint-bundle \
+  --checkpoint <run>/checkpoints/step-000240/checkpoint.pt \
+  --template-bundle <run>/bundle --out <bundle-dir> --expected-step 240
+```
 
 The Countdown CompletionSet scorer matches the decomposition contract: it reads the
 expression inside `\boxed{...}`, rejects decimal tokens with leading zeroes, and then

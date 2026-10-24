@@ -38,7 +38,8 @@ from typing import Any
 
 import torch
 
-from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.bundle import file_sha256, load_dense_backbone_bundle
+from esme_posttrain.launch.modal_cli import local_git_commit, local_git_dirty
 from esme_posttrain.rl.countdown_lite import (
     extract_candidate_expression,
     render_chat_prompt,
@@ -139,7 +140,12 @@ def emit_completion_set(request: EmitRequest) -> dict[str, Any]:
         )
 
     dataset_ref = _dataset_ref(request.set_name, problems)
-    provenance = _provenance(request, dataset_ref, model_label=_model_label(request, loaded))
+    provenance = _provenance(
+        request,
+        dataset_ref,
+        model_label=_model_label(request, loaded),
+        weights_sha256=file_sha256(loaded.bundle.weights_path),
+    )
     return _write_completion_set(request.output_dir, provenance, items)
 
 
@@ -267,11 +273,16 @@ def _package_versions() -> dict[str, str]:
 
 
 def _provenance(
-    request: EmitRequest, dataset_ref: dict[str, Any], *, model_label: str
+    request: EmitRequest,
+    dataset_ref: dict[str, Any],
+    *,
+    model_label: str,
+    weights_sha256: str,
 ) -> dict[str, Any]:
+    source_dir = Path(__file__).resolve().parent
     return {
         "model": model_label,
-        "model_revision": None,
+        "model_revision": f"sha256:{weights_sha256}",
         "backend": "transformers",
         "prompt_strategy": "esme_countdown_chat",
         "sampling": {
@@ -283,8 +294,8 @@ def _provenance(
         },
         "dataset": dataset_ref,
         "n_problems": None,  # filled by _write_completion_set once items are counted
-        "commit": "esme-posttrain",
-        "dirty": False,
+        "commit": local_git_commit(source_dir),
+        "dirty": local_git_dirty(source_dir),
         "python_version": sys.version.split()[0],
         "package_versions": _package_versions(),
     }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import math
 import re
@@ -11,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from pydantic import ValidationError
 
 from esme_posttrain.rl.countdown_lite import (
@@ -36,38 +38,12 @@ class GeneratedStudyReport:
     payload: dict[str, Any]
 
 
-_T_95_CRITICAL = {
-    1: 12.706,
-    2: 4.303,
-    3: 3.182,
-    4: 2.776,
-    5: 2.570581835636305,
-    6: 2.447,
-    7: 2.365,
-    8: 2.306,
-    9: 2.262,
-    10: 2.228,
-    11: 2.201,
-    12: 2.179,
-    13: 2.160,
-    14: 2.145,
-    15: 2.131,
-    16: 2.120,
-    17: 2.110,
-    18: 2.101,
-    19: 2.093,
-    20: 2.086,
-    21: 2.080,
-    22: 2.074,
-    23: 2.069,
-    24: 2.064,
-    25: 2.060,
-    26: 2.056,
-    27: 2.052,
-    28: 2.048,
-    29: 2.045,
-    30: 2.042,
-}
+BOOTSTRAP_RESAMPLES = 10_000
+BOOTSTRAP_SEED = 0
+# 2**20 sign assignments is about a million; exact enumeration stays cheap below that.
+MAX_PERMUTATION_SEEDS = 20
+
+ProblemMetrics = dict[str, dict[str, float]]
 
 
 def load_study_specification(path: Path) -> StudySpecification:
@@ -93,12 +69,15 @@ def generate_study_report(
     compatibility_records: list[tuple[str, int, dict[str, Any]]] = []
     artifact_records: list[dict[str, Any]] = []
     missing_seeds: dict[str, list[int]] = {}
+    problem_metrics: dict[str, dict[int, ProblemMetrics]] = {}
 
     for arm in specification.arms:
         run_results = []
+        problem_metrics[arm.name] = {}
         for run in arm.runs:
-            result, compatibility, artifacts = _read_run(run, root)
+            result, per_problem, compatibility, artifacts = _read_run(run, root)
             run_results.append(result)
+            problem_metrics[arm.name][run.seed] = per_problem
             compatibility_records.append((arm.name, run.seed, compatibility))
             artifact_records.extend(artifacts)
         expected = set(specification.included_seeds)
@@ -107,7 +86,7 @@ def generate_study_report(
             missing_seeds[arm.name] = sorted(expected - actual)
         arm_results[arm.name] = _aggregate_arm(arm.role, run_results)
 
-    comparisons = _build_comparisons(specification, arm_results)
+    comparisons = _build_comparisons(specification, arm_results, problem_metrics)
     compatibility_errors = _compatibility_errors(specification, compatibility_records, arm_results)
     reference_errors, reference_artifacts = _reference_summary_errors(
         specification,
@@ -139,6 +118,11 @@ def generate_study_report(
         "compatibility_errors": compatibility_errors,
         "evidence_warnings": evidence_warnings,
         "confidence_interval_method": specification.confidence_interval_method.value,
+        "inference": {
+            "bootstrap_resamples": BOOTSTRAP_RESAMPLES,
+            "bootstrap_seed": BOOTSTRAP_SEED,
+            "permutation_test": "exact two-sided sign-flip over seed-level paired effects",
+        },
         "sample_budget": specification.sample_budget,
         "decoding": specification.decoding.model_dump(mode="json"),
         "task_manifest_ids": list(specification.task_manifest_ids),
@@ -163,7 +147,7 @@ def generate_study_report(
 
 def _read_run(
     run: StudyRunSpec, root: Path
-) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[dict[str, Any], ProblemMetrics, dict[str, Any], list[dict[str, Any]]]:
     completions_path = _artifact_path(run.completions.path, root)
     provenance_path = _artifact_path(run.provenance.path, root)
     artifacts = [
@@ -172,7 +156,7 @@ def _read_run(
     ]
     provenance = _read_json(provenance_path)
     rows = _read_jsonl(completions_path)
-    metrics = _score_completion_rows(rows)
+    metrics, per_problem = _score_completion_rows(rows)
     training = {
         "status": None,
         "selected_step": None,
@@ -193,6 +177,22 @@ def _read_run(
                 "selected_metric_value": manifest.get("selected_metric_value"),
             }
         )
+    training["evaluated_step"] = training["selected_step"]
+    if run.evaluated_bundle_manifest is not None:
+        path = _artifact_path(run.evaluated_bundle_manifest.path, root)
+        artifacts.append(_check_artifact(path, run.evaluated_bundle_manifest.sha256, root))
+        bundle_manifest = _read_json(path)
+        try:
+            evaluated_step = int(bundle_manifest["checkpoint_step"])
+            weights_sha256 = str(bundle_manifest["files"]["weights"]["sha256"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise StudyReportError(f"evaluated bundle manifest {path} is malformed") from error
+        # The bundle manifest is only evidence if its weights produced these samples.
+        if provenance.get("model_revision") != f"sha256:{weights_sha256}":
+            raise StudyReportError(
+                f"seed {run.seed} completions were not sampled from the weights in {path}"
+            )
+        training["evaluated_step"] = evaluated_step
     if run.cost is not None:
         path = _artifact_path(run.cost.path, root)
         artifacts.append(_check_artifact(path, run.cost.sha256, root))
@@ -206,12 +206,15 @@ def _read_run(
         )
     return (
         {"seed": run.seed, "metrics": metrics, "training": training},
+        per_problem,
         _compatibility_projection(provenance),
         artifacts,
     )
 
 
-def _score_completion_rows(rows: list[dict[str, Any]]) -> dict[str, float | int]:
+def _score_completion_rows(
+    rows: list[dict[str, Any]],
+) -> tuple[dict[str, float | int], ProblemMetrics]:
     if not rows:
         raise StudyReportError("completion artifact contains no rows")
     valid = 0
@@ -219,6 +222,7 @@ def _score_completion_rows(rows: list[dict[str, Any]]) -> dict[str, float | int]
     any_exact = 0
     sample_count: int | None = None
     seen_ids: set[str] = set()
+    per_problem: ProblemMetrics = {}
     for row in rows:
         try:
             problem = row["problem"]
@@ -245,13 +249,20 @@ def _score_completion_rows(rows: list[dict[str, Any]]) -> dict[str, float | int]
             sample_count = len(samples)
         elif len(samples) != sample_count:
             raise StudyReportError("completion artifact has inconsistent samples per problem")
-        problem_exact = False
+        problem_valid = 0
+        problem_exact = 0
         for sample in samples:
             result = _score_countdown_sample(sample, numbers=numbers, target=target)
-            valid += int(result.is_valid_expression)
-            exact += int(result.is_exact_solve)
-            problem_exact = problem_exact or result.is_exact_solve
-        any_exact += int(problem_exact)
+            problem_valid += int(result.is_valid_expression)
+            problem_exact += int(result.is_exact_solve)
+        valid += problem_valid
+        exact += problem_exact
+        any_exact += int(problem_exact > 0)
+        per_problem[problem_id] = {
+            StudyMetric.VALID_EXPRESSION_RATE.value: problem_valid / len(samples),
+            StudyMetric.EXACT_SOLVE_RATE.value: problem_exact / len(samples),
+            StudyMetric.ANY_EXACT_SOLVE_RATE.value: float(problem_exact > 0),
+        }
     assert sample_count is not None
     total_samples = len(rows) * sample_count
     return {
@@ -262,7 +273,7 @@ def _score_completion_rows(rows: list[dict[str, Any]]) -> dict[str, float | int]
         "exact_solve_rate": exact / total_samples,
         "any_exact_solve_rate": any_exact / len(rows),
         "any_exact_solved": any_exact,
-    }
+    }, per_problem
 
 
 def _score_countdown_sample(
@@ -389,10 +400,7 @@ def _reference_summary_errors(
             for name, arm in arm_results.items()
         },
         "comparisons": {
-            comparison["comparison_id"]: {
-                "mean_effect": comparison["mean_effect"],
-                "confidence_interval_95": comparison["confidence_interval_95"],
-            }
+            comparison["comparison_id"]: {"mean_effect": comparison["mean_effect"]}
             for comparison in comparisons
         },
     }
@@ -457,21 +465,39 @@ def _aggregate_arm(role: ArmRole, runs: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _build_comparisons(
-    specification: StudySpecification, arm_results: dict[str, dict[str, Any]]
+    specification: StudySpecification,
+    arm_results: dict[str, dict[str, Any]],
+    problem_metrics: dict[str, dict[int, ProblemMetrics]],
 ) -> list[dict[str, Any]]:
     results = []
     for comparison in specification.comparisons:
+        metric = comparison.metric.value
         treatment = {
-            int(run["seed"]): float(run["metrics"][comparison.metric.value])
+            int(run["seed"]): float(run["metrics"][metric])
             for run in arm_results[comparison.treatment_arm]["runs"]
         }
         reference = {
-            int(run["seed"]): float(run["metrics"][comparison.metric.value])
+            int(run["seed"]): float(run["metrics"][metric])
             for run in arm_results[comparison.reference_arm]["runs"]
         }
         paired_seeds = sorted(treatment.keys() & reference.keys())
         effects = [treatment[seed] - reference[seed] for seed in paired_seeds]
-        ci = _paired_student_t_95(effects) if len(effects) >= 2 else None
+        ci = None
+        permutation_p = None
+        if len(effects) >= 2:
+            problem_effects = _paired_problem_effects(
+                comparison.comparison_id,
+                [
+                    (
+                        problem_metrics[comparison.treatment_arm][seed],
+                        problem_metrics[comparison.reference_arm][seed],
+                    )
+                    for seed in paired_seeds
+                ],
+                metric,
+            )
+            ci = _seed_problem_bootstrap_95(problem_effects)
+            permutation_p = _sign_flip_permutation_p(effects)
         results.append(
             {
                 "comparison_id": comparison.comparison_id,
@@ -485,22 +511,60 @@ def _build_comparisons(
                 ],
                 "mean_effect": statistics.fmean(effects) if effects else None,
                 "confidence_interval_95": ci,
+                "permutation_p_value": permutation_p,
             }
         )
     return results
 
 
-def _paired_student_t_95(effects: list[float]) -> dict[str, float]:
-    if len(effects) < 2:
-        raise StudyReportError("paired Student t interval needs at least two paired seeds")
-    degrees_of_freedom = len(effects) - 1
-    critical = _T_95_CRITICAL.get(degrees_of_freedom)
-    if critical is None:
-        raise StudyReportError("paired Student t interval supports at most 31 paired seeds")
-    mean = statistics.fmean(effects)
-    standard_error = statistics.stdev(effects) / math.sqrt(len(effects))
-    margin = critical * standard_error
-    return {"lower": mean - margin, "upper": mean + margin}
+def _paired_problem_effects(
+    comparison_id: str,
+    seed_pairs: list[tuple[ProblemMetrics, ProblemMetrics]],
+    metric: str,
+) -> np.ndarray:
+    """Return a (seed, problem) matrix of treatment-minus-reference effects.
+
+    Arms are paired by training seed and, within a seed, by problem ID, so both
+    resampling levels keep the treatment and reference rows aligned.
+    """
+    problem_ids = sorted(seed_pairs[0][0])
+    rows = []
+    for treatment, reference in seed_pairs:
+        if sorted(treatment) != problem_ids or sorted(reference) != problem_ids:
+            raise StudyReportError(
+                f"comparison {comparison_id!r} arms do not share one problem set across seeds"
+            )
+        rows.append([treatment[pid][metric] - reference[pid][metric] for pid in problem_ids])
+    return np.asarray(rows, dtype=np.float64)
+
+
+def _seed_problem_bootstrap_95(problem_effects: np.ndarray) -> dict[str, float]:
+    # Two-way percentile bootstrap. Seeds and problems are crossed: every seed is scored
+    # on the same problems, so one problem draw per resample is shared by all seeds.
+    # Drawing problems separately per seed would average away the problem-level
+    # variance and narrow the interval. Rates stay inside [-1, 1] by construction.
+    seed_count, problem_count = problem_effects.shape
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
+    seed_draws = rng.integers(0, seed_count, size=(BOOTSTRAP_RESAMPLES, seed_count))
+    problem_draws = rng.integers(0, problem_count, size=(BOOTSTRAP_RESAMPLES, problem_count))
+    resampled = problem_effects[seed_draws[:, :, None], problem_draws[:, None, :]]
+    means = resampled.mean(axis=(1, 2))
+    lower, upper = np.quantile(means, [0.025, 0.975])
+    return {"lower": float(lower), "upper": float(upper)}
+
+
+def _sign_flip_permutation_p(effects: list[float]) -> float:
+    # Under the null of no treatment effect, each seed's paired effect is equally
+    # likely to carry either sign. Enumerate every assignment exactly.
+    if len(effects) > MAX_PERMUTATION_SEEDS:
+        raise StudyReportError(
+            f"exact sign-flip test supports at most {MAX_PERMUTATION_SEEDS} paired seeds"
+        )
+    values = np.asarray(effects, dtype=np.float64)
+    signs = np.array(list(itertools.product((1.0, -1.0), repeat=len(values))))
+    permuted = np.abs((signs * values).mean(axis=1))
+    observed = abs(values.mean())
+    return float(np.mean(permuted >= observed - 1e-12))
 
 
 def _verdict(
@@ -607,14 +671,18 @@ def _render_markdown(payload: dict[str, Any], *, json_filename: str) -> str:
                 "",
                 f"[Table data]({json_filename})",
                 "",
-                "| Seed | Train status | Selected step | Selected metric | Token budget |",
-                "| ---: | --- | ---: | ---: | ---: |",
+                "| Seed | Train status | Selected step | Selected metric | Evaluated step "
+                "| Token budget |",
+                "| ---: | --- | ---: | ---: | ---: | ---: |",
             ]
         )
         for run in arm["runs"]:
             training = run["training"]
             status = training["status"] or "n/a"
             step = training["selected_step"] if training["selected_step"] is not None else "n/a"
+            evaluated = (
+                training["evaluated_step"] if training["evaluated_step"] is not None else "n/a"
+            )
             selected_metric = (
                 f"{training['selected_metric_name']}={training['selected_metric_value']:.4f}"
                 if training["selected_metric_name"] is not None
@@ -627,7 +695,8 @@ def _render_markdown(payload: dict[str, Any], *, json_filename: str) -> str:
                 else "n/a"
             )
             lines.append(
-                f"| {run['seed']} | {status} | {step} | {selected_metric} | {token_budget} |"
+                f"| {run['seed']} | {status} | {step} | {selected_metric} | {evaluated} "
+                f"| {token_budget} |"
             )
         lines.extend(["", f"[Table data]({json_filename})", ""])
 
@@ -666,6 +735,7 @@ def _render_markdown(payload: dict[str, Any], *, json_filename: str) -> str:
                 f"- Metric: `{comparison['metric']}`",
                 f"- Mean effect: {_percent(comparison['mean_effect'], signed=True)}",
                 f"- 95% CI: {interval_text}",
+                f"- Sign-flip permutation p (two-sided): {_p_value(comparison)}",
                 f"- Paired seeds: {', '.join(str(seed) for seed in comparison['paired_seeds'])}",
                 f"- [Comparison data]({json_filename})",
                 "",
@@ -686,6 +756,16 @@ def _render_markdown(payload: dict[str, Any], *, json_filename: str) -> str:
     for artifact in payload["provenance"]:
         lines.append(f"- `{artifact['path']}` — `{artifact['sha256']}`")
     return "\n".join(lines) + "\n"
+
+
+def _p_value(comparison: dict[str, Any]) -> str:
+    p_value = comparison["permutation_p_value"]
+    if p_value is None:
+        return "n/a"
+    # A zero seed effect is unchanged by a sign flip, so only nonzero effects count.
+    nonzero = sum(1 for item in comparison["seed_effects"] if item["effect"] != 0.0)
+    floor = 2 / 2**nonzero if nonzero else 1.0
+    return f"{p_value:.4f} (smallest possible with these seeds: {floor:.4f})"
 
 
 def _percent(value: float | None, *, signed: bool = False) -> str:

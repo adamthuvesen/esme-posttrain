@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
+import numpy as np
 import pytest
 from pydantic import ValidationError
 
@@ -12,7 +14,11 @@ from esme_posttrain.studies.models import StudySpecification
 from esme_posttrain.studies.report import (
     StudyReportError,
     _compare_projection,
+    _p_value,
+    _paired_problem_effects,
     _score_countdown_sample,
+    _seed_problem_bootstrap_95,
+    _sign_flip_permutation_p,
     generate_study_report,
     load_study_specification,
 )
@@ -54,6 +60,61 @@ def test_generates_accepted_json_and_markdown_from_hashed_artifacts(tmp_path: Pa
     assert "[study.report.json](study.report.json)" in markdown
     assert "fixture-preempted" in markdown
     assert json.loads(generated.json_path.read_text(encoding="utf-8")) == generated.payload
+
+
+def test_bootstrap_interval_stays_inside_rate_bounds_with_an_outlier_seed() -> None:
+    # The shape of the six-seed placebo study: five seeds near +96 pp, one at +26 pp.
+    # A paired t interval on these seed effects reaches past +100 pp.
+    seed_effects = [0.26, 0.97, 0.96, 0.96, 0.96, 0.96]
+    problem_effects = np.array([[effect] * 30 for effect in seed_effects])
+
+    interval = _seed_problem_bootstrap_95(problem_effects)
+
+    assert -1.0 <= interval["lower"] < np.mean(seed_effects) < interval["upper"] <= 1.0
+
+
+def test_sign_flip_p_value_is_exact() -> None:
+    assert _sign_flip_permutation_p([0.1] * 6) == pytest.approx(2 / 64)
+    assert _sign_flip_permutation_p([0.1, -0.1]) == pytest.approx(1.0)
+
+
+def test_p_value_floor_ignores_zero_seed_effects() -> None:
+    comparison = {
+        "permutation_p_value": _sign_flip_permutation_p([0.1] * 5 + [0.0]),
+        "paired_seeds": list(range(6)),
+        "seed_effects": [{"effect": effect} for effect in [0.1] * 5 + [0.0]],
+    }
+
+    assert _p_value(comparison) == "0.0625 (smallest possible with these seeds: 0.0625)"
+
+
+def test_evaluated_bundle_must_match_the_sampled_weights(tmp_path: Path) -> None:
+    shutil.copytree(REPO_ROOT / "fixtures" / "studies", tmp_path / "fixtures" / "studies")
+    manifest_path = tmp_path / "bundle-manifest.json"
+    manifest_path.write_text(
+        json.dumps({"checkpoint_step": 240, "files": {"weights": {"sha256": "b" * 64}}}),
+        encoding="utf-8",
+    )
+    payload = _payload()
+    arms = payload["arms"]
+    assert isinstance(arms, list)
+    arms[0]["runs"][0]["evaluated_bundle_manifest"] = {
+        "path": "bundle-manifest.json",
+        "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+    }
+    spec_path = _write_spec(tmp_path, payload)
+
+    # The fixture provenance names no model_revision, so it cannot match these weights.
+    with pytest.raises(StudyReportError, match="were not sampled from the weights"):
+        generate_study_report(spec_path, output_dir=tmp_path / "output", repo_root=tmp_path)
+
+
+def test_comparison_rejects_arms_scored_on_different_problems() -> None:
+    treatment = {"p1": {"valid_expression_rate": 1.0}}
+    reference = {"p2": {"valid_expression_rate": 0.0}}
+
+    with pytest.raises(StudyReportError, match="do not share one problem set"):
+        _paired_problem_effects("c", [(treatment, reference)], "valid_expression_rate")
 
 
 def test_specification_rejects_unknown_fields() -> None:
@@ -247,10 +308,7 @@ def test_checked_real_report_matches_grpo_decomp_projection() -> None:
             for name, arm in report["arms"].items()
         },
         "comparisons": {
-            comparison["comparison_id"]: {
-                "mean_effect": comparison["mean_effect"],
-                "confidence_interval_95": comparison["confidence_interval_95"],
-            }
+            comparison["comparison_id"]: {"mean_effect": comparison["mean_effect"]}
             for comparison in report["comparisons"]
         },
     }

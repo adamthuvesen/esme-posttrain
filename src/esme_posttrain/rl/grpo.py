@@ -53,6 +53,16 @@ class CountdownGRPOTrainerError(TrainerError):
 
 
 @dataclass(frozen=True)
+class RLVRBundleIdentity:
+    artifact_name: str
+    reference_artifact_name: str
+    bundle_model_id: str
+    source_checkpoint: str
+    source_checkpoint_sha256: str | None
+    source_manifest: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class CountdownGRPOTrainerConfig:
     max_steps: int
     prompts_per_step: int
@@ -93,6 +103,17 @@ class CountdownGRPOTrainerConfig:
     source_manifest: dict[str, Any] = field(default_factory=dict)
     source_checkpoint: str = "in-memory-reference"
     source_checkpoint_sha256: str | None = None
+
+    @property
+    def bundle_identity(self) -> RLVRBundleIdentity:
+        return RLVRBundleIdentity(
+            artifact_name=self.artifact_name,
+            reference_artifact_name=self.reference_artifact_name,
+            bundle_model_id=self.bundle_model_id,
+            source_checkpoint=self.source_checkpoint,
+            source_checkpoint_sha256=self.source_checkpoint_sha256,
+            source_manifest=self.source_manifest,
+        )
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -468,11 +489,11 @@ def run_countdown_lite_grpo(
         data_position=last_step * config.prompts_per_step,
     )
     if config.write_final_bundle:
-        _write_bundle(
+        write_rlvr_bundle(
             bundle_final_dir,
             model=policy,
             tokenizer=tokenizer,
-            config=config,
+            identity=config.bundle_identity,
             checkpoint_step=last_step,
         )
     policy.load_state_dict(best_state)
@@ -484,11 +505,11 @@ def run_countdown_lite_grpo(
         scheduler=None,
         metrics=final_metrics,
     )
-    _write_bundle(
+    write_rlvr_bundle(
         bundle_dir,
         model=policy,
         tokenizer=tokenizer,
-        config=config,
+        identity=config.bundle_identity,
         checkpoint_step=best_step,
     )
     _write_manifest(
@@ -1038,13 +1059,14 @@ def _data_report(
     }
 
 
-def _write_bundle(
+def write_rlvr_bundle(
     bundle_dir: Path,
     *,
     model: DenseBackbone,
     tokenizer: Tokenizer,
-    config: CountdownGRPOTrainerConfig,
+    identity: RLVRBundleIdentity,
     checkpoint_step: int,
+    extra_provenance: dict[str, Any] | None = None,
 ) -> None:
     bundle_dir.mkdir(parents=True, exist_ok=True)
     model_config = canonical_model_config(model.config)
@@ -1063,12 +1085,12 @@ def _write_bundle(
         "llm_infer_config": llm_infer_model_config(model_config),
         "state_dict": model.state_dict(),
         "checkpoint_step": checkpoint_step,
-        "source_checkpoint": config.source_checkpoint,
-        "source_checkpoint_sha256": config.source_checkpoint_sha256,
+        "source_checkpoint": identity.source_checkpoint,
+        "source_checkpoint_sha256": identity.source_checkpoint_sha256,
     }
     torch.save(weights_payload, bundle_dir / "weights.pt")
     (bundle_dir / "README.md").write_text(
-        _bundle_readme(config, checkpoint_step=checkpoint_step),
+        _bundle_readme(identity, checkpoint_step=checkpoint_step),
         encoding="utf-8",
     )
     manifest = {
@@ -1076,12 +1098,12 @@ def _write_bundle(
         "format": BUNDLE_FORMAT,
         "weights_format": BUNDLE_FORMAT,
         "model_family": "DenseBackbone",
-        "model": {"id": config.bundle_model_id, "name": config.artifact_name, "stage": "rlvr"},
+        "model": {"id": identity.bundle_model_id, "name": identity.artifact_name, "stage": "rlvr"},
         "model_config": model_config,
         "llm_infer_config": llm_infer_model_config(model_config),
         "checkpoint_step": checkpoint_step,
-        "source_checkpoint": config.source_checkpoint,
-        "source_checkpoint_sha256": config.source_checkpoint_sha256,
+        "source_checkpoint": identity.source_checkpoint,
+        "source_checkpoint_sha256": identity.source_checkpoint_sha256,
         "files": {
             "config": {
                 "path": "config.json",
@@ -1111,9 +1133,10 @@ def _write_bundle(
         },
         "provenance": {
             "source": "countdown_lite_grpo",
-            "starts_from": config.reference_artifact_name,
+            "starts_from": identity.reference_artifact_name,
             "checkpoint_step": checkpoint_step,
-            "source_manifest": config.source_manifest,
+            "source_manifest": identity.source_manifest,
+            **(extra_provenance or {}),
         },
     }
     (bundle_dir / "manifest.json").write_text(
@@ -1121,12 +1144,12 @@ def _write_bundle(
     )
 
 
-def _bundle_readme(config: CountdownGRPOTrainerConfig, *, checkpoint_step: int) -> str:
+def _bundle_readme(identity: RLVRBundleIdentity, *, checkpoint_step: int) -> str:
     return (
-        f"# {config.artifact_name} DenseBackbone Bundle\n\n"
-        f"- Model id: `{config.bundle_model_id}`\n"
+        f"# {identity.artifact_name} DenseBackbone Bundle\n\n"
+        f"- Model id: `{identity.bundle_model_id}`\n"
         f"- Stage: `rlvr`; checkpoint step: `{checkpoint_step}`\n"
-        f"- Starts from: `{config.reference_artifact_name}`\n\n"
+        f"- Starts from: `{identity.reference_artifact_name}`\n\n"
         "Format contract: `llm_pretrain_dense_v1`.\n"
     )
 

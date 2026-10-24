@@ -169,6 +169,9 @@ results/esme-countdown/{summary,decomposition}`.
 
 ### Sampled multiseed result (2026-07-05)
 
+Superseded by the [fixed-step re-score](#fixed-step-re-score-2026-10-24) below, which
+fixes a checkpoint-selection defect and a seed-214 provenance error in this section.
+
 Re-measured the same held-out problems with **n=16, temperature 1.0** and aggregated over
 six training seeds. New Modal spend for the seed215-219 multiseed pairs was **$8.96**:
 seed215 real/placebo `$0.9999`/`$0.7507`, seed216 `$1.1223`/`$0.7447`, and seed217
@@ -195,7 +198,13 @@ Aggregate arm means:
 | random (placebo, random reward) | 0.8% | 0.1% | 0.8% | 1.7% | 0.50/30 |
 
 Seed-level tests (unit = training seed, n=6): valid-expression separation is **+84.7 pp,
-95% CI [+54.6, +114.7]**. Any-exact separation is **+8.9 pp, 95% CI [+6.0, +11.7]**.
+95% CI [+59.9, +97.5]**. Any-exact separation is **+8.9 pp, 95% CI [+0.6, +20.0]**. Both
+have an exact sign-flip permutation p of 0.031, the smallest two-sided value six seeds
+allow. The intervals come from a bootstrap that resamples seeds and, independently, one
+shared set of problems (`studies/rlvr-placebo.report.md`). The paired Student t interval
+first reported here,
+[+54.6, +114.7], went above the 100 pp ceiling a rate difference can reach, so it was
+replaced.
 
 **Reading:** real verifier reward is now separable from random-reward placebo across seeds
 on sampled held-out Countdown validity. Seed 214 was the low-validity outlier; seeds 215-219
@@ -203,3 +212,63 @@ all land near 97% validity while the placebos stay near base. Exact solving is s
 also positive across seeds. The supported claim is "RL sharpened form first, exact solving
 second," not "214M learned broad new Countdown reasoning." Artifacts: `grpo-decomp
 results/esme-countdown/{sampled_decomposition.md,sampled_multiseed_summary.json}`.
+
+### Fixed-step re-score (2026-10-24)
+
+The 2026-07-05 result above had two defects. This re-score fixes both. It used no new
+training: every arm was rebuilt from the training checkpoint each run kept at step 240.
+
+**Defect 1: checkpoint selection.** Each run exported only its bundle with the best
+`train/reward_mean`. Under a random reward that choice is noise. The evaluated placebo
+bundles came from steps 8, 49, 112, 162, and 219, while the real-reward bundles came from
+steps 159 to 234. The arms were not compared at the same training budget.
+
+**Defect 2: seed-214 provenance.** The study pinned the training manifest of run
+`v2-ccb6287-1` (best step 234) for the seed-214 real-reward arm. Its completions came from
+the bundle of run `caff0a1`, which selected step 22. Evidence: a re-emit from the `caff0a1`
+bundle with the study's decoding settings reproduces 457 of 480 samples exactly; a re-emit
+from the `v2-ccb6287-1` bundle reproduces 123. This is the "low-validity outlier" above.
+The emitter wrote no commit or weights hash at the time, so the error was not visible in
+the artifacts. The emitter now records both.
+
+**Method.**
+
+1. `rlvr-checkpoint-bundle` rebuilt a dense bundle from
+   `checkpoints/step-000240/checkpoint.pt` for all 12 arms. For seed 214, the rebuilt
+   bundle equals the trainer's own step-240 `bundle-final` in all 333 tensors.
+2. `rlvr-emit-decomp-completions` sampled each bundle on local CPU with the study's
+   decoding settings: `heldout_fresh`, n=16, temperature 1.0, 12 new tokens, seed 0.
+3. `studies/rlvr-placebo-step240.json` pins every CompletionSet and rebuilt bundle
+   manifest by hash. The baseline arm reuses the original Chat completions.
+
+Spend: $0 compute. Downloads were about 29 GiB of checkpoints from the
+`esme-posttrain-esme-rlvr-countdown` volume. The provenance of all 12 CompletionSets says
+`dirty: true`. The emit and convert code was committed at `297d94e`; the uncommitted
+changes during the run touched only the study report code and docs.
+
+**Result** (`studies/rlvr-placebo-step240.report.md`):
+
+| Seed | Real valid | Placebo valid | Real any-exact | Placebo any-exact |
+| --- | ---: | ---: | ---: | ---: |
+| 214 | 97.1% | 0.6% | 3/30 | 0/30 |
+| 215 | 97.7% | 0.6% | 3/30 | 0/30 |
+| 216 | 97.1% | 0.8% | 3/30 | 1/30 |
+| 217 | 97.1% | 0.6% | 3/30 | 0/30 |
+| 218 | 97.1% | 1.7% | 3/30 | 2/30 |
+| 219 | 96.9% | 1.2% | 3/30 | 2/30 |
+
+- Validity: **+96.2 pp, 95% CI [+94.5, +97.8]**, sign-flip p = 0.031.
+- Any-exact: **+7.2 pp, 95% CI [+0.0, +17.2]**, sign-flip p = 0.031.
+
+**Reading:** At a matched training budget, real verifier reward moves held-out validity
+from near base to about 97% on every seed; the random-reward placebo does not move it.
+The exact-solve gain is narrow. Every real seed solves the same three problems:
+`easy_0000` (1, 9 → 10), `easy_0002` (1, 3 → 4), and `medium_0004`. Placebo seeds
+sometimes solve the two easy ones, and the base model solves `easy_0002`. The exact-solve
+effect is consistent across seeds (p at its floor), but it rests on those three problems,
+so its interval over a fresh draw of problems reaches zero. The supported claim is "RL
+sharpened form." An exact-solve gain needs a larger held-out set before it is claimed.
+
+**Open issue:** the `caff0a1` and `v2-ccb6287-1` bundles on the volume fail their own
+manifest weights hash, although both files are complete and load. Bundles from those
+two runs need a re-export before they are used as evidence again.

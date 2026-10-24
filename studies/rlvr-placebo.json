@@ -138,7 +138,7 @@
     {"comparison_id": "real-vs-random-exact", "metric": "any_exact_solve_rate", "reference_arm": "random_reward", "treatment_arm": "real_reward"},
     {"comparison_id": "real-vs-baseline-validity", "metric": "valid_expression_rate", "reference_arm": "chat_baseline", "treatment_arm": "real_reward"}
   ],
-  "confidence_interval_method": "paired_student_t_95",
+  "confidence_interval_method": "seed_problem_bootstrap_95",
   "decoding": {"max_new_tokens": 12, "n": 16, "seed": 0, "temperature": 1.0, "top_p": 1.0},
   "excluded_runs": [
     {"reason": "Preempted before durable completion and excluded before the multiseed comparison.", "run_id": "esme-214m-rlvr-countdown-grpo-v2-ccb6287-attempt1"}
@@ -148,7 +148,7 @@
   "primary_metric": "valid_expression_rate",
   "reference_summary": {
     "path": "studies/references/grpo-decomp-sampled-multiseed-summary.json",
-    "sha256": "daa7ecea735d2ff13f1366f81d2a472abc9f89dbcce3be492d09b570a2fc4e90"
+    "sha256": "b138d6f51bf095df95963bc9f34f9e47fa3c9dbd9365eed7ef3c0008c15b7126"
   },
   "sample_budget": 480,
   "schema_version": 1,
