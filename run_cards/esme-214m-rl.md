@@ -272,3 +272,28 @@ sharpened form." An exact-solve gain needs a larger held-out set before it is cl
 **Open issue:** the `caff0a1` and `v2-ccb6287-1` bundles on the volume fail their own
 manifest weights hash, although both files are complete and load. Bundles from those
 two runs need a re-export before they are used as evidence again.
+
+## Stability ablation (2026-10-24)
+
+**Question:** which parts of the GRPO stability bundle produce the held-out validity gain?
+The accepted recipe combines a graded reward, Dr. GRPO mean-only advantages, zero-variance
+resampling, a success-replay buffer, and stratified difficulty sampling. Each ablation
+removes one part and keeps everything else equal to the seed 215-217 real-reward runs.
+
+| Arm | Change from the accepted recipe | Configs |
+| --- | --- | --- |
+| `binary` | Reward is 1.0 for an exact solve and 0.0 otherwise (no valid, format, or closeness credit). | `configs/esme-214m-rl-abl-binary-seed{215,216,217}.json` |
+| `nostab` | No zero-variance resampling, no replay buffer, no stratified sampling. | `configs/esme-214m-rl-abl-nostab-seed{215,216,217}.json` |
+| `stdnorm` | Advantages divided by the group standard deviation, as in the original GRPO. | `configs/esme-214m-rl-abl-stdnorm-seed{215,216,217}.json` |
+
+- **Control:** the existing seed 215-217 real-reward runs, scored at step 240.
+- **Dataset:** the committed Countdown-Lite train split (300 tasks); no download.
+- **Budget per run:** 240 steps, 8x16 rollouts, `max_new_tokens 12`, at most 5,300,000
+  rollout tokens. Training only (`skip_acceptance_eval`).
+- **Hardware:** 1x A100 per run on the private training account; 9 runs.
+- **Expected duration and cost:** about 30 minutes and $0.75-$1.15 per run, from the
+  multiseed receipts; about $9-$10 total. Hard stop $2.10 per run with a 1-hour timeout ($18.90 worst case),
+  inside the $25 approved for this campaign on 2026-10-24.
+- **Artifacts:** each run's step-240 training checkpoint is rebuilt with
+  `rlvr-checkpoint-bundle`, sampled with the placebo study's decoding settings, and
+  scored with the study report against the matched real-reward seeds.
