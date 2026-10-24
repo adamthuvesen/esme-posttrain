@@ -127,12 +127,13 @@ Each ablation removes one part of the recipe, over seeds 215-217
   distinct tasks, 18 of which no full-recipe seed solves. The graded reward trains this
   arithmetic away.
 - **Closeness-only partial credit.** This arm removes the flat 0.3 for any valid
-  expression and keeps only the credit for closeness to the target. The run still
-  collapses: 95% of samples add the numbers, and each seed solves the 13 sum tasks plus
-  one other. Validity is 2.9 pp lower than the full recipe (CI [+2.1, +3.8]). The
+  expression and the 0.05 format credit, and keeps only the credit for closeness to the
+  target. The run still collapses: 95% of samples add the numbers, and each seed solves
+  the 13 sum tasks plus one other. It follows the same path as the full recipe: 7 other
+  tasks solved at step 40, 2 at step 120, and 1 at step 240. Validity is 2.9 pp lower than the full recipe (CI [+2.1, +3.8]). The
   closeness credit alone pays for the template. Under this reward, a policy that always
-  writes the sum earns 0.29 on the training tasks, and the runs' training reward
-  plateaued at 0.26. The flat valid credit adds little.
+  writes the sum earns 0.29 on the training tasks. The runs' logged training reward
+  averaged 0.26 over their last 20 steps. The flat valid credit adds little.
 - **Stability techniques.** Removing resampling, the replay buffer, and stratified
   sampling lowers validity by 0.7 pp (CI [+0.3, +1.2]) and does not change the solved
   set. The run still collapses to the template.
@@ -141,8 +142,8 @@ Each ablation removes one part of the recipe, over seeds 215-217
 
 Three seeds cannot give a permutation p below 0.25, so these intervals rest on problem
 resampling. The binary and closeness results are large or consistent on all three
-seeds. Any partial credit for a wrong answer that is close to the target is enough to
-make the sum template the policy's best move.
+seeds. At the tested scale (up to 0.3), credit for a wrong answer that is close to the
+target is enough to make the sum template the policy's best move.
 
 ### 4. RL trades breadth for reliability
 
