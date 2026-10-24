@@ -20,9 +20,8 @@ reports two numbers:
   training seeds with replacement and, independently, one set of problems with
   replacement. That problem set is shared by every drawn seed and both arms. The
   interval is the 2.5th and 97.5th percentile of 10,000 resampled mean effects, with
-  a fixed resampling seed. A rate difference can never leave `[-1, 1]`. A paired
-  Student t interval did leave it: with six seeds and one outlier, it gave an upper
-  bound of `+114.7%`.
+  a fixed resampling seed. Unlike a paired Student t interval, it can never leave the
+  `[-1, 1]` range of a rate difference.
 - An exact two-sided sign-flip permutation p-value over the seed-level paired effects.
   With `n` seeds whose effects are nonzero, the smallest possible p is `2 / 2**n`,
   which is `0.031` for six seeds. The Markdown report prints that floor beside the
@@ -36,15 +35,13 @@ bootstrap over six seeds also tends to give an interval that is too narrow. The
 acceptance rule gates on the interval's lower bound.
 
 A run may also pin `evaluated_bundle_manifest`: the manifest of the bundle its
-completions were sampled from. Use this when that bundle is not the run's selected
-bundle. The report shows both the step the training run selected and the step that was
-evaluated. Without it, the evaluated step is the selected step.
-
-`studies/rlvr-placebo-step240.json` uses this to evaluate every arm at training step
-240. GRPO exports only the bundle with the best `train/reward_mean`. Under a random
-reward that choice is noise, so the six-seed placebo arms were evaluated at steps 8 to
-219, not at the end of the training budget. `rlvr-checkpoint-bundle` rebuilds a bundle
-from the periodic training checkpoint at any step:
+completions were sampled from. The report then checks that the bundle's weights hash
+matches the `model_revision` in the CompletionSet provenance, and shows the evaluated
+training step. Every treatment and control run in the committed studies pins it,
+because those arms are evaluated at one fixed step. The Chat baseline arm uses the
+exported Chat bundle and pins no manifest. GRPO exports the bundle with the best `train/reward_mean`, and under a
+random reward that choice is noise. `rlvr-checkpoint-bundle` rebuilds a bundle from the
+periodic training checkpoint at any step:
 
 ```bash
 uv run esme-posttrain rlvr-checkpoint-bundle \
@@ -55,14 +52,13 @@ uv run esme-posttrain rlvr-checkpoint-bundle \
 The Countdown CompletionSet scorer matches the decomposition contract: it reads the
 expression inside `\boxed{...}`, rejects decimal tokens with leading zeroes, and then
 applies the in-repo Countdown number-use and arithmetic verifier. This detail is pinned
-by a fixture because accepting `06` as the supplied number `6` changes the checked
-placebo table.
+by a fixture because accepting `06` as the supplied number `6` changes the scores.
 
 The library entry point is
 `esme_posttrain.studies.report.generate_study_report`. The CLI exposes it as:
 
 ```bash
-uv run esme-posttrain study-report --study studies/rlvr-placebo.json
+uv run esme-posttrain study-report --study studies/rlvr-placebo-step240-large.json
 ```
 
 By default the two outputs sit beside the specification as `<name>.report.json` and
@@ -70,12 +66,11 @@ By default the two outputs sit beside the specification as `<name>.report.json` 
 report. Edit the specification or source artifacts, then rebuild; do not hand-edit a
 generated report.
 
-The accepted six-seed report is checked in, while its source CompletionSets and
-training receipts remain under gitignored `runs/`. Rebuilding that real report needs
-those hash-matched local run artifacts; the compact `fixtures/studies/` report is the
-clean-checkout contract test.
+The study specifications and reports under `studies/` are checked in. Their source
+CompletionSets and training receipts stay under gitignored `runs/`, so rebuilding a
+real report needs those hash-matched local files. A unit test checks that each
+committed report matches the hash of its specification. The compact
+`fixtures/studies/` report is the clean-checkout contract test.
 
-The real specification also hashes a committed projection of
-`grpo-decomp/results/esme-countdown/sampled_multiseed_summary.json`. A seed, arm,
-aggregate, or confidence-interval drift rejects the report instead of silently
-replacing the retrospective's checked result.
+A specification may also pin `reference_summary`: a hashed projection of a result
+computed elsewhere. Any seed, arm, or mean-effect drift from it rejects the report.

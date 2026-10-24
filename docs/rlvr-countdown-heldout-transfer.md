@@ -1,7 +1,7 @@
 # RLVR Countdown Held-Out Transfer
 
 Did Countdown-Lite GRPO teach `Esme-214M-RL` the task family, or did it memorize
-the training distribution? This report scores the RL best checkpoint and its
+the training distribution? This report scores the RL step-240 checkpoint and its
 pre-RL warm start (`Esme-214M-Chat`, the DPO artifact GRPO started from) on two
 held-out task sets that are dedup-verified disjoint from all 360 committed
 Countdown-Lite tasks, using the acceptance protocol (`eval_max_new_tokens 12`,
@@ -9,19 +9,18 @@ Countdown-Lite tasks, using the acceptance protocol (`eval_max_new_tokens 12`,
 
 ## Verdict
 
-**A transferable template, not transferable arithmetic.** (Revised 2026-10-24.)
+**A transferable template, not transferable arithmetic.**
 After GRPO the RL model emits a valid expression ~99% of the time on fresh,
 never-seen tasks (both the fresh and target-shifted sets), versus 1-4% for the
 warm start. The expression is almost always the sum of the supplied numbers,
 whatever the target (`docs/rlvr-research-report.md`). Every exact solve below is a
 task whose target is that sum: `easy_0000` (1 + 9 = 10), `easy_0002` (1 + 3 = 4),
-and `medium_0004`. The 2-number "skill" in the first version of this report is
-the same template. The target-shifted set (targets 65-128) has no sum targets, and
+and `medium_0004`. The target-shifted set (targets 65-128) has no sum targets, and
 the model solves none of it.
 
 ## Metrics (32 samples/task, max_new_tokens=12, seed 214)
 
-The RL rows use the best-checkpoint bundle; both models were scored locally with
+Both models were scored locally with
 the same code path (`rlvr-countdown-lite-baseline`), so the comparison is
 device- and RNG-consistent. In-distribution acceptance is shown for reference.
 
@@ -74,26 +73,17 @@ builder in `src/esme_posttrain/rl/countdown_heldout.py`, selection seed 4126).
 
 ## Checkpoint provenance
 
-- `Esme-214M-RL`: the dense bundle the GRPO job exported after restoring the
-  best checkpoint (step 234, `train/reward_mean` 0.7142).
-- `Esme-214M-Chat`: `exports/esme-214m-chat/`, the exported DPO best
-  checkpoint, the exact artifact GRPO warm-started from.
-
-**Re-verified 2026-10-24.** The step-234 bundle above later failed its own manifest
-weights hash, so every cell was re-run on hash-verified bundles:
-
-- RL: the step-240 bundle rebuilt from run `v2-ccb6287-1`'s training checkpoint with
-  `rlvr-checkpoint-bundle`. It is tensor-identical to the trainer's own step-240 export
-  (weights sha256 `b35cdfb5…`). Steps 234 and 240 score identically on acceptance.
-- Chat: weights sha256 `3e7c1a45…`, the warm-start hash every RL run recorded.
-
-All twelve 12-token numbers in the tables above reproduce exactly. The re-run reports
-are under gitignored `artifacts/verified-heldout/`.
+- `Esme-214M-RL`: the step-240 bundle rebuilt from the accepted run's training
+  checkpoint with `rlvr-checkpoint-bundle` (weights sha256 `b35cdfb5…`). It is
+  tensor-identical to the trainer's own step-240 export, and it scores the same as the
+  step-234 best checkpoint on the acceptance eval.
+- `Esme-214M-Chat`: the exported DPO best checkpoint (weights sha256 `3e7c1a45…`), the
+  exact artifact every GRPO run warm-started from.
 
 ## Execution and spend
 
-- All evals ran locally on CPU: **local, $0**. No private training function was
-  launched and no W&B run was created.
+- All evals ran locally on CPU for $0. Reports are under gitignored
+  `artifacts/verified-heldout/`.
 - Eval command per cell (bundle and split vary):
   `uv run esme-posttrain rlvr-countdown-lite-baseline --manifest
   data/manifests/esme-214m-rl-heldout.tasks.json --bundle <bundle-dir>

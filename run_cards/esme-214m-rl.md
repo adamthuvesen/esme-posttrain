@@ -73,7 +73,8 @@ Training reward rose from 0.03 to a last-20-step mean of 0.51 (best 0.71 at
 step 234) with no collapse; zero of 240 steps logged `reward_mean == 0`. GRPO
 takes the valid-expression rate from 5.83% to 99.38% and lifts exact solves on
 the easy band; all 5 solved tasks are easy-band, and medium/hard stay at 0%
-pass. 214M does not master exact-solve. The five solved tasks are the five acceptance tasks whose target is the sum of the numbers. The model learned to write that sum (`docs/rlvr-research-report.md`).
+pass. The five solved tasks are the five acceptance tasks whose target is the sum of
+the numbers. The model learned to write that sum (`docs/rlvr-research-report.md`).
 
 ## Acceptance
 
@@ -95,231 +96,74 @@ uv run esme-posttrain rlvr-pipeline-smoke --config configs/esme-214m-rl.json --j
 uv run esme-posttrain rlvr-countdown-lite-build-data --repo-root . --json
 ```
 
-## GRPO-gain decomposition (real signal vs placebo)
+## Placebo control
 
-The accepted `Esme-214M-RL` gain is decomposed with the `grpo-decomp` harness by
-comparing three arms on the held-out `heldout_fresh` Countdown set:
+A random-reward placebo separates the reward signal from the training process. It runs
+the accepted recipe and budget with `grpo.reward_mode = "random"`: each reward is drawn
+(seeded by `random_reward_seed`) from the same three-level support {invalid, valid,
+exact}, independent of the completion.
 
-- **base**: `exports/esme-214m-chat` (pre-RL).
-- **correct**: `exports/esme-214m-rl-caff0a1` (real verifier reward). This export held
-  the step-22 bundle of run `caff0a1`, not the accepted step-234 model; see the fixed-step
-  re-score below.
-- **random**: the same recipe/budget with `grpo.reward_mode = "random"`: the reward is
-  drawn (seeded via `random_reward_seed`) uniformly over the same three-level support
-  {invalid, valid, exact}, independent of the completion. Any gain it shows is
-  training-process placebo, not reward signal.
+- **Configs:** real reward `configs/esme-214m-rl.json` (seed 214) and
+  `configs/esme-214m-rl-seed{215..219}.json`; placebo
+  `configs/esme-214m-rl-placebo.json` (seed 214) and
+  `configs/esme-214m-rl-placebo-seed{215..219}.json`.
+- **Runs:** training only (`skip_acceptance_eval`), 240 steps, 1x A100, about $0.74 to
+  $1.12 per run.
+- **Evaluation:** each run's step-240 training checkpoint is rebuilt into a bundle with
+  `rlvr-checkpoint-bundle`, then sampled on `heldout_large` (200 tasks, 16 samples,
+  temperature 1.0, 12 new tokens, seed 0) with `rlvr-emit-decomp-completions`.
+- **Study:** `studies/rlvr-placebo-step240-large.json` pins every CompletionSet and
+  bundle manifest by hash.
 
-The first strict slice added a seed-214 placebo via `configs/esme-214m-rl-placebo.json`.
-The 2026-07-05 multiseed follow-up adds seed 215-219 real-verifier and random-reward
-pairs (`configs/esme-214m-rl{-placebo,}-seed{215,216,217,218,219}.json`) so the claim can be
-made over training seeds instead of one run.
+| Measure | Real reward | Placebo | Difference, 95% CI |
+| --- | ---: | ---: | --- |
+| Valid expressions | 97.9% | 1.3% | +96.6 pp [+95.9, +97.3] |
+| Exact solves, per sample | 6.3% | 0.07% | +6.2 pp [+3.2, +9.6] |
+| Problems solved at least once | 6.6% | 1.2% | +5.4 pp [+2.2, +9.0] |
 
-For the multiseed arms, `skip_acceptance_eval` keeps each run training-only: load base
-bundle → 240 GRPO steps → export the best-by-`train/reward_mean` bundle, with no
-before/after acceptance eval. The decomposition does not use those evals; completions come
-from the emitter, checkpoint selection is by `train/reward_mean`, and all scoring happens
-offline in `grpo-decomp`.
+Every comparison has a sign-flip p of 0.031, the floor for six seeds. The real-reward
+gain is the sum template: every seed solves the 13 sum-target tasks and, between them,
+one other task.
 
-Completions for each arm are exported as `grpo-decomp` `CompletionSet` artifacts
-(`provenance.json` + `completions.jsonl`) with the emitter:
+## Ablations
 
-```bash
-uv run esme-posttrain rlvr-emit-decomp-completions \
-  --bundle exports/esme-214m-chat --set heldout_fresh \
-  --out runs/decomp/base__esme-countdown --n 1 --temperature 0.0 --json
-```
-
-Each emitted sample is the model's Countdown expression wrapped in `\boxed{...}`; the
-`grpo-decomp` `esme-countdown` verifier grades it with Esme's rules (each supplied number
-used exactly once, `+ - *` only, integer result equal to target). The sampled multi-seed
-result is produced offline by `scripts/esme_sampled_decomp.py` in the `grpo-decomp` repo.
-
-CPU-fixture proof (no private compute): `tests/test_rlvr_decomp.py` here, plus
-`tests/test_esme_countdown_decomp.py` in `grpo-decomp`.
-
-### Result (2026-07-03, preliminary 1-seed read)
-
-Placebo run: private training job, 240 steps, ~24 min, ~$0.83. Its
-`train/reward_mean` stayed flat (~0.42, the random-draw average) with no climb
-and confirmed the reward carried no task signal. Two earlier attempts on A100
-spot failed first to worker preemption (step 156) and then to a before-eval
-wall-timeout (928/960); adding `skip_acceptance_eval` removed the eval phases
-and the run completed clean on the third try. Sunk spend on the two failed
-attempts ~$5.
-
-Greedy pass@1 on `heldout_fresh` (n=30), graded by the `esme-countdown` verifier:
-
-| Arm | Solved | pass@1 |
-| --- | ---: | ---: |
-| base (Esme-214M-Chat) | 1/30 | 3.33% |
-| correct (Esme-214M-RL, real reward) | 2/30 | 6.67% |
-| random (placebo, random reward) | 1/30 | 3.33% |
-
-Pre-registered confirmatory test, placebo `correct − random`: **+3.3 pp, exact-binomial
-p = 1.0, n_discordant = 1, 95% CI [0.0, +10.0] pp**. The real-reward model's edge over the
-random-reward placebo rests on a **single** discordant problem (2 vs 1 solved) and is not
-statistically distinguishable from zero at this scale. Format sensitivity (lenient vs strict
-extraction) was +0.0 pp.
-
-**Reading:** on a held-out set with **greedy decoding and exact-solve only**, RL's contribution
-beyond a same-budget placebo is not separable. That is a measurement artifact, not a null
-result, and the sampled re-measurement below overturns it. Greedy pass@1 on exact-solve is the
-sparsest, lowest-power slice available for a 214M model on Countdown (the whole dynamic range is
-1-2 problems), so it cannot see the effect. Kept here as the strict-slice footnote; the honest
-headline is the sampled result. Artifacts: `grpo-decomp
-results/esme-countdown/{summary,decomposition}`.
-
-### Sampled multiseed result (2026-07-05)
-
-Superseded by the [fixed-step re-score](#fixed-step-re-score-2026-10-24) below, which
-fixes a checkpoint-selection defect and a seed-214 provenance error in this section.
-
-Re-measured the same held-out problems with **n=16, temperature 1.0** and aggregated over
-six training seeds. New Modal spend for the seed215-219 multiseed pairs was **$8.96**:
-seed215 real/placebo `$0.9999`/`$0.7507`, seed216 `$1.1223`/`$0.7447`, and seed217
-`$0.9952`/`$0.7547`, seed218 `$1.0612`/`$0.7908`, and seed219 `$0.9910`/`$0.7473`.
-The prior seed214 placebo receipt was about `$0.83`.
-
-Seed-level result, each seed on the same 30 held-out problems with 16 samples/problem:
-
-| Seed | correct valid | random valid | Δ valid | correct any-exact | random any-exact |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 214 | 27.1% | 0.8% | +26.2pp | 4/30 | 0/30 |
-| 215 | 97.7% | 0.4% | +97.3pp | 3/30 | 0/30 |
-| 216 | 97.1% | 0.8% | +96.2pp | 3/30 | 1/30 |
-| 217 | 97.1% | 0.6% | +96.5pp | 3/30 | 0/30 |
-| 218 | 96.7% | 0.6% | +96.0pp | 3/30 | 1/30 |
-| 219 | 96.9% | 1.2% | +95.6pp | 3/30 | 1/30 |
-
-Aggregate arm means:
-
-| Arm | valid-expr rate | pass@1 | pass@8 | pass@16 | any-exact solved |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| base (Esme-214M-Chat) | 0.8% | 0.2% | 1.7% | 3.3% | 1/30 |
-| correct (Esme-214M-RL, real reward) | 85.4% | 9.0% | 10.3% | 10.6% | 3.17/30 |
-| random (placebo, random reward) | 0.8% | 0.1% | 0.8% | 1.7% | 0.50/30 |
-
-Seed-level tests (unit = training seed, n=6): valid-expression separation is **+84.7 pp,
-95% CI [+59.9, +97.5]**. Any-exact separation is **+8.9 pp, 95% CI [+0.6, +20.0]**. Both
-have an exact sign-flip permutation p of 0.031, the smallest two-sided value six seeds
-allow. The intervals come from a bootstrap that resamples seeds and, independently, one
-shared set of problems (`studies/rlvr-placebo.report.md`). The paired Student t interval
-first reported here,
-[+54.6, +114.7], went above the 100 pp ceiling a rate difference can reach, so it was
-replaced.
-
-**Reading:** real verifier reward is now separable from random-reward placebo across seeds
-on sampled held-out Countdown validity. Seed 214 was the low-validity outlier; seeds 215-219
-all land near 97% validity while the placebos stay near base. Exact solving is smaller but
-also positive across seeds. The supported claim is "RL sharpened form first, exact solving
-second," not "214M learned broad new Countdown reasoning." Artifacts: `grpo-decomp
-results/esme-countdown/{sampled_decomposition.md,sampled_multiseed_summary.json}`.
-
-### Fixed-step re-score (2026-10-24)
-
-The 2026-07-05 result above had two defects. This re-score fixes both. It used no new
-training: every arm was rebuilt from the training checkpoint each run kept at step 240.
-
-**Defect 1: checkpoint selection.** Each run exported only its bundle with the best
-`train/reward_mean`. Under a random reward that choice is noise. The evaluated placebo
-bundles came from steps 8, 49, 112, 162, and 219, while the real-reward bundles came from
-steps 159 to 234. The arms were not compared at the same training budget.
-
-**Defect 2: seed-214 provenance.** The study pinned the training manifest of run
-`v2-ccb6287-1` (best step 234) for the seed-214 real-reward arm. Its completions came from
-the bundle of run `caff0a1`, which selected step 22. Evidence: a re-emit from the `caff0a1`
-bundle with the study's decoding settings reproduces 457 of 480 samples exactly; a re-emit
-from the `v2-ccb6287-1` bundle reproduces 123. This is the "low-validity outlier" above.
-The emitter wrote no commit or weights hash at the time, so the error was not visible in
-the artifacts. The emitter now records both.
-
-**Method.**
-
-1. `rlvr-checkpoint-bundle` rebuilt a dense bundle from
-   `checkpoints/step-000240/checkpoint.pt` for all 12 arms. For seed 214, the rebuilt
-   bundle equals the trainer's own step-240 `bundle-final` in all 333 tensors.
-2. `rlvr-emit-decomp-completions` sampled each bundle on local CPU with the study's
-   decoding settings: `heldout_fresh`, n=16, temperature 1.0, 12 new tokens, seed 0.
-3. `studies/rlvr-placebo-step240.json` pins every CompletionSet and rebuilt bundle
-   manifest by hash. The baseline arm reuses the original Chat completions.
-
-Spend: $0 compute. Downloads were about 29 GiB of checkpoints from the
-`esme-posttrain-esme-rlvr-countdown` volume. The provenance of all 12 CompletionSets says
-`dirty: true`. The emit and convert code was committed at `297d94e`; the uncommitted
-changes during the run touched only the study report code and docs.
-
-**Result** (`studies/rlvr-placebo-step240.report.md`):
-
-| Seed | Real valid | Placebo valid | Real any-exact | Placebo any-exact |
-| --- | ---: | ---: | ---: | ---: |
-| 214 | 97.1% | 0.6% | 3/30 | 0/30 |
-| 215 | 97.7% | 0.6% | 3/30 | 0/30 |
-| 216 | 97.1% | 0.8% | 3/30 | 1/30 |
-| 217 | 97.1% | 0.6% | 3/30 | 0/30 |
-| 218 | 97.1% | 1.7% | 3/30 | 2/30 |
-| 219 | 96.9% | 1.2% | 3/30 | 2/30 |
-
-- Validity: **+96.2 pp, 95% CI [+94.5, +97.8]**, sign-flip p = 0.031.
-- Any-exact: **+7.2 pp, 95% CI [+0.0, +17.2]**, sign-flip p = 0.031.
-
-**Reading:** At a matched training budget, real verifier reward moves held-out validity
-from near base to about 97% on every seed; the random-reward placebo does not move it.
-The exact-solve gain is narrow. Every real seed solves the same three problems:
-`easy_0000` (1, 9 → 10), `easy_0002` (1, 3 → 4), and `medium_0004`. Placebo seeds
-sometimes solve the two easy ones, and the base model solves `easy_0002`. The exact-solve
-effect is consistent across seeds (p at its floor), but it rests on those three problems,
-so its interval over a fresh draw of problems reaches zero. The supported claim is "RL
-sharpened form." An exact-solve gain needs a larger held-out set before it is claimed.
-
-**Legacy bundles:** the exported `caff0a1` and `v2-ccb6287-1` bundles fail their own
-manifest weights hash, although both files are complete and load. No current result
-depends on them: the studies and the held-out docs use bundles rebuilt from training
-checkpoints and verified by hash.
-
-## Stability ablation (2026-10-24)
-
-**Question:** which parts of the GRPO stability bundle produce the held-out validity gain?
-The accepted recipe combines a graded reward, Dr. GRPO mean-only advantages, zero-variance
-resampling, a success-replay buffer, and stratified difficulty sampling. Each ablation
-removes one part and keeps everything else equal to the seed 215-217 real-reward runs.
+Each ablation changes one part of the accepted recipe and keeps everything else equal
+to the seed 215-217 real-reward runs.
 
 | Arm | Change from the accepted recipe | Configs |
 | --- | --- | --- |
-| `binary` | Reward is 1.0 for an exact solve and 0.0 otherwise (no valid, format, or closeness credit). | `configs/esme-214m-rl-abl-binary-seed{215,216,217}.json` |
+| `binary` | Reward is 1.0 for an exact solve and 0.0 otherwise. | `configs/esme-214m-rl-abl-binary-seed{215,216,217}.json` |
+| `closeness` | Reward is 1.0 for an exact solve, `0.3 * exp(-abs(value - target) / target)` for any other valid expression, and 0.0 otherwise. No flat valid or format credit. | `configs/esme-214m-rl-abl-closeness-seed{215,216,217}.json` |
 | `nostab` | No zero-variance resampling, no replay buffer, no stratified sampling. | `configs/esme-214m-rl-abl-nostab-seed{215,216,217}.json` |
 | `stdnorm` | Advantages divided by the group standard deviation, as in the original GRPO. | `configs/esme-214m-rl-abl-stdnorm-seed{215,216,217}.json` |
 
-- **Control:** the existing seed 215-217 real-reward runs, scored at step 240.
 - **Dataset:** the committed Countdown-Lite train split (300 tasks); no download.
 - **Budget per run:** 240 steps, 8x16 rollouts, `max_new_tokens 12`, at most 5,300,000
-  rollout tokens. Training only (`skip_acceptance_eval`).
-- **Hardware:** 1x A100 per run on the private training account; 9 runs.
-- **Expected duration and cost:** about 30 minutes and $0.75-$1.15 per run, from the
-  multiseed receipts; about $7-$10 total. Hard stop $2.10 per run with a 1-hour timeout ($18.90 worst case),
-  inside the $25 approved for this campaign on 2026-10-24.
-- **Evaluation sampling:** `scripts/modal_emit_completions.py` rebuilds and samples
-  checkpoints on 1x A10G per job, at most 3 containers at once. Expected cost: a few
-  dollars for the 200-task set, learning curves, and pass@k. Same $25 approval.
-- **Artifacts:** each run's step-240 training checkpoint is rebuilt with
-  `rlvr-checkpoint-bundle`, sampled with the placebo study's decoding settings, and
-  scored with the study report against the matched real-reward seeds.
+  rollout tokens, training only. 1x A100, 1-hour timeout, hard stop $2.10.
+- **Evaluation:** the same rebuild, sampling, and `heldout_large` protocol as the
+  placebo control. Sampling runs on 1x A10G per job, at most 3 jobs at once
+  (`scripts/modal_emit_completions.py`).
+- **Studies:** `studies/rlvr-ablation-{binary,nostab,stdnorm}.json`, each against the
+  matched real-reward seeds.
 
-### Ablation result (2026-10-24)
+Step-240 results on `heldout_large`, mean of seeds 215-217:
 
-All nine runs completed 240 steps for $8.84 in total. Each step-240 checkpoint was
-rebuilt and sampled on `heldout_large` (200 tasks, 16 samples, temperature 1.0):
+| Arm | Valid | Samples that add all numbers | Problems solved (of 200) | Report |
+| --- | ---: | ---: | ---: | --- |
+| Full recipe | 98.0% | 97.8% | 13.0 | |
+| `binary` | 59.2% | 50.0% | 28.3 | `studies/rlvr-ablation-binary.report.md` |
+| `nostab` | 97.3% | 97.0% | 13.3 | `studies/rlvr-ablation-nostab.report.md` |
+| `stdnorm` | 97.9% | 97.7% | 13.0 | `studies/rlvr-ablation-stdnorm.report.md` |
 
-| Arm | Valid | Problems solved (of 200) | Report |
-| --- | ---: | ---: | --- |
-| Full recipe (seeds 215-217) | 98.0% | 13.0 | |
-| `binary` | 59.2% | 28.3 | `studies/rlvr-ablation-binary.report.md` |
-| `nostab` | 97.3% | 13.3 | `studies/rlvr-ablation-nostab.report.md` |
-| `stdnorm` | 97.9% | 13.0 | `studies/rlvr-ablation-stdnorm.report.md` |
+The reward shape decides the outcome. With the graded reward every run collapses to the
+sum template and solves only the 13 sum-target tasks. With the binary reward the model
+writes the sum on half of its samples and also solves 15-18 other tasks. The stability
+techniques change validity by under 1 pp, and the advantage normalization changes
+nothing. The `closeness` arm is in training.
 
-The graded reward is the component that matters. With it, every run collapses to one
-template, the sum of all the numbers, which solves only the 13 tasks whose target is
-that sum. With the binary reward the model writes the sum on half of its samples and
-also solves 15-18 other tasks. The stability techniques change validity by under 1 pp
-and leave the solved set unchanged. The advantage normalization changes nothing.
-Evaluation sampling on A10Gs cost about $6, estimated from container hours. Analysis:
-`docs/rlvr-research-report.md`.
+## Spend
+
+The placebo control cost about $9.80 for eleven training runs. The `binary`, `nostab`,
+and `stdnorm` ablations cost $8.84 for nine runs on A100s. Evaluation sampling on A10Gs
+cost about $6, estimated from container hours. All other evaluation ran
+on a laptop CPU.
