@@ -216,7 +216,7 @@ immutable nested values. Serialization returns a fresh JSON-compatible value
 at the artifact or CLI boundary. Optional fields retain their original presence.
 There is no separately maintained JSON schema.
 
-Mypy uses Pydantic's plugin to check model constructors and frozen fields.
+Basedpyright checks model constructors and frozen fields through Pydantic's dataclass transform.
 It also checks the Modal SDK calls and config consumers in `scripts/modal_*.py`.
 Config shape errors identify the input file and nested field. Recipe errors
 name the failed constraint.

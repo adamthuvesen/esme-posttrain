@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false
 """CPU-fixture proof for the GRPO-gain decomposition pipeline (esme-posttrain side).
 
 Proves the two esme-posttrain halves of the decomposition without Modal: the random-reward

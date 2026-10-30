@@ -20,7 +20,7 @@ Run test files with `uv run --locked pytest <path>`. Run `make check` before com
 It includes dependency boundaries, the full CPU stage chain, and type checking for Modal entrypoints.
 
 Config shape errors identify the input file and nested field. Recipe errors
-name the failed constraint. Mypy reports the
+name the failed constraint. Basedpyright reports the
 consumer that uses a missing field, assigns to frozen settings, or passes
 the wrong stage config. Fix the owning model or consumer shown by the error.
 

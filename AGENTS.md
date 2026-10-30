@@ -8,7 +8,7 @@ Local rules for `esme-posttrain`. The global agent rules still apply.
 make install      # install the committed dependency versions
 make check        # the gate: architecture, lint, types, tests; same command as CI
 make architecture # dependency boundaries with repair guidance
-make fmt          # auto-format + safe lint fixes
+make fix          # ruff format + safe lint fixes
 make test         # tests in parallel (pytest -n auto), including the full CPU stage chain
 ```
 

@@ -1,10 +1,10 @@
 .DEFAULT_GOAL := check
-.PHONY: install fmt architecture lint type test check verify
+.PHONY: install fix architecture lint type test check verify
 
 install:  ## Sync the dev environment
 	uv sync --locked --extra dev
 
-fmt:  ## Auto-format and apply safe lint fixes
+fix:  ## Auto-format and apply safe lint fixes
 	uv run --locked ruff format .
 	uv run --locked ruff check --fix .
 

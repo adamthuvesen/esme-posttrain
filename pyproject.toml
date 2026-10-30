@@ -48,12 +48,14 @@ reportUnknownArgumentType = false
 reportUnknownVariableType = false
 reportUnknownParameterType = false
 reportUnknownLambdaType = false
+reportMissingTypeStubs = false
 # Importing a name through a module that only re-exports it is an error.
 reportPrivateLocalImportUsage = "error"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "tests"
 reportMissingParameterType = false
+reportPrivateUsage = false
 extraPaths = [".", "src"]
 
 [tool.importlinter]
@@ -106,6 +108,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF"]
+ignore = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"
