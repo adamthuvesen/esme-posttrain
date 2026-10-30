@@ -5,15 +5,15 @@ install:  ## Sync the dev environment
 	uv sync --locked --extra dev
 
 fix:  ## Auto-format and apply safe lint fixes
-	uv run --locked ruff format .
-	uv run --locked ruff check --fix .
+	uv run --locked ruff format . .agents/skills/verify-esme-posttrain/verify
+	uv run --locked ruff check --fix . .agents/skills/verify-esme-posttrain/verify
 
 architecture:  ## Check dependency boundaries and show repair guidance
 	uv run --locked lint-imports --no-logo --cache-dir .cache/import-linter
 
 lint:  ## Lint and format-check (no changes)
-	uv run --locked ruff check .
-	uv run --locked ruff format --check .
+	uv run --locked ruff check . .agents/skills/verify-esme-posttrain/verify
+	uv run --locked ruff format --check . .agents/skills/verify-esme-posttrain/verify
 
 type:  ## Strict type-check the package, Modal entrypoints, scripts, and tests
 	uv run --locked basedpyright

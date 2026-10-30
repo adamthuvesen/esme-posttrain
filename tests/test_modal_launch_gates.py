@@ -3,7 +3,8 @@
 A launcher is any repo module that builds a ``modal.App``. A launch is
 ``<modal function>.remote/.spawn/.map/...``. A gate is an earlier
 ``if not approved:`` or ``if blockers:`` whose body returns or raises. A helper
-that launches without a gate passes only when every caller gates first.
+that launches without a gate passes only when every caller gates first. A function
+that writes files, checkpoints, or a login before its gate fails.
 """
 
 from __future__ import annotations
@@ -16,6 +17,10 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LAUNCH_METHODS = {"remote", "spawn", "map", "starmap", "for_each", "spawn_map"}
+STATE_WRITES = {
+    *("open", "write_text", "write_bytes", "mkdir", "makedirs", "touch", "mkdtemp"),
+    *("save", "commit", "init", "login"),
+}
 LAUNCHERS = sorted(
     path
     for path in [*REPO_ROOT.glob("scripts/*.py"), *REPO_ROOT.glob("src/**/*.py")]
@@ -63,8 +68,28 @@ def _gated(function: ast.FunctionDef, line: int) -> bool:
     )
 
 
+def _writes_before_gate(function: ast.FunctionDef, label: str) -> list[str]:
+    gates = [n.lineno for n in ast.walk(function) if isinstance(n, ast.If) and _is_gate(n)]
+    if not gates:
+        return []
+    writes = []
+    for node in ast.walk(function):
+        if isinstance(node, ast.Call) and node.lineno < min(gates):
+            name = _name(node.func) or ""
+            if name in STATE_WRITES or name.startswith("write_"):
+                writes.append(
+                    f"{label}:{node.lineno} {function.name}() calls {name}() before its approval "
+                    "gate. Refuse first, then write state."
+                )
+    return writes
+
+
 def _ungated_paths(path: Path) -> tuple[int, list[str]]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return _ungated_source(path.read_text(encoding="utf-8"), str(path.relative_to(REPO_ROOT)))
+
+
+def _ungated_source(source: str, label: str) -> tuple[int, list[str]]:
+    tree = ast.parse(source)
     modal_functions = _modal_function_names(tree)
     functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
 
@@ -86,6 +111,7 @@ def _ungated_paths(path: Path) -> tuple[int, list[str]]:
 
     launches, failures = 0, []
     for function in functions.values():
+        failures += _writes_before_gate(function, label)
         for call in calls(function):
             func = call.func
             if not (
@@ -98,7 +124,7 @@ def _ungated_paths(path: Path) -> tuple[int, list[str]]:
             launches += 1
             if reaches_ungated(function.name, call.lineno, frozenset()):
                 failures.append(
-                    f"{path.relative_to(REPO_ROOT)}:{call.lineno} {function.name}() calls "
+                    f"{label}:{call.lineno} {function.name}() calls "
                     f"{func.value.id}.{func.attr} with no approval gate before it. Refuse first "
                     "with `if not approved: raise SystemExit(...)` naming LAUNCH_APPROVAL_FLAG "
                     "and the exact command, or return when stage `full_launch_blockers` is set."
@@ -115,6 +141,45 @@ def test_modal_launches_pass_an_approval_gate(path: Path) -> None:
     launches, failures = _ungated_paths(path)
     assert launches, f"{path.name} builds modal.App but no launch call was found"
     assert not failures, "\n".join(failures)
+
+
+UNGATED = """
+@app.function(gpu="H100")
+def train(): ...
+
+def launch_early(approved):
+    train.remote()
+    if not approved:
+        raise SystemExit("refused")
+
+def launch_writes_first(approved, out):
+    out.mkdir(parents=True)
+    if not approved:
+        raise SystemExit("refused")
+    train.spawn()
+
+def helper():
+    train.map([1])
+
+def caller(approved):
+    helper()
+
+def launch_ok(blockers, out):
+    if blockers:
+        return 2
+    out.mkdir(parents=True)
+    train.spawn()
+"""
+
+
+def test_the_scan_finds_each_ungated_launch() -> None:
+    launches, failures = _ungated_source(UNGATED, "bad.py")
+    assert launches == 4
+    assert [failure.split(" with no")[0].split(" before its")[0] for failure in failures] == [
+        "bad.py:6 launch_early() calls train.remote",
+        "bad.py:11 launch_writes_first() calls mkdir()",
+        "bad.py:17 helper() calls train.map",
+    ]
 
 
 def test_emit_completions_refuses_without_approval_and_prints_command(
