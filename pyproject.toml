@@ -39,6 +39,7 @@ pythonpath = ["."]
 
 [tool.basedpyright]
 typeCheckingMode = "strict"
+enableTypeIgnoreComments = false
 pythonVersion = "3.14"
 include = ["src/esme_posttrain", "scripts", "tests", ".agents/skills/verify-esme-posttrain/verify"]
 venvPath = "."
@@ -107,7 +108,7 @@ target-version = "py314"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF", "PGH003"]
 ignore = ["E501"]
 
 [tool.ruff.format]

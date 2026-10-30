@@ -5,6 +5,10 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+# parents[3] is the repo root locally and /root in the container, where the file is mounted.
+PYTHON_VERSION_FILE = Path(__file__).resolve().parents[3] / ".python-version"
+LOCAL_PYTHON = PYTHON_VERSION_FILE.read_text(encoding="utf-8").strip()
+
 
 def format_payload(payload: dict[str, Any], *, json_output: bool, keys: tuple[str, ...]) -> str:
     if json_output:

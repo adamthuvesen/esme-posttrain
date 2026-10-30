@@ -22,6 +22,8 @@ import modal
 from esme_posttrain.launch.config_guards import IMAGE_PACKAGE_PINS, LAUNCH_APPROVAL_FLAG
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.launch.modal_cli import (
+    LOCAL_PYTHON,
+    PYTHON_VERSION_FILE,
     command_with_output_stem,
     format_payload,
     fresh_output_dir,
@@ -97,10 +99,11 @@ def _base_bundle_blocker() -> str | None:
 
 
 image = (
-    modal.Image.debian_slim(python_version="3.13")
+    modal.Image.debian_slim(python_version=LOCAL_PYTHON)
     .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
     .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
     .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
+    .add_local_file(str(PYTHON_VERSION_FILE), remote_path="/root/.python-version")
 )
 # Training modes need the regenerable esme-pretrain bundle in the image and
 # are guarded loudly at launch when it is missing.

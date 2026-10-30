@@ -31,7 +31,12 @@ from esme_posttrain.launch.config_guards import (
     MODAL_CLIENT_VERSION,
 )
 from esme_posttrain.launch.config_models import FrozenConfig
-from esme_posttrain.launch.modal_cli import local_git_commit, local_git_dirty
+from esme_posttrain.launch.modal_cli import (
+    LOCAL_PYTHON,
+    PYTHON_VERSION_FILE,
+    local_git_commit,
+    local_git_dirty,
+)
 from esme_posttrain.rl.config import MODAL_VOLUME
 
 VOLUME_MOUNT = Path("/posttrain")
@@ -86,10 +91,11 @@ def launch_command(jobs: str, out_root: str) -> str:
 import modal
 
 image = (
-    modal.Image.debian_slim(python_version="3.13")
+    modal.Image.debian_slim(python_version=LOCAL_PYTHON)
     .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
     .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
     .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
+    .add_local_file(str(PYTHON_VERSION_FILE), remote_path="/root/.python-version")
     .add_local_dir(str(REPO_ROOT / "data"), remote_path="/root/data")
     .add_local_dir(
         str(REPO_ROOT / "exports" / "esme-214m-chat"),
