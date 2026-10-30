@@ -49,13 +49,27 @@ def smoke_launch_blockers(
     *,
     runtime: ModalRuntime,
     estimated_smoke_cost_usd: float,
+    modal_gpu: str | None,
+    modal_gpu_env_var: str,
 ) -> list[str]:
     # ModalRuntime already rejects caps and timeouts out of bounds at parse time.
-    # Only the projection, computed after parsing, can still block here.
-    blockers: list[str] = []
+    # Only the projection and the GPU env var, read at launch, can still block here.
+    blockers = _modal_gpu_blockers(runtime, modal_gpu, modal_gpu_env_var, "smoke")
     if estimated_smoke_cost_usd > float(runtime.smoke_max_cost_usd):
         blockers.append("projected Modal smoke cost exceeds runtime.smoke_max_cost_usd")
     return blockers
+
+
+def _modal_gpu_blockers(
+    runtime: ModalRuntime, modal_gpu: str | None, modal_gpu_env_var: str, run: str
+) -> list[str]:
+    configured_modal_gpu = runtime.gpu_profiles[runtime.selected_gpu].modal_gpu
+    if modal_gpu is None or modal_gpu == configured_modal_gpu:
+        return []
+    return [
+        f"{modal_gpu_env_var} must match runtime.gpu_profiles[runtime.selected_gpu].modal_gpu "
+        f"for {run} cost accounting"
+    ]
 
 
 def full_launch_blockers(
@@ -72,12 +86,7 @@ def full_launch_blockers(
     blockers: list[str] = []
     if not approved:
         blockers.append(approval_message)
-    configured_modal_gpu = runtime.gpu_profiles[runtime.selected_gpu].modal_gpu
-    if modal_gpu is not None and modal_gpu != configured_modal_gpu:
-        blockers.append(
-            f"{modal_gpu_env_var} must match runtime.gpu_profiles[runtime.selected_gpu].modal_gpu "
-            "for full-run cost accounting"
-        )
+    blockers.extend(_modal_gpu_blockers(runtime, modal_gpu, modal_gpu_env_var, "full-run"))
     if estimated_full_cost_usd > float(runtime.full_run_max_cost_usd):
         blockers.append("projected full-run cost exceeds runtime.full_run_max_cost_usd")
     return blockers

@@ -198,20 +198,6 @@ def drive_stage_chain(ctx: Context, *, max_sft_final_loss: float | None = None) 
     )
 
 
-def rl_fixture_config(ctx: Context) -> Path:
-    # Refused RL launches write a blocked report beside the config, so run a scratch copy
-    # whose "../" inputs point back at fixtures/.
-    text = (
-        (ROOT / "fixtures/configs/esme-214m-rl.fixture.json")
-        .read_text()
-        .replace('"../', f'"{ROOT / "fixtures"}/')
-    )
-    path = ctx.scratch / "rl" / "configs" / "rl.json"
-    path.parent.mkdir(parents=True)
-    path.write_text(text)
-    return path
-
-
 def drive_launch_plans(ctx: Context) -> str:
     jobs = ctx.scratch / "emit-jobs.json"
     jobs.write_text(
@@ -233,14 +219,19 @@ def drive_launch_plans(ctx: Context) -> str:
         "sft": (
             "modal_chat_sft",
             ["--config", "configs/esme-214m-sft-multiturn.json"],
-            ["--modal-smoke", "--full-run"],
+            ["--modal-smoke", "--modal-sweep", "--throughput-probe", "--full-run"],
         ),
         "dpo": (
             "modal_chat_dpo",
             ["--config", "configs/esme-214m-chat-dpo.json"],
-            ["--modal-smoke", "--full-run"],
+            ["--modal-smoke", "--beta-sweep", "--chat-eval", "--full-run"],
         ),
-        "rlvr": ("modal_rlvr_grpo", ["--config", str(rl_fixture_config(ctx))], ["--full-run"]),
+        # The real fixture config: a refusal that writes a report changes the checkout and fails.
+        "rlvr": (
+            "modal_rlvr_grpo",
+            ["--config", "fixtures/configs/esme-214m-rl.fixture.json"],
+            ["--full-run", "--debug-before-eval", "--modal-pipeline-smoke"],
+        ),
     }
 
     def check_stage(stage: str, script: str, config: list[str], launches: list[str]) -> None:
@@ -296,7 +287,7 @@ def drive_launch_plans(ctx: Context) -> str:
         ]
     for future in futures:
         future.result()
-    return "SFT, DPO, and RL plans resolve without Modal; smoke, full-run, and emit-completions each refuse without --approved"
+    return "SFT, DPO, and RL plans resolve without Modal; every paid mode and emit-completions refuse without --approved"
 
 
 DRIVES = {

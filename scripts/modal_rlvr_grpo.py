@@ -268,17 +268,7 @@ def launch(argv: list[str] | None = None) -> int:
         modal_pipeline_smoke=args.modal_pipeline_smoke,
     )
     if blockers:
-        reason = "; ".join(blockers)
-        report = build_blocked_grpo_report(
-            config,
-            reason=reason,
-            launch_command=full_launch_command,
-            spend_evidence=_zero_spend_evidence("refused before Modal spawn"),
-            modal_evidence=_modal_evidence(
-                status_basis="refused before Modal spawn; no Modal call was created"
-            ),
-        )
-        write_grpo_report(config, report)
+        # A refusal writes nothing: report_path and doc_path hold the committed results.
         payload = {
             "status": _refused_status(
                 before_eval_only=args.debug_before_eval,
@@ -287,8 +277,6 @@ def launch(argv: list[str] | None = None) -> int:
             "will_start_modal_job": False,
             "full_launch_blockers": blockers,
             "full_launch_command": full_launch_command,
-            "report_path": str(config.report_path),
-            "doc_path": str(config.doc_path),
         }
         print(_format_payload(payload, json_output=args.json))
         return 2

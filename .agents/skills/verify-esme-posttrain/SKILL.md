@@ -38,6 +38,6 @@ Each run gets a temp HOME and temp XDG, HF, W&B, and inductor dirs. It sets `HF_
 
 ## Gotchas
 
-- An unapproved RL launch writes a blocked report to the config's `report_path` and `doc_path`. The fixture config would write into `fixtures/docs/`, so the drive runs a scratch copy of it.
+- An unapproved launch writes nothing. The RL drive runs the committed fixture config, so a refusal that writes a report changes the checkout and fails the run.
 - The RL launcher refuses even a dry run unless `RLVR_TIMEOUT_HOURS` equals the config's `runtime.timeout_hours`. The helper sets it to the fixture's value, 1.
 - `rlvr-checkpoint-bundle` needs an RL bundle as its template. A DPO bundle has no `source_manifest` and is rejected.

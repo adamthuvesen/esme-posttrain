@@ -335,7 +335,7 @@ def launch(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    blockers = smoke_launch_blockers(config)
+    blockers = smoke_launch_blockers(config, modal_gpu=SFT_MODAL_GPU)
     bundle_blocker = _base_bundle_blocker()
     if bundle_blocker:
         blockers = [*blockers, bundle_blocker]

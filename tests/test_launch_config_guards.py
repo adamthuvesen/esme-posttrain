@@ -53,10 +53,21 @@ def test_shared_smoke_launch_blockers_flag_projection_over_budget(
     runtime: SmokeModalRuntime,
 ) -> None:
 
-    assert smoke_launch_blockers(runtime=runtime, estimated_smoke_cost_usd=4.0) == [
-        "projected Modal smoke cost exceeds runtime.smoke_max_cost_usd",
+    def blockers(cost: float, gpu: str | None = None) -> list[str]:
+        return smoke_launch_blockers(
+            runtime=runtime,
+            estimated_smoke_cost_usd=cost,
+            modal_gpu=gpu,
+            modal_gpu_env_var="SFT_MODAL_GPU",
+        )
+
+    assert blockers(4.0) == ["projected Modal smoke cost exceeds runtime.smoke_max_cost_usd"]
+    assert blockers(1.0) == []
+    assert blockers(1.0, runtime.gpu_profiles[runtime.selected_gpu].modal_gpu) == []
+    assert blockers(1.0, "H100:8") == [
+        "SFT_MODAL_GPU must match runtime.gpu_profiles[runtime.selected_gpu].modal_gpu "
+        "for smoke cost accounting"
     ]
-    assert smoke_launch_blockers(runtime=runtime, estimated_smoke_cost_usd=1.0) == []
 
 
 def test_shared_full_launch_blockers_keep_pipeline_wording(runtime: SmokeModalRuntime) -> None:

@@ -312,7 +312,7 @@ def launch(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    blockers = smoke_launch_blockers(config)
+    blockers = smoke_launch_blockers(config, modal_gpu=DPO_MODAL_GPU)
     if blockers:
         print("DPO Modal smoke refused: " + "; ".join(blockers), file=sys.stderr)
         return 2

@@ -131,7 +131,7 @@ def build_dpo_dry_run(
     full_run_approved: bool = False,
     full_run_modal_gpu: str | None = None,
 ) -> dict[str, Any]:
-    smoke_blockers = smoke_launch_blockers(config)
+    smoke_blockers = smoke_launch_blockers(config, modal_gpu=None)
     full_blockers = full_launch_blockers(
         config, approved=full_run_approved, modal_gpu=full_run_modal_gpu
     )
@@ -187,10 +187,12 @@ def build_dpo_dry_run(
     }
 
 
-def smoke_launch_blockers(config: DPOLaunchConfig) -> list[str]:
+def smoke_launch_blockers(config: DPOLaunchConfig, *, modal_gpu: str | None) -> list[str]:
     return _common_smoke_launch_blockers(
         runtime=config.runtime,
         estimated_smoke_cost_usd=config.estimated_smoke_cost_usd,
+        modal_gpu=modal_gpu,
+        modal_gpu_env_var="DPO_MODAL_GPU",
     )
 
 

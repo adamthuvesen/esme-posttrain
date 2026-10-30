@@ -221,6 +221,36 @@ def test_modal_launcher_full_run_returns_receipt_without_get(
     assert report["eval_profile"] == "full_eval_1x1"
 
 
+@pytest.mark.parametrize("mode", ["--full-run", "--debug-before-eval", "--modal-pipeline-smoke"])
+def test_modal_launcher_refusal_writes_no_report(
+    mode: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = replace(
+        load_rlvr_config(RL_FIXTURE_CONFIG),
+        report_path=tmp_path / "grpo-report.json",
+        doc_path=tmp_path / "grpo-report.md",
+    )
+
+    class NoSpawn:
+        def spawn(self, *args: object) -> None:
+            raise AssertionError("refused launch reached run_modal_grpo.spawn")
+
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_TIMEOUT_HOURS", 1)
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_MODAL_GPU", "A100")
+    monkeypatch.setattr(modal_rlvr_grpo, "run_modal_grpo", NoSpawn())
+    monkeypatch.setattr(modal_rlvr_grpo, "load_rlvr_config", lambda _path: config)
+
+    assert modal_rlvr_grpo.launch(["--config", "unused.json", mode, "--json"]) == 2
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["will_start_modal_job"] is False
+    assert any("requires --approved" in b for b in payload["full_launch_blockers"])
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_modal_launcher_debug_before_eval_dry_run_uses_reduced_probe_command(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
