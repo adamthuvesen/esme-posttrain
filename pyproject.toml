@@ -40,8 +40,9 @@ pythonpath = ["."]
 [tool.basedpyright]
 typeCheckingMode = "strict"
 enableTypeIgnoreComments = false
+reportUnnecessaryTypeIgnoreComment = "error"
 pythonVersion = "3.14"
-include = ["src/esme_posttrain", "scripts", "tests", ".agents/skills/verify-esme-posttrain/verify"]
+include = ["src/esme_posttrain", "scripts", "tests"]
 venvPath = "."
 venv = ".venv"
 reportUnknownMemberType = false

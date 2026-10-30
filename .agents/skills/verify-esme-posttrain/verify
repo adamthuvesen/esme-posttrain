@@ -20,10 +20,16 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 PYTHON = ROOT / ".venv" / "bin" / "python"
-GLOBAL_PATHS = ["pyproject.toml", "uv.lock", "fixtures/tiny_bundle/*", ".agents/skills/verify-esme-posttrain/*"]
+GLOBAL_PATHS = [
+    "pyproject.toml",
+    "uv.lock",
+    "fixtures/tiny_bundle/*",
+    ".agents/skills/verify-esme-posttrain/*",
+]
 TRIPWIRE_TOOLS = ("modal", "wandb", "huggingface-cli", "hf")
 SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD")
 SITECUSTOMIZE = """
@@ -72,10 +78,20 @@ class Context:
     env: dict[str, str]
     drive_dir: Path = Path()
 
-    def python(self, name: str, *args: str, expect_exit: int = 0, timeout: float = 45) -> subprocess.CompletedProcess[str]:
+    def python(
+        self, name: str, *args: str, expect_exit: int = 0, timeout: float = 45
+    ) -> subprocess.CompletedProcess[str]:
         cmd = [str(PYTHON), *args]
         (self.drive_dir / f"{name}.cmd").write_text(" ".join(cmd) + "\n")
-        proc = subprocess.Popen(cmd, cwd=ROOT, env=self.env, text=True, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.Popen(
+            cmd,
+            cwd=ROOT,
+            env=self.env,
+            text=True,
+            start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         try:
             out, err = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -88,11 +104,17 @@ class Context:
             (self.drive_dir / f"{name}.{suffix}").write_text(text)
         if proc.returncode != expect_exit:
             tail = (err or out).strip().splitlines()[-1:] or ["<no output>"]
-            raise DriveFailed(f"{name}: expected exit {expect_exit}, got {proc.returncode}: {tail[0]}")
+            raise DriveFailed(
+                f"{name}: expected exit {expect_exit}, got {proc.returncode}: {tail[0]}"
+            )
         return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
 
-    def cli(self, name: str, *args: str, expect_exit: int = 0) -> dict:
-        return json.loads(self.python(name, "-m", "esme_posttrain", *args, "--json", expect_exit=expect_exit).stdout)
+    def cli(self, name: str, *args: str, expect_exit: int = 0) -> dict[str, Any]:
+        return json.loads(
+            self.python(
+                name, "-m", "esme_posttrain", *args, "--json", expect_exit=expect_exit
+            ).stdout
+        )
 
 
 def require(condition: bool, message: str) -> None:
@@ -107,33 +129,82 @@ def train_losses(path: Path) -> list[float]:
 
 def drive_stage_chain(ctx: Context, *, max_sft_final_loss: float | None = None) -> str:
     out = ctx.drive_dir / "artifacts"
-    report = ctx.cli("full-path", "full-path-cpu-smoke", "--config", "fixtures/configs/full-path-cpu-smoke.json", "--output-dir", str(out))
+    report = ctx.cli(
+        "full-path",
+        "full-path-cpu-smoke",
+        "--config",
+        "fixtures/configs/full-path-cpu-smoke.json",
+        "--output-dir",
+        str(out),
+    )
     require(report["status"] == "full_path_cpu_smoke_passed", f"status {report['status']!r}")
-    require(report["steps"] == {"sft": 2, "dpo": 2, "rlvr": 2}, f"steps {report['steps']}, expected 2 per stage")
-    require(not (report["paid_compute"] or report["remote_dataset_download"] or report["wandb_enabled"]), "chain reports paid compute, downloads, or W&B")
-    require(report["dpo_resume"]["equivalent_to_uninterrupted"], "DPO resumed from step 1 does not match the uninterrupted run")
+    require(
+        report["steps"] == {"sft": 2, "dpo": 2, "rlvr": 2},
+        f"steps {report['steps']}, expected 2 per stage",
+    )
+    require(
+        not (
+            report["paid_compute"] or report["remote_dataset_download"] or report["wandb_enabled"]
+        ),
+        "chain reports paid compute, downloads, or W&B",
+    )
+    require(
+        report["dpo_resume"]["equivalent_to_uninterrupted"],
+        "DPO resumed from step 1 does not match the uninterrupted run",
+    )
     stages = {"sft": out / "sft", "dpo": out / "dpo-resumed", "rlvr": out / "rlvr"}
     losses = {stage: train_losses(path / "metrics.jsonl") for stage, path in stages.items()}
-    require(all(len(v) == 2 and all(math.isfinite(x) for x in v) for v in losses.values()), f"expected 2 finite train losses per stage, got {losses}")
+    require(
+        all(len(v) == 2 and all(math.isfinite(x) for x in v) for v in losses.values()),
+        f"expected 2 finite train losses per stage, got {losses}",
+    )
     sft_first, sft_final = losses["sft"]
     ceiling = sft_first if max_sft_final_loss is None else max_sft_final_loss
-    require(sft_final < ceiling, f"expected final SFT loss < {ceiling:.4f}, got {sft_final:.4f} (first {sft_first:.4f})")
+    require(
+        sft_final < ceiling,
+        f"expected final SFT loss < {ceiling:.4f}, got {sft_final:.4f} (first {sft_first:.4f})",
+    )
     require(losses["dpo"][1] < losses["dpo"][0], f"DPO loss did not fall: {losses['dpo']}")
     rebuilt = ctx.scratch / "rebuilt-bundle"
-    ctx.cli("rebuild", "rlvr-checkpoint-bundle", "--checkpoint", str(stages["rlvr"] / "checkpoints/step-000002/checkpoint.pt"),
-            "--template-bundle", str(stages["rlvr"] / "bundle-final"), "--out", str(rebuilt), "--expected-step", "2")
-    for name, bundle in (("dpo", out / "dpo-bundle"), ("rlvr", stages["rlvr"] / "bundle-final"), ("rebuilt", rebuilt)):
+    ctx.cli(
+        "rebuild",
+        "rlvr-checkpoint-bundle",
+        "--checkpoint",
+        str(stages["rlvr"] / "checkpoints/step-000002/checkpoint.pt"),
+        "--template-bundle",
+        str(stages["rlvr"] / "bundle-final"),
+        "--out",
+        str(rebuilt),
+        "--expected-step",
+        "2",
+    )
+    for name, bundle in (
+        ("dpo", out / "dpo-bundle"),
+        ("rlvr", stages["rlvr"] / "bundle-final"),
+        ("rebuilt", rebuilt),
+    ):
         ctx.cli(f"bundle-check-{name}", "bundle-check", "--bundle-dir", str(bundle))
-    same = (rebuilt / "weights.pt").read_bytes() == (stages["rlvr"] / "bundle-final/weights.pt").read_bytes()
-    require(same, "bundle rebuilt from the step-2 GRPO checkpoint has different weights than the final RL bundle")
-    return (f"SFT->DPO->RL 2 steps each, SFT loss {sft_first:.3f}->{sft_final:.3f}, DPO {losses['dpo'][0]:.3f}->{losses['dpo'][1]:.3f}, "
-            "DPO resume exact, step-2 checkpoint rebuilds the final bundle byte-for-byte, 3 bundles pass bundle-check")
+    same = (rebuilt / "weights.pt").read_bytes() == (
+        stages["rlvr"] / "bundle-final/weights.pt"
+    ).read_bytes()
+    require(
+        same,
+        "bundle rebuilt from the step-2 GRPO checkpoint has different weights than the final RL bundle",
+    )
+    return (
+        f"SFT->DPO->RL 2 steps each, SFT loss {sft_first:.3f}->{sft_final:.3f}, DPO {losses['dpo'][0]:.3f}->{losses['dpo'][1]:.3f}, "
+        "DPO resume exact, step-2 checkpoint rebuilds the final bundle byte-for-byte, 3 bundles pass bundle-check"
+    )
 
 
 def rl_fixture_config(ctx: Context) -> Path:
     # Refused RL launches write a blocked report beside the config, so run a scratch copy
     # whose "../" inputs point back at fixtures/.
-    text = (ROOT / "fixtures/configs/esme-214m-rl.fixture.json").read_text().replace('"../', f'"{ROOT / "fixtures"}/')
+    text = (
+        (ROOT / "fixtures/configs/esme-214m-rl.fixture.json")
+        .read_text()
+        .replace('"../', f'"{ROOT / "fixtures"}/')
+    )
     path = ctx.scratch / "rl" / "configs" / "rl.json"
     path.parent.mkdir(parents=True)
     path.write_text(text)
@@ -142,41 +213,120 @@ def rl_fixture_config(ctx: Context) -> Path:
 
 def drive_launch_plans(ctx: Context) -> str:
     jobs = ctx.scratch / "emit-jobs.json"
-    jobs.write_text(json.dumps([{"label": "a", "split": "heldout_fresh", "n": 1, "temperature": 0.0, "max_new_tokens": 8, "seed": 0, "bundle": "/root/exports/b"}]))
+    jobs.write_text(
+        json.dumps(
+            [
+                {
+                    "label": "a",
+                    "split": "heldout_fresh",
+                    "n": 1,
+                    "temperature": 0.0,
+                    "max_new_tokens": 8,
+                    "seed": 0,
+                    "bundle": "/root/exports/b",
+                }
+            ]
+        )
+    )
     stages = {
-        "sft": ("modal_chat_sft", ["--config", "configs/esme-214m-sft-multiturn.json"], ["--modal-smoke", "--full-run"]),
-        "dpo": ("modal_chat_dpo", ["--config", "configs/esme-214m-chat-dpo.json"], ["--modal-smoke", "--full-run"]),
+        "sft": (
+            "modal_chat_sft",
+            ["--config", "configs/esme-214m-sft-multiturn.json"],
+            ["--modal-smoke", "--full-run"],
+        ),
+        "dpo": (
+            "modal_chat_dpo",
+            ["--config", "configs/esme-214m-chat-dpo.json"],
+            ["--modal-smoke", "--full-run"],
+        ),
         "rlvr": ("modal_rlvr_grpo", ["--config", str(rl_fixture_config(ctx))], ["--full-run"]),
     }
+
     def check_stage(stage: str, script: str, config: list[str], launches: list[str]) -> None:
-        plan = json.loads(ctx.python(f"{stage}-plan", "-c", ENTRYPOINT, script, *config, "--dry-run", "--json").stdout)
-        require(plan["will_start_modal_job"] is False and plan["approval_flag"] == "--approved", f"{stage} dry-run would start Modal or lost its approval flag")
-        require(any("requires --approved" in b for b in plan["full_launch_blockers"]), f"{stage} plan blockers {plan['full_launch_blockers']} omit the approval gate")
+        plan = json.loads(
+            ctx.python(
+                f"{stage}-plan", "-c", ENTRYPOINT, script, *config, "--dry-run", "--json"
+            ).stdout
+        )
+        require(
+            plan["will_start_modal_job"] is False and plan["approval_flag"] == "--approved",
+            f"{stage} dry-run would start Modal or lost its approval flag",
+        )
+        require(
+            any("requires --approved" in b for b in plan["full_launch_blockers"]),
+            f"{stage} plan blockers {plan['full_launch_blockers']} omit the approval gate",
+        )
         for launch in launches:
-            refused = ctx.python(f"{stage}{launch}", "-c", ENTRYPOINT, script, *config, launch, expect_exit=2)
+            refused = ctx.python(
+                f"{stage}{launch}", "-c", ENTRYPOINT, script, *config, launch, expect_exit=2
+            )
             text = refused.stdout + refused.stderr
-            gated = "refused" in text and any(f"{verb} --approved" in text for verb in ("requires", "pass"))
-            require(gated, f"{stage} {launch} without --approved did not refuse at the approval gate: {text.strip()[:200]}")
+            gated = "refused" in text and any(
+                f"{verb} --approved" in text for verb in ("requires", "pass")
+            )
+            require(
+                gated,
+                f"{stage} {launch} without --approved did not refuse at the approval gate: {text.strip()[:200]}",
+            )
 
     def check_emit() -> None:
-        emit = ctx.python("emit-unapproved", "-c", ENTRYPOINT, "modal_emit_completions", str(jobs), str(ctx.scratch / "emit-out"), expect_exit=1)
-        require("refused" in emit.stderr and "need --approved" in emit.stderr, f"emit-completions did not refuse: {emit.stderr.strip()[:200]}")
-        require(not (ctx.scratch / "emit-out").exists(), "emit-completions wrote output while refusing")
+        emit = ctx.python(
+            "emit-unapproved",
+            "-c",
+            ENTRYPOINT,
+            "modal_emit_completions",
+            str(jobs),
+            str(ctx.scratch / "emit-out"),
+            expect_exit=1,
+        )
+        require(
+            "refused" in emit.stderr and "need --approved" in emit.stderr,
+            f"emit-completions did not refuse: {emit.stderr.strip()[:200]}",
+        )
+        require(
+            not (ctx.scratch / "emit-out").exists(), "emit-completions wrote output while refusing"
+        )
 
-    with ThreadPoolExecutor() as pool:  # each launcher is an independent process; run them side by side
-        futures = [pool.submit(check_stage, stage, *spec) for stage, spec in stages.items()] + [pool.submit(check_emit)]
+    with (
+        ThreadPoolExecutor() as pool
+    ):  # each launcher is an independent process; run them side by side
+        futures = [pool.submit(check_stage, stage, *spec) for stage, spec in stages.items()] + [
+            pool.submit(check_emit)
+        ]
     for future in futures:
         future.result()
     return "SFT, DPO, and RL plans resolve without Modal; smoke, full-run, and emit-completions each refuse without --approved"
 
 
 DRIVES = {
-    "stage-chain": Drive("SFT, DPO, and RL train on CPU through full-path-cpu-smoke; checkpoints resume and rebuild bundles that pass bundle-check",
-                         ["src/esme_posttrain/*", "fixtures/*", "configs/esme-214m-sft-multiturn.json", "configs/esme-214m-chat-dpo.json"], drive_stage_chain),
-    "launch-plans": Drive("Every paid Modal launcher resolves its dry-run plan and refuses smoke, full, and emit launches without --approved",
-                          ["scripts/modal_*.py", "src/esme_posttrain/launch/*", "src/esme_posttrain/*/launch*.py", "src/esme_posttrain/*/config.py", "configs/*", "fixtures/configs/*"], drive_launch_plans),
+    "stage-chain": Drive(
+        "SFT, DPO, and RL train on CPU through full-path-cpu-smoke; checkpoints resume and rebuild bundles that pass bundle-check",
+        [
+            "src/esme_posttrain/*",
+            "fixtures/*",
+            "configs/esme-214m-sft-multiturn.json",
+            "configs/esme-214m-chat-dpo.json",
+        ],
+        drive_stage_chain,
+    ),
+    "launch-plans": Drive(
+        "Every paid Modal launcher resolves its dry-run plan and refuses smoke, full, and emit launches without --approved",
+        [
+            "scripts/modal_*.py",
+            "src/esme_posttrain/launch/*",
+            "src/esme_posttrain/*/launch*.py",
+            "src/esme_posttrain/*/config.py",
+            "configs/*",
+            "fixtures/configs/*",
+        ],
+        drive_launch_plans,
+    ),
 }
 SMOKE = "stage-chain"
+
+
+# The control passes only when its drive fails on exactly this planted expectation.
+CONTROL_FAILURE = "expected final SFT loss < 0.0100, got "
 
 
 def control(ctx: Context) -> str:
@@ -185,7 +335,9 @@ def control(ctx: Context) -> str:
 
 def git(*args: str) -> str:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    return subprocess.run(["git", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False).stdout.strip()
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False
+    ).stdout.strip()
 
 
 def changed_files() -> set[str]:
@@ -199,7 +351,11 @@ def select_changed() -> list[str]:
     files = changed_files()
     if any(fnmatch.fnmatch(f, glob) for f in files for glob in GLOBAL_PATHS):
         return list(DRIVES)
-    picked = [name for name, d in DRIVES.items() if any(fnmatch.fnmatch(f, g) for f in files for g in d.paths)]
+    picked = [
+        name
+        for name, d in DRIVES.items()
+        if any(fnmatch.fnmatch(f, g) for f in files for g in d.paths)
+    ]
     return picked or [SMOKE]
 
 
@@ -219,31 +375,68 @@ def isolated_env(scratch: Path) -> dict[str, str]:
         stub.write_text(f'#!/bin/sh\necho "{tool} $*" >> "{log}"\nexit 97\n')
         stub.chmod(0o755)
     (scratch / "site" / "sitecustomize.py").write_text(SITECUSTOMIZE)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "MODAL_", "WANDB_", "HF_", "SFT_", "DPO_", "RLVR_", "ESME_")) and not any(s in k for s in SECRET_MARKERS)}
-    env.update({
-        "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"), "XDG_CACHE_HOME": str(home / ".cache"),
-        "XDG_DATA_HOME": str(home / ".local/share"), "PATH": f"{trip}:{env.get('PATH', '')}",
-        "PYTHONPATH": f"{scratch / 'site'}:{ROOT}", "PYTHONDONTWRITEBYTECODE": "1", "VERIFY_TRIPWIRE_LOG": str(log),
-        "HF_HOME": str(home / "hf"), "HF_HUB_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
-        "WANDB_MODE": "disabled", "WANDB_DIR": str(scratch / "wandb"), "MODAL_CONFIG_PATH": str(home / ".modal.toml"),
-        "MODAL_SERVER_URL": f"http://127.0.0.1:{closed_port()}", "TORCHINDUCTOR_CACHE_DIR": str(scratch / "inductor"),
-        # The RL launcher requires the env timeout to equal the fixture config's runtime.timeout_hours.
-        "RLVR_TIMEOUT_HOURS": "1", "ESME_BASE_BUNDLE_LOCAL": str(scratch / "no-base-bundle"),
-    })
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("GIT_", "MODAL_", "WANDB_", "HF_", "SFT_", "DPO_", "RLVR_", "ESME_"))
+        and not any(s in k for s in SECRET_MARKERS)
+    }
+    env.update(
+        {
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": str(home / ".config"),
+            "XDG_CACHE_HOME": str(home / ".cache"),
+            "XDG_DATA_HOME": str(home / ".local/share"),
+            "PATH": f"{trip}:{env.get('PATH', '')}",
+            "PYTHONPATH": f"{scratch / 'site'}:{ROOT}",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "VERIFY_TRIPWIRE_LOG": str(log),
+            "HF_HOME": str(home / "hf"),
+            "HF_HUB_OFFLINE": "1",
+            "HF_DATASETS_OFFLINE": "1",
+            "TRANSFORMERS_OFFLINE": "1",
+            "WANDB_MODE": "disabled",
+            "WANDB_DIR": str(scratch / "wandb"),
+            "MODAL_CONFIG_PATH": str(home / ".modal.toml"),
+            "MODAL_SERVER_URL": f"http://127.0.0.1:{closed_port()}",
+            "TORCHINDUCTOR_CACHE_DIR": str(scratch / "inductor"),
+            # The RL launcher requires the env timeout to equal the fixture config's runtime.timeout_hours.
+            "RLVR_TIMEOUT_HOURS": "1",
+            "ESME_BASE_BUNDLE_LOCAL": str(scratch / "no-base-bundle"),
+        }
+    )
     return env
 
 
 def preflight(env: dict[str, str]) -> None:
     require(PYTHON.exists(), f"{PYTHON} is missing; run `make install`")
-    where = subprocess.run([str(PYTHON), "-c", "import esme_posttrain; print(esme_posttrain.__file__)"], env=env, capture_output=True, text=True, check=False).stdout.strip()
-    require(where == str(ROOT / "src/esme_posttrain/__init__.py"), f"esme_posttrain imports from {where!r}, not this checkout")
-    require(env["WANDB_MODE"] == "disabled" and env["HF_HUB_OFFLINE"] == "1" and "MODAL_TOKEN_ID" not in env, "external-effect switches are not off")
+    where = subprocess.run(
+        [str(PYTHON), "-c", "import esme_posttrain; print(esme_posttrain.__file__)"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    require(
+        where == str(ROOT / "src/esme_posttrain/__init__.py"),
+        f"esme_posttrain imports from {where!r}, not this checkout",
+    )
+    require(
+        env["WANDB_MODE"] == "disabled"
+        and env["HF_HUB_OFFLINE"] == "1"
+        and "MODAL_TOKEN_ID" not in env,
+        "external-effect switches are not off",
+    )
 
 
 def main(argv: list[str]) -> int:
     command = argv[0] if argv else ""
     if command == "list":
-        print("\n".join(f"{n:14} {d.proves}\n{'':14} paths: {', '.join(d.paths)}" for n, d in DRIVES.items()))
+        print(
+            "\n".join(
+                f"{n:14} {d.proves}\n{'':14} paths: {', '.join(d.paths)}" for n, d in DRIVES.items()
+            )
+        )
         return 0
     unknown = [n for n in argv if n not in DRIVES] if command not in ("all", "control") else []
     if unknown:
@@ -252,7 +445,11 @@ def main(argv: list[str]) -> int:
     names = {"all": list(DRIVES), "control": ["control"]}.get(command) or argv or select_changed()
     sha = git("rev-parse", "HEAD")
     dirty = bool(git("status", "--porcelain"))
-    run_dir = ROOT / ".verify/runs" / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{sha[:7]}{'-dirty' if dirty else ''}"
+    run_dir = (
+        ROOT
+        / ".verify/runs"
+        / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{sha[:7]}{'-dirty' if dirty else ''}"
+    )
     run_dir.mkdir(parents=True)
     scratch = Path(tempfile.mkdtemp(prefix="verify-esme-posttrain-"))
     results, failed = [], False
@@ -260,7 +457,9 @@ def main(argv: list[str]) -> int:
         env = isolated_env(scratch)
         preflight(env)
         ctx = Context(run_dir, scratch, env)
-        redacted = {k: "<redacted>" if any(s in k for s in SECRET_MARKERS) else v for k, v in env.items()}
+        redacted = {
+            k: "<redacted>" if any(s in k for s in SECRET_MARKERS) else v for k, v in env.items()
+        }
         (run_dir / "env.json").write_text(json.dumps(redacted, indent=2, sort_keys=True))
         for name in names:
             ctx.drive_dir = run_dir / name
@@ -270,11 +469,19 @@ def main(argv: list[str]) -> int:
                 detail = (control if name == "control" else DRIVES[name].run)(ctx)
                 result = "PASS"
             except (DriveFailed, KeyError, ValueError) as error:
-                detail, result = str(error) if isinstance(error, DriveFailed) else f"{type(error).__name__}: {error}", "FAIL"
+                detail, result = (
+                    str(error)
+                    if isinstance(error, DriveFailed)
+                    else f"{type(error).__name__}: {error}",
+                    "FAIL",
+                )
             trip_log = scratch / "tripwire.log"
             if trip_log.exists() and trip_log.read_text().strip():
                 shutil.copy(trip_log, ctx.drive_dir / "tripwire.log")
-                detail, result = f"tripwire fired: {trip_log.read_text().strip().splitlines()[0]}", "FAIL"
+                detail, result = (
+                    f"tripwire fired: {trip_log.read_text().strip().splitlines()[0]}",
+                    "FAIL",
+                )
                 trip_log.unlink()
             seconds = round(time.monotonic() - start, 1)
             print(f"{result} {name} {seconds}s {detail}", flush=True)
@@ -286,13 +493,20 @@ def main(argv: list[str]) -> int:
         failed = True
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
-        (run_dir / "summary.json").write_text(json.dumps({"sha": sha, "dirty": dirty, "drives": results}, indent=2))
+        (run_dir / "summary.json").write_text(
+            json.dumps({"sha": sha, "dirty": dirty, "drives": results}, indent=2)
+        )
     print(f"evidence: {run_dir.relative_to(ROOT)}")
     if command == "control":
-        last = results[-1] if results else {}
-        observed = last.get("result") == "FAIL" and "expected final SFT loss < 0.0100" in last.get("detail", "")
-        print("control: FAIL observed" if observed else "control: expected FAIL, but the wrong expectation passed")
-        return 0 if observed else 1
+        failures = [str(r["detail"]) for r in results if r["result"] == "FAIL"]
+        if len(failures) == 1 and failures[0].startswith(CONTROL_FAILURE):
+            print("control: FAIL observed")
+            return 0
+        if failures:
+            print(f"control: failed for another reason; expected {CONTROL_FAILURE!r}")
+        else:
+            print("control: expected FAIL, but the wrong expectation passed")
+        return 1
     return 1 if failed else 0
 
 

@@ -42,6 +42,7 @@ from esme_posttrain.training.checkpointing import (
     latest_checkpoint_path,
     load_training_checkpoint,
 )
+from esme_posttrain.training.runtime import set_reproducible_seed
 from esme_posttrain.training.wandb_init import WandbConfig
 
 FIXTURE_MAX_LENGTH = 48
@@ -71,6 +72,9 @@ def run_dpo_cpu_fixture(
     if interrupt_after_step is not None and not 0 < interrupt_after_step < fixture_steps:
         raise ValueError("interrupt_after_step must be positive and less than max_steps")
 
+    # The tiny reference model draws its weights from the global RNG, which earlier
+    # tests in the same process leave in an arbitrary state.
+    set_reproducible_seed(config.optimizer.seed)
     policy, reference, tokenizer, reference_manifest = _fixture_models(reference_checkpoint_path)
 
     train_pairs = tuple(

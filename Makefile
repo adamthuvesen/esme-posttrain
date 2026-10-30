@@ -17,6 +17,7 @@ lint:  ## Lint and format-check (no changes)
 
 type:  ## Strict type-check the package, Modal entrypoints, scripts, and tests
 	uv run --locked basedpyright
+	uv run --locked basedpyright --project .agents/skills/verify-esme-posttrain
 
 test:  ## Run tests in parallel, including the full CPU stage chain
 	uv run --locked pytest -n auto

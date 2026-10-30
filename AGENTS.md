@@ -39,6 +39,7 @@ Prove changes with `make verify` (`verify-esme-posttrain` skill at `.agents/skil
 | Remote dataset reads need an explicit download flag | `tests/test_sft_multiturn.py::test_remote_dataset_rows_refuse_without_download_approval` | 2026-11-06 |
 | Nothing under `docs/internal/` is committed | `tests/test_enforced_rules.py::test_docs_internal_is_never_tracked` | 2026-11-06 |
 | The verify drives must observe FAIL against a wrong expectation | `.agents/skills/verify-esme-posttrain/verify::control`, `make verify` | 2026-11-06 |
+| No file downgrades strict type checking with a `# pyright:` mode comment | `tests/test_strict_mode.py::test_no_file_downgrades_type_checking_mode` | 2026-11-07 |
 
 ## Where Things Live
 
