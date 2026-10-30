@@ -660,8 +660,8 @@ def build_countdown_evidence_figure() -> go.Figure:
             tickvals=[0, 25, 50, 75, 100],
             tickfont={"family": FONT_FAMILY, "size": 13, "color": TICK_COLOR},
         ),
-        annotations=list(figure.layout.annotations)
-        + [
+        annotations=[
+            *list(figure.layout.annotations),
             {
                 "text": "<b>A. Acceptance eval (in-distribution)</b>",
                 "xref": "paper",
@@ -685,10 +685,8 @@ def build_countdown_evidence_figure() -> go.Figure:
                 "font": panel_caption_font,
             },
             {
-                "text": (
-                    f"<span style='color:{REFERENCE_GREY}'>&#9632;</span> Esme-214M-Chat"
-                    f"   <span style='color:{BLUE}'>&#9632;</span> Esme-214M-RL"
-                ),
+                "text": f"<span style='color:{REFERENCE_GREY}'>&#9632;</span> Esme-214M-Chat"
+                f"   <span style='color:{BLUE}'>&#9632;</span> Esme-214M-RL",
                 "xref": "paper",
                 "yref": "paper",
                 "x": 0.5,

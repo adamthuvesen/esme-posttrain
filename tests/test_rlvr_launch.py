@@ -326,7 +326,7 @@ def test_modal_launcher_unhydrated_spawn_fails_loudly_without_app_run(
     monkeypatch.setattr(modal_rlvr_grpo, "run_modal_grpo", FakeRunner())
     monkeypatch.setattr(modal_rlvr_grpo, "app", FakeApp())
 
-    with pytest.raises(RuntimeError, match="Refusing the unsupported app.run\\(\\) fallback"):
+    with pytest.raises(RuntimeError, match=r"Refusing the unsupported app.run\(\) fallback"):
         modal_rlvr_grpo._spawn_modal_grpo(config, "esme-214m-rlvr-countdown-grpo")
 
 
@@ -482,7 +482,7 @@ def test_eval_rollouts_must_fit_configured_budget() -> None:
     config = _load_absolute_fixture_config()
     _as_object(config["monitoring"])["samples_per_eval_task"] = 2
 
-    with pytest.raises(LaunchError, match="exceeds budgets.max_eval_rollouts"):
+    with pytest.raises(LaunchError, match=r"exceeds budgets.max_eval_rollouts"):
         validate_rlvr_payload(config, RL_FIXTURE_CONFIG)
 
 

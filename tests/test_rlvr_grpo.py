@@ -339,7 +339,7 @@ def _modal_evidence() -> dict[str, object]:
 
 class _FakeWandbRun:
     url = "https://wandb.local/rlvr-fixture"
-    _allowed_attrs = {"logs", "finished"}
+    _allowed_attrs = frozenset({"logs", "finished"})
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name not in self._allowed_attrs:

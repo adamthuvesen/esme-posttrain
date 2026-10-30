@@ -84,13 +84,13 @@ type FrozenJSON = (
     | StrictInt
     | StrictFloat
     | StrictBool
-    | None
     | tuple[FrozenJSON, ...]
     | Annotated[
         Mapping[str, FrozenJSON],
         AfterValidator(lambda value: MappingProxyType(dict(value))),
         WrapSerializer(lambda value, handler: handler(dict(value))),
     ]
+    | None
 )
 
 JSONEvidence = Annotated[

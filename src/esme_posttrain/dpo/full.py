@@ -152,7 +152,7 @@ def run_full_dpo(
     dpo = config.settings.dpo
     monitoring = config.settings.monitoring
     max_steps = int(optimizer.smoke_max_steps if smoke else optimizer.max_steps)
-    warmup_steps = int(round(optimizer.warmup_ratio * max_steps))
+    warmup_steps = round(optimizer.warmup_ratio * max_steps)
     result = run_dpo_training(
         policy,
         reference,

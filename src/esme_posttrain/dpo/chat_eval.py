@@ -269,7 +269,7 @@ def write_chat_eval_markdown(comparison: ChatEvalComparison, path: Path) -> None
 
     sft_by_key = {(r.prompt_name, r.decoding): r for r in comparison.sft.report.per_prompt}
     dpo_by_key = {(r.prompt_name, r.decoding): r for r in comparison.dpo.report.per_prompt}
-    prompt_text = {name: text for name, text in comparison.prompts}
+    prompt_text = dict(comparison.prompts)
     for name, _text in comparison.prompts:
         lines.extend([f"### Prompt: {name}", "", "Prompt:", "", *_fenced(prompt_text[name]), ""])
         for decoding in comparison.decodings:

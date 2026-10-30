@@ -368,7 +368,7 @@ def test_max_pairs_still_caps(tmp_path: Path) -> None:
 def test_min_pairs_must_not_exceed_cap(tmp_path: Path) -> None:
     path = tmp_path / "uf.jsonl"
     _clean_preference_jsonl(path, 5)
-    with pytest.raises(DataError, match="min_pairs .floor. must be <= max_pairs"):
+    with pytest.raises(DataError, match=r"min_pairs .floor. must be <= max_pairs"):
         build_preference_set(
             _ultrafeedback_source(path),
             tiny_chat_tokenizer(),

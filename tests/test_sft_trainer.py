@@ -187,7 +187,7 @@ def test_sample_generation_trims_eos_marker_and_trailing_tokens(
     ) -> torch.Tensor:
         assert max_new_tokens == 4
         assert eos_token_id == 1
-        return torch.tensor([input_ids[0].tolist() + [6, 1, 7]], dtype=torch.long)
+        return torch.tensor([[*input_ids[0].tolist(), 6, 1, 7]], dtype=torch.long)
 
     monkeypatch.setattr(model, "generate", fake_generate)
 

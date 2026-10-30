@@ -851,7 +851,7 @@ def _group_advantages(
     for rollout in rollouts:
         grouped[rollout.group_index].append(float(rollout.reward))
     means = {group_index: sum(rewards) / len(rewards) for group_index, rewards in grouped.items()}
-    scales = {group_index: 1.0 for group_index in grouped}
+    scales = dict.fromkeys(grouped, 1.0)
     if normalization == "std":
         scales = {
             group_index: statistics.stdev(rewards) + GRPO_STD_EPSILON if len(rewards) > 1 else 1.0

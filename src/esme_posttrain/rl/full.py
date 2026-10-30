@@ -535,7 +535,7 @@ def _start_rlvr_wandb(
         project=monitoring.wandb_project,
         run_name=f"{config.run_id}-{run_kind}",
         mode=mode,
-        tags=tuple(monitoring.wandb_tags) + (run_kind, str(eval_profile["profile"])),
+        tags=(*monitoring.wandb_tags, run_kind, str(eval_profile["profile"])),
         group=config.run_id,
         job_type=run_kind,
         notes="Countdown-Lite RLVR GRPO with verifiable rewards only.",

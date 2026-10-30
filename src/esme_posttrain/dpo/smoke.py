@@ -141,7 +141,7 @@ def run_dpo_cpu_fixture(
         warmup_steps=min(
             fixture_steps,
             3,
-            int(round(config.optimizer.warmup_ratio * 10)),
+            round(config.optimizer.warmup_ratio * 10),
         ),
         weight_decay=config.optimizer.weight_decay,
         precision="fp32",
@@ -156,7 +156,7 @@ def run_dpo_cpu_fixture(
             enabled=wandb_enabled,
             project=config.settings.monitoring.wandb_project,
             run_name=f"{config.run_id}-local-cpu-fixture" if wandb_enabled else None,
-            tags=tuple(config.settings.monitoring.wandb_tags) + ("smoke", "fixture"),
+            tags=(*config.settings.monitoring.wandb_tags, "smoke", "fixture"),
             group=config.run_id,
             job_type="smoke",
             notes=(

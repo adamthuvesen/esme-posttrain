@@ -220,7 +220,7 @@ def test_future_weights_version_is_rejected(exported_chat_bundle: Path) -> None:
     manifest["files"]["weights"]["sha256"] = file_sha256(weights_path)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(BundleError, match="unsupported weights.pt format_version"):
+    with pytest.raises(BundleError, match=r"unsupported weights.pt format_version"):
         load_dense_backbone_bundle(exported_chat_bundle)
 
 

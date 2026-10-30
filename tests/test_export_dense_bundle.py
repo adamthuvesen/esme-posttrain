@@ -76,7 +76,7 @@ def test_export_dense_bundle_requires_completed_artifact_files(tmp_path: Path) -
     artifact_dir = _write_tiny_dpo_artifact(tmp_path / "artifact")
     (artifact_dir / "eval-report.json").unlink()
 
-    with pytest.raises(ExportError, match="eval-report.json"):
+    with pytest.raises(ExportError, match=r"eval-report.json"):
         export_dense_bundle(
             ExportRequest(
                 artifact_dir=artifact_dir,

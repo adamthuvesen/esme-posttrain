@@ -399,7 +399,7 @@ def run_multi_turn_interval_eval_sweep(
                 )
             )
             break
-        except Exception as error:  # noqa: BLE001 - record the failure and continue to next arm.
+        except Exception as error:  # record the failure and continue to next arm.
             arm_payloads.append(
                 _arm_failure_payload(
                     arm,

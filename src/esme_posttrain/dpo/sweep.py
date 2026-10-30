@@ -332,7 +332,7 @@ def run_dpo_beta_sweep(
                 _arm_failure_payload(arm, arm_id=arm_id, output_dir=arm_output_dir, error=error)
             )
             break
-        except Exception as error:  # noqa: BLE001 - record and continue to the next arm.
+        except Exception as error:  # record and continue to the next arm.
             arm_payloads.append(
                 _arm_failure_payload(arm, arm_id=arm_id, output_dir=arm_output_dir, error=error)
             )
@@ -430,7 +430,7 @@ def _run_sweep_arm(
                 enabled=wandb_enabled,
                 project=monitoring_config.wandb_project,
                 run_name=f"{SWEEP_GROUP}-{arm_id}",
-                tags=tuple(monitoring_config.wandb_tags) + ("beta-sweep", f"beta:{arm.beta}"),
+                tags=(*monitoring_config.wandb_tags, "beta-sweep", f"beta:{arm.beta}"),
                 group=SWEEP_GROUP,
                 job_type="sweep",
                 notes="Bounded DPO beta sweep; no full launch, no SimPO, no RL.",

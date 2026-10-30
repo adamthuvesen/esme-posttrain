@@ -941,7 +941,7 @@ def test_config_pins_train_pair_floor_below_cap() -> None:
 def test_config_rejects_train_floor_above_cap() -> None:
     payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     payload["budgets"]["min_train_pairs"] = payload["budgets"]["max_train_pairs"] + 1
-    with pytest.raises(LaunchError, match="min_train_pairs .floor. must be <="):
+    with pytest.raises(LaunchError, match=r"min_train_pairs .floor. must be <="):
         validate_dpo_payload(payload, CONFIG_PATH)
 
 

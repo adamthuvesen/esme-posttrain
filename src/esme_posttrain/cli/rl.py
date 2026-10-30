@@ -51,7 +51,7 @@ def add_rl_parsers(subparsers: argparse._SubParsersAction) -> None:
     countdown_build.add_argument(
         "--repo-root",
         type=Path,
-        default=Path("."),
+        default=Path(),
         help="Repository root containing data/manifests.",
     )
     countdown_build.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
@@ -64,7 +64,7 @@ def add_rl_parsers(subparsers: argparse._SubParsersAction) -> None:
     heldout_build.add_argument(
         "--repo-root",
         type=Path,
-        default=Path("."),
+        default=Path(),
         help="Repository root containing data/manifests.",
     )
     heldout_build.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")

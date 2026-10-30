@@ -7,7 +7,7 @@ name = "esme-posttrain"
 version = "0.0.0"
 description = "Post-training: SFT -> DPO -> RLVR for Esme-214M."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 license = { text = "MIT" }
 authors = [{ name = "Adam Thuvesen" }]
 dependencies = [
@@ -26,7 +26,7 @@ dev = [
   "mypy>=2.2.0",
   "pytest>=8.2",
   "pytest-xdist>=3.8.0",
-  "ruff>=0.5",
+  "ruff==0.17.4",
 ]
 
 [project.scripts]
@@ -99,11 +99,11 @@ Keep SFT trainer imports out of shared chat and fixture code too. This check fol
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py314"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF"]
 
 [tool.ruff.format]
 quote-style = "double"

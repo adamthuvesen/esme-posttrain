@@ -35,7 +35,7 @@ def local_git_commit(repo_root: Path) -> str:
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
-    except (OSError, subprocess.CalledProcessError):
+    except OSError, subprocess.CalledProcessError:
         return "unknown"
 
 
@@ -47,7 +47,7 @@ def local_git_dirty(repo_root: Path) -> bool:
             text=True,
             stderr=subprocess.DEVNULL,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except OSError, subprocess.CalledProcessError:
         return True
     return bool(output.strip())
 
