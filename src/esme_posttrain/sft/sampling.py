@@ -6,7 +6,7 @@ import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data import TokenizedExample
+from esme_posttrain.sft.data_types import TokenizedExample
 from esme_posttrain.sft.eval_suite import EvalSplit
 
 

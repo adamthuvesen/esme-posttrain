@@ -45,11 +45,8 @@ from esme_posttrain.dpo.sweep import (
     dpo_sweep_blockers,
     run_dpo_beta_sweep,
 )
-from esme_posttrain.launch.config_guards import (
-    IMAGE_PACKAGE_PINS,
-    LAUNCH_APPROVAL_FLAG,
-    LaunchError,
-)
+from esme_posttrain.launch.config_guards import IMAGE_PACKAGE_PINS, LAUNCH_APPROVAL_FLAG
+from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.launch.modal_cli import (
     command_with_output_stem,
     format_payload,

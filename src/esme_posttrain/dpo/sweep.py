@@ -20,7 +20,8 @@ from typing import Any
 
 import torch
 
-from esme_posttrain.dpo.launch import EXPECTED_SWEEP_BETAS, DPOLaunchConfig
+from esme_posttrain.dpo.config import EXPECTED_SWEEP_BETAS
+from esme_posttrain.dpo.launch import DPOLaunchConfig
 from esme_posttrain.dpo.trainer import (
     CHOSEN_LOGP_COLLAPSE_REL_TOLERANCE,
     DPOTrainerConfig,

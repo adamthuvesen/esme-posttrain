@@ -20,6 +20,7 @@ from esme_posttrain.dpo.chat_eval_run import (
     build_chat_eval_preflight,
     chat_eval_blockers,
 )
+from esme_posttrain.dpo.config import DPO_FULL_RUN_SPEND_CAP_USD, EXPECTED_SWEEP_BETAS
 from esme_posttrain.dpo.data import (
     PreferencePair,
     tokenize_preference_pair,
@@ -40,8 +41,6 @@ from esme_posttrain.dpo.full import (
     _assert_prompt_masking,
 )
 from esme_posttrain.dpo.launch import (
-    DPO_FULL_RUN_SPEND_CAP_USD,
-    EXPECTED_SWEEP_BETAS,
     build_dpo_dry_run,
     full_launch_blockers,
     load_dpo_config,
@@ -68,10 +67,10 @@ from esme_posttrain.dpo.trainer import (
 )
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data import IGNORE_INDEX, ChatTurn
+from esme_posttrain.sft.data_types import ChatTurn
 from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
-from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-chat-dpo.json"

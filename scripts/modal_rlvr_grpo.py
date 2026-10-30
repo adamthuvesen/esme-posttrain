@@ -17,11 +17,8 @@ import modal
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from esme_posttrain.launch.config_guards import (
-    IMAGE_PACKAGE_PINS,
-    LAUNCH_APPROVAL_FLAG,
-    LaunchError,
-)
+from esme_posttrain.launch.config_guards import IMAGE_PACKAGE_PINS, LAUNCH_APPROVAL_FLAG
+from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.launch.modal_cli import (
     command_with_output_stem,
     format_payload,
@@ -31,11 +28,10 @@ from esme_posttrain.launch.modal_cli import (
     modal_call_id,
     validate_output_stem,
 )
+from esme_posttrain.rl.config import MODAL_VOLUME, PIPELINE_SMOKE_PROFILE
 from esme_posttrain.rl.full import run_countdown_lite_grpo_job
 from esme_posttrain.rl.launch import (
     BEFORE_EVAL_DEBUG_PROFILE,
-    MODAL_VOLUME,
-    PIPELINE_SMOKE_PROFILE,
     RLVRLaunchConfig,
     build_eval_profile,
     build_grpo_dry_run,

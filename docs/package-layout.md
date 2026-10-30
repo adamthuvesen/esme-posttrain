@@ -6,8 +6,8 @@ This repo keeps stage-specific implementation code out of the package root. When
 
 | Change | Start here | Verify with |
 | --- | --- | --- |
-| Launch config field | The stage's `config.py`, then its launch validator and typed consumers | `make type`, stage launch tests |
-| Budget or launch condition | The matching run card and stage launch validator | `tests/test_launch_cap_enforcement.py` and stage launch tests |
+| Launch config field or recipe constraint | The stage's `config.py`, then typed consumers | `make type`, stage launch tests |
+| Budget or launch condition | The matching run card, the stage's `config.py` for caps, and its launch module for blockers | `tests/test_launch_cap_enforcement.py` and stage launch tests |
 | Dense-bundle field shared by stages | `export/bundle_writer.py` and `bundle.py` | `tests/test_artifact_contract.py` |
 | DPO export provenance | `export/dense_bundle.py` | `tests/test_export_dense_bundle.py` |
 | RL export provenance or checkpoint conversion | `rl/bundle.py` and `rl/checkpoint_bundle.py` | `tests/test_rlvr_decomp.py` |
@@ -56,8 +56,9 @@ Do not add root compatibility aliases.
 - `src/esme_posttrain/training/`: shared training runtime used by the stage packages: collation, metrics, checkpointing, seeding/precision, and W&B setup.
 - `src/esme_posttrain/export/`: one canonical dense-bundle writer plus DPO export and generation verification.
 
-Each stage's `config.py` owns its typed settings. Its launch validator owns
-recipe checks and resolved paths. Consumers use typed attributes, then serialize
+Each stage's `config.py` owns its typed settings and recipe checks, so a parsed
+settings object is always a valid recipe. Its launch module checks files on disk,
+resolves paths, and projects cost. Consumers use typed attributes, then serialize
 settings only when writing JSON. `rl/bundle.py` owns RL export identity and calls
 the shared writer. It serves both training and checkpoint conversion.
 
@@ -66,11 +67,11 @@ the shared writer. It serves both training and checkpoint conversion.
 `make architecture` enforces the dependency graph declared in `pyproject.toml`.
 It reports the offending import chain and a repair direction.
 Shared code cannot depend on stages. Stages cannot depend on CLI or acceptance code.
-DPO can reuse `sft.data`, `sft.sampling`, and `sft.fixtures`, but cannot reach the SFT trainer.
+DPO can reuse `sft.data`, `sft.data_types`, `sft.sampling`, and `sft.fixtures`, but cannot reach the SFT trainer.
 New modules inside these packages inherit their boundaries.
 For a new top-level package, declare its position in the graph before running the check.
 
-- Internal imports should use canonical package paths such as `esme_posttrain.sft.trainer`, `esme_posttrain.dpo.launch`, `esme_posttrain.rl.launch`, `esme_posttrain.launch.config_guards`, and `esme_posttrain.export.dense_bundle`.
+- Import each name from the module that defines it. `make type` rejects imports through a re-export (`no_implicit_reexport`).
 - Keep package `__init__.py` files boring. Avoid broad re-export barrels; they hide ownership and can create import cycles.
 - If a module grows large, split by responsibility inside the stage package before adding a new top-level package.
 

@@ -42,6 +42,8 @@ plugins = ["pydantic.mypy"]
 disallow_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+# One import path per name: import from the defining module, not a re-export.
+no_implicit_reexport = true
 
 [tool.pydantic-mypy]
 init_typed = true
@@ -66,13 +68,15 @@ layers = [
 # DPO shares the SFT chat format, sampling, and CPU fixture builders.
 ignore_imports = [
     "esme_posttrain.dpo.** -> esme_posttrain.sft.data",
+    "esme_posttrain.dpo.** -> esme_posttrain.sft.data_types",
     "esme_posttrain.dpo.** -> esme_posttrain.sft.sampling",
     "esme_posttrain.dpo.** -> esme_posttrain.sft.fixtures",
 ]
 broken_contract_guidance = """
 Import shared behavior from its owner in training/, launch/, bundle.py, or modeling.py.
 For example, import WandbConfig from esme_posttrain.training.wandb_init, not a stage trainer.
-Keep cross-stage coordination in acceptance/ or cli/. DPO may reuse sft.data, sft.sampling, and sft.fixtures.
+Keep cross-stage coordination in acceptance/ or cli/.
+DPO may reuse sft.data, sft.data_types, sft.sampling, and sft.fixtures.
 Place a new top-level module in these layers. See docs/package-layout.md for ownership.
 """
 

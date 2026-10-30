@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from esme_posttrain.launch.config_guards import LaunchError
+from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.rl.countdown_lite import verify_countdown_lite_expression
 from esme_posttrain.rl.grpo import (
     CountdownGRPOTrainerConfig,

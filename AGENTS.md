@@ -1,20 +1,12 @@
 # AGENTS.md
 
-Local instructions for `esme-posttrain`. The global agent rules still apply; this file only pins the workflow and red lines for this repo.
-
-## Workflow
-
-- Work only inside this repo unless Adam explicitly says otherwise.
-- This repo has a public GitHub remote (`adamthuvesen/esme-posttrain`). Never push without Adam's explicit approval; work on a branch and let Adam decide when it lands.
-- Nothing under `docs/internal/` may be committed or published; it is gitignored local working material.
-- Commit accepted work with small conventional commits.
-- Before committing, run the repo gates that match the change and leave `git status --short` clean.
+Local rules for `esme-posttrain`. The global agent rules still apply.
 
 ## Commands
 
 ```bash
 make install      # install the committed dependency versions
-make check        # architecture, lint, types, tests; green before any commit
+make check        # the gate: architecture, lint, types, tests; same command as CI
 make architecture # dependency boundaries with repair guidance
 make fmt          # auto-format + safe lint fixes
 make test         # tests, including the full CPU stage chain
@@ -22,46 +14,44 @@ make test         # tests, including the full CPU stage chain
 
 Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
 
-## Doc Routing
+## Red Lines
 
-- Start with `README.md` for the current stage of the Esme post-training stack, active CLI commands, and launch prep overview.
-- Read `docs/architecture.md` for the stage pipeline, module seams, and artifact handoffs.
-- Use the change table in `docs/package-layout.md` to find ownership and focused checks.
-- Read the matching run card before changing a launch config, run budget, data source, acceptance gate, or artifact path:
-  - `run_cards/esme-214m-sft-multiturn.md` for the multi-turn SFT foundation.
-  - `run_cards/esme-214m-chat-dpo.md` for chat DPO.
-  - `run_cards/esme-214m-rl.md` for RLVR prep.
-- Each stage's `config.py` owns config shape. Its launch validator owns recipe constraints. Change both when a field changes behavior.
-- Consume typed settings after validation. Use `to_dict()` only at JSON boundaries.
+- The GitHub remote is public. Never push without Adam's explicit approval.
+- No Modal, GPU, paid API, remote dataset download, or other spend without a written run card and Adam's approval. A run card names the dataset, token or sample budget, model and config, hardware, expected duration, expected cost, and artifact produced.
+- Do not start or expand training infrastructure without the matching run card.
 
 ## Enforced Rules
 
+`tests/test_enforced_rules.py` fails when a cited path or name does not exist.
+
 | Rule | Enforced by | Added |
 | --- | --- | --- |
-| Type-check Modal entrypoints alongside package code | `pyproject.toml` mypy scope, run by local and CI `make check` | 2026-11-04 |
-| Resolve launch-script imports in both direct and Makefile test runs | `pyproject.toml` pytest `pythonpath` | 2026-11-04 |
-| Keep stage boundaries and shared-code dependency direction | Import Linter contracts in `pyproject.toml`, run by `make architecture` and `make check` | 2026-11-04 |
-| DPO chat and fixture reuse must not import the SFT trainer, even indirectly | `dpo-without-sft-trainer` Import Linter contract | 2026-11-04 |
-| Verify with the committed dependency resolution | `uv --locked` in Makefile setup and check commands, also used by CI | 2026-11-04 |
+| Stage boundaries and shared-code dependency direction | `pyproject.toml::dependency-direction`, run by `make architecture` | 2026-11-04 |
+| DPO must not import the SFT trainer, even indirectly | `pyproject.toml::dpo-without-sft-trainer` | 2026-11-04 |
+| Type-check Modal entrypoints with package code | `pyproject.toml::scripts/modal_*.py` | 2026-11-04 |
+| Import each name from its defining module, not a re-export | `pyproject.toml::no_implicit_reexport` | 2026-11-06 |
+| A parsed stage config is a valid recipe: run id, volume, data, caps | `src/esme_posttrain/sft/config.py::_check_recipe`, `src/esme_posttrain/dpo/config.py::_check_recipe`, `src/esme_posttrain/rl/config.py::_check_recipe` | 2026-11-06 |
+| Smoke spend cap ($2), per-stage full-run cap, and Modal timeout bound | `src/esme_posttrain/launch/config_models.py::check_stage_runtime`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_over_cap_runtime_without_launch_module` | 2026-11-06 |
+| Full runs refuse without `--approved` | `src/esme_posttrain/launch/config_guards.py::full_launch_blockers`, `tests/test_sft_multiturn.py::test_full_run_refused_without_approval`, `tests/test_chat_dpo.py::test_full_run_refused_without_approval` | 2026-11-06 |
+| Remote dataset reads need an explicit download flag | `tests/test_sft_multiturn.py::test_remote_dataset_rows_refuse_without_download_approval` | 2026-11-06 |
+| Nothing under `docs/internal/` is committed | `.gitignore::docs/internal/` | 2026-11-06 |
+| Launch-script imports resolve in direct and Makefile test runs | `pyproject.toml::pythonpath` | 2026-11-04 |
+| Verify with the committed dependency resolution | `Makefile::--locked`, `.github/workflows/check.yml::make check` | 2026-11-04 |
 
-## Scope
+## Where Things Live
 
-- This is the post-training stage: take the from-scratch base model exported by `esme-pretrain`, run an SFT cold-start, then simple-task RLVR, and hand the adapted model to `llm-infer`.
-- Sibling repos (`esme-pretrain`, `llm-infer`, `grpo-decomp`) are related but independent. Exchange artifacts (checkpoints, eval results), never code imports.
-- Prefer CPU-first, deterministic, inspectable code until the tiny end-to-end path is proven.
-- Keep changes small and evidence-backed: configs, fixtures, launch guards, and trainer code should move with their matching tests.
-- Do not start or expand training infrastructure without the matching run card and approval.
-- Standing rules from the retired staff-level roadmap: no task registry or plugin framework beyond what real tasks need; no paid judges as a required eval dependency; no shared base trainer; test count and coverage are not headline measures.
-- Deferred until their triggers fire: eval breadth (a second symbolic verifier task plus one language-oriented eval on the shared contract) waits on wanting to claim posttraining capability beyond Countdown-Lite; module splits of `rl/grpo.py`, `rl/launch.py`, and `sft/trainer.py` wait until a new task forces edits inside them. The GPU acceptance run carries its own trigger in `run_cards/esme-214m-full-path-gpu-acceptance.md`.
+- `README.md`: current stage of the stack, active CLI commands, launch prep.
+- `docs/architecture.md`: stage pipeline, module seams, artifact handoffs.
+- `docs/package-layout.md`: change table with owners and focused checks.
+- Each stage's `config.py` owns config shape and recipe constraints. Its launch module checks files on disk, projects cost, and builds blockers.
+- Read the matching run card before changing a launch config, budget, data source, acceptance gate, or artifact path: `run_cards/esme-214m-sft-multiturn.md`, `run_cards/esme-214m-chat-dpo.md`, `run_cards/esme-214m-rl.md`.
 
-## Spend And Data
+## Judgment Calls
 
-- No remote dataset download without a written run card and Adam approval.
-- No Modal, GPU, paid API, or other compute spend without a written run card and Adam approval.
-- A run card must name the dataset, token/sample budget, model/config, hardware, expected duration, expected cost, and artifact produced.
-
-## Code Style
-
-- Minimal runtime dependencies until a milestone needs them.
-- Use clear domain names: base model, cold-start, SFT, RLVR, reward, checkpoint, run card.
+- Scope: take the base model from `esme-pretrain`, run SFT, DPO, then simple-task RLVR, and hand the model to `llm-infer`. Sibling repos exchange artifacts, never code imports.
+- Prefer CPU-first, deterministic, inspectable code. Configs, fixtures, launch guards, and trainer code move with their matching tests.
+- No task registry or plugin framework beyond what real tasks need. No paid judges as a required eval dependency. No shared base trainer. Test count and coverage are not headline measures.
+- Deferred until their triggers fire: eval breadth (a second symbolic verifier and one language eval) waits on a capability claim beyond Countdown-Lite. Splits of `rl/grpo.py`, `rl/launch.py`, and `sft/trainer.py` wait until a new task forces edits inside them. The GPU acceptance run's trigger is in `run_cards/esme-214m-full-path-gpu-acceptance.md`.
+- Consume typed settings after parsing. Use `to_dict()` only at JSON boundaries.
 - Make failures loud when data is missing, malformed, skipped, or outside a declared budget.
+- Keep runtime dependencies minimal. Use clear domain names: base model, cold-start, SFT, RLVR, reward, checkpoint, run card.

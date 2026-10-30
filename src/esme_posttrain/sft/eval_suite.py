@@ -6,8 +6,8 @@ from typing import Any
 import torch
 
 from esme_posttrain.modeling import DenseBackbone, language_model_loss, perplexity
-from esme_posttrain.sft.data import IGNORE_INDEX, TokenizedExample
-from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.sft.data_types import TokenizedExample
+from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch
 from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import eval_suite_metric_payload
 from esme_posttrain.training.runtime import precision_context

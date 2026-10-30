@@ -6,12 +6,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from esme_posttrain.rl.launch import (
-    FULL_EVAL_PROFILE,
-    FULL_RUN_SPEND_CAP_USD,
-    RLVRLaunchConfig,
-    build_eval_profile,
-)
+from esme_posttrain.rl.config import FULL_RUN_SPEND_CAP_USD
+from esme_posttrain.rl.launch import FULL_EVAL_PROFILE, RLVRLaunchConfig, build_eval_profile
 
 
 def write_grpo_report_artifacts(

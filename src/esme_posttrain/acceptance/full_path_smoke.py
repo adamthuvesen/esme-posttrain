@@ -19,14 +19,9 @@ from esme_posttrain.bundle import (
 from esme_posttrain.dpo.launch import DPOLaunchConfig, load_dpo_config
 from esme_posttrain.dpo.smoke import run_dpo_cpu_fixture
 from esme_posttrain.export.dense_bundle import ExportRequest, export_dense_bundle
-from esme_posttrain.launch.config_guards import (
-    LaunchError,
-    load_json_object,
-    object_field,
-    positive_int,
-    require_keys,
-    str_field,
-)
+from esme_posttrain.launch.config_guards import load_json_object, object_field, require_keys
+from esme_posttrain.launch.config_models import positive_int, str_field
+from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.rl.countdown_lite_baseline import (
     CountdownBaselineRequest,
     run_countdown_lite_baseline,

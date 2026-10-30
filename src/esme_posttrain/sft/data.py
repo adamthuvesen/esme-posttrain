@@ -10,17 +10,12 @@ from typing import Any
 from tokenizers import Tokenizer
 
 from esme_posttrain.sft.data_types import (
-    IGNORE_INDEX as IGNORE_INDEX,
-)
-from esme_posttrain.sft.data_types import (
-    ChatTurn as ChatTurn,
-)
-from esme_posttrain.sft.data_types import (
     DataError,
     DatasetSource,
     MultiTurnExample,
     TokenizedExample,
 )
+from esme_posttrain.training.collate import IGNORE_INDEX
 
 
 def sequence_efficiency_report(

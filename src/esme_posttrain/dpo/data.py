@@ -21,14 +21,9 @@ from typing import Any
 
 from tokenizers import Tokenizer
 
-from esme_posttrain.sft.data import (
-    IGNORE_INDEX,
-    ChatTurn,
-    DataError,
-    DatasetSource,
-    _clean_text,
-    iter_rows,
-)
+from esme_posttrain.sft.data import _clean_text, iter_rows
+from esme_posttrain.sft.data_types import ChatTurn, DataError, DatasetSource
+from esme_posttrain.training.collate import IGNORE_INDEX
 
 # UltraFeedback-binarized has a handful of rows with an empty/whitespace chosen or
 # rejected response; the strict per-pair validator rejects them, so the loader

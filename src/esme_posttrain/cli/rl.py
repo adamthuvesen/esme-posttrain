@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from esme_posttrain.cli.output import Payload, emit_payload, exit_with_error
-from esme_posttrain.launch.config_guards import LaunchError
+from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.rl.checkpoint_bundle import CheckpointBundleRequest, export_checkpoint_bundle
 from esme_posttrain.rl.countdown_heldout import write_countdown_heldout_dataset
 from esme_posttrain.rl.countdown_lite import CountdownLiteError, write_countdown_lite_dataset

@@ -10,17 +10,12 @@ from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_bundle
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data import (
-    ChatTurn,
-    MultiTurnExample,
-    TokenizedExample,
-    sequence_efficiency_report,
-    tokenize_multi_turn,
-)
+from esme_posttrain.sft.data import sequence_efficiency_report, tokenize_multi_turn
+from esme_posttrain.sft.data_types import ChatTurn, MultiTurnExample, TokenizedExample
+from esme_posttrain.sft.eval_suite import EvalSplit
 from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.sft.trainer import (
     EvalMetrics,
-    EvalSplit,
     EvalSuiteResult,
     SFTTrainerConfig,
     _generate_samples,
@@ -249,7 +244,8 @@ def test_cpu_fixture_sft_loss_decreases_and_checkpoint_reloads_logits(tmp_path: 
             sample_new_tokens=4,
         ),
     )
-    loaded = load_sft_checkpoint(result.checkpoint_path)
+    # The trainer leaves the model on the best checkpoint, which need not be the final step.
+    loaded = load_sft_checkpoint(result.best_checkpoint_path)
     input_ids, _labels = collate_batch(eval_examples)
 
     assert result.instruct_eval.response_loss < result.base_eval.response_loss

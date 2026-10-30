@@ -20,9 +20,10 @@ import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.dpo.chat_eval import FIXED_MULTI_TURN_PROMPTS
+from esme_posttrain.dpo.config import EXPECTED_ARTIFACTS
 from esme_posttrain.dpo.data import TokenizedPreferencePair, build_preference_set
 from esme_posttrain.dpo.decoding_precheck import run_decoding_precheck
-from esme_posttrain.dpo.launch import EXPECTED_ARTIFACTS, DPOLaunchConfig
+from esme_posttrain.dpo.launch import DPOLaunchConfig
 from esme_posttrain.dpo.sample_artifacts import write_chat_samples
 from esme_posttrain.dpo.trainer import DPOTrainerConfig, DPOTrainResult, run_dpo_training
 from esme_posttrain.modeling import DenseBackbone

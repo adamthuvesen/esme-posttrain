@@ -31,6 +31,7 @@ from esme_posttrain.run_artifacts import (
     write_selected_row_manifest,
 )
 from esme_posttrain.sft.data import sequence_efficiency_report
+from esme_posttrain.sft.eval_suite import EvalSplit
 from esme_posttrain.sft.launch_multiturn import MultiTurnLaunchConfig
 from esme_posttrain.sft.multiturn_data import (
     build_multi_turn_eval_set,
@@ -62,7 +63,7 @@ from esme_posttrain.sft.sweep_shared import (
 from esme_posttrain.sft.sweep_shared import (
     train_sanity as _train_sanity,
 )
-from esme_posttrain.sft.trainer import EvalSplit, SFTTrainerConfig, run_sft_training
+from esme_posttrain.sft.trainer import SFTTrainerConfig, run_sft_training
 from esme_posttrain.training.wandb_init import WandbConfig
 
 SWEEP_OUTPUT_STEM = "esme-multiturn-sft-interval-sweep"

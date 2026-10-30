@@ -7,13 +7,14 @@ from typing import Any
 
 import pytest
 
+from esme_posttrain.rl.config import EXPECTED_ARTIFACTS_WITH_FINAL_EVAL
 from esme_posttrain.rl.countdown_lite_baseline import (
     CountdownBaselineProgressError,
     CountdownBaselineRequest,
     run_countdown_lite_baseline,
 )
 from esme_posttrain.rl.full import run_countdown_lite_grpo_job
-from esme_posttrain.rl.launch import EXPECTED_ARTIFACTS_WITH_FINAL_EVAL, load_rlvr_config
+from esme_posttrain.rl.launch import load_rlvr_config
 from esme_posttrain.rl.pipeline_smoke import run_rlvr_pipeline_smoke
 from esme_posttrain.rl.report import build_blocked_grpo_report, build_grpo_report
 from esme_posttrain.training.checkpointing import load_training_checkpoint

@@ -11,7 +11,6 @@ from esme_posttrain.cli import main
 from esme_posttrain.dpo.launch import DPOLaunchConfig, load_dpo_config, validate_dpo_payload
 from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
-    LaunchError,
     build_modal_launch_command,
     estimate_cost_usd,
     full_launch_blockers,
@@ -19,6 +18,7 @@ from esme_posttrain.launch.config_guards import (
     smoke_launch_blockers,
 )
 from esme_posttrain.launch.config_models import SmokeModalRuntime
+from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.launch.modal_cli import format_payload, validate_output_stem
 from esme_posttrain.rl.launch import RLVRLaunchConfig, load_rlvr_config, validate_rlvr_payload
 from esme_posttrain.sft.launch_multiturn import (

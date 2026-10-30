@@ -11,7 +11,7 @@ from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import file_sha256
 from esme_posttrain.modeling import BackboneConfig, DenseBackbone, language_model_loss
-from esme_posttrain.sft.data import IGNORE_INDEX, TokenizedExample
+from esme_posttrain.sft.data_types import TokenizedExample
 from esme_posttrain.sft.eval_suite import (
     EvalMetrics,
     EvalSplit,
@@ -47,6 +47,7 @@ from esme_posttrain.training.checkpointing import (
     retain_last_checkpoints,
     save_training_checkpoint,
 )
+from esme_posttrain.training.collate import IGNORE_INDEX
 from esme_posttrain.training.collate import (
     collate_batch as _collate_batch,
 )

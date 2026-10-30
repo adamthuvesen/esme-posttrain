@@ -164,7 +164,7 @@ records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 | [`rl/`](../src/esme_posttrain/rl/) | Countdown-Lite task generation and verification, GRPO trainer, baselines, held-out transfer, reports, launch validation | a task registry or plugin framework |
 | [`evals/`](../src/esme_posttrain/evals/) | typed records for the eval contract, shapes pinned by golden fixtures | scoring logic |
 | [`training/`](../src/esme_posttrain/training/) | collate, metrics, checkpointing, seeding/precision, W&B init | stage objectives |
-| [`launch/`](../src/esme_posttrain/launch/) | shared config guards, spend blockers, Modal CLI shell | stage recipes and cross-stage coordination |
+| [`launch/`](../src/esme_posttrain/launch/) | shared config models and runtime caps, spend blockers, Modal CLI shell | stage recipes and cross-stage coordination |
 | [`acceptance/`](../src/esme_posttrain/acceptance/) | full-path CPU smoke and stage handoff checks | stage implementation |
 | [`export/`](../src/esme_posttrain/export/) | canonical dense-bundle serialization, DPO export, generation smoke | stage objectives, serving |
 | [`studies/`](../src/esme_posttrain/studies/) | hashed study specs and rebuilt JSON/Markdown reports | running training |
@@ -192,7 +192,7 @@ A separate contract rejects indirect DPO dependencies on the SFT trainer through
 
 ## Launch Contract
 
-Each stage owns an approval-gated launch validator:
+Each stage owns an approval-gated launch module:
 [`sft/launch_multiturn.py`](../src/esme_posttrain/sft/launch_multiturn.py),
 [`dpo/launch.py`](../src/esme_posttrain/dpo/launch.py),
 [`rl/launch.py`](../src/esme_posttrain/rl/launch.py). They share one contract:
@@ -202,12 +202,13 @@ Each stage owns an approval-gated launch validator:
   bypass).
 - A full run refuses while unapproved or while any launch blocker is
   outstanding, and carries a hard per-stage spend cap.
-- The validator pins the recipe — run id, volume, output stem, data mix,
-  hyperparameters — so config drift fails loudly before any spend.
+- The stage's `config.py` pins the recipe (run id, volume, output stem, data mix,
+  hyperparameters) at parse time, so config drift fails loudly before any spend.
 
-Each stage's `config.py` defines its JSON shape through frozen Pydantic models.
-`launch/config_models.py` owns the shared configuration types.
-Stage launch validators parse these models and enforce recipe constraints.
+Each stage's `config.py` defines its JSON shape and recipe constraints through
+frozen Pydantic models with model validators.
+`launch/config_models.py` owns the shared configuration types and runtime caps.
+Stage launch modules parse these models, then check files on disk.
 Their launch results carry typed settings alongside resolved paths and cost projections.
 
 Consumers read typed attributes. Models reject unknown fields and preserve

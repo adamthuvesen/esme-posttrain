@@ -15,6 +15,7 @@ from typing import Any
 import torch
 
 from esme_posttrain.bundle import file_sha256, load_dense_backbone_bundle
+from esme_posttrain.rl.config import PIPELINE_SMOKE_PROFILE
 from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows
 from esme_posttrain.rl.countdown_lite_baseline import (
     PASS_AT_KS,
@@ -24,7 +25,6 @@ from esme_posttrain.rl.countdown_lite_baseline import (
 from esme_posttrain.rl.grpo import CountdownGRPOTrainerConfig, run_countdown_lite_grpo
 from esme_posttrain.rl.launch import (
     FULL_EVAL_PROFILE,
-    PIPELINE_SMOKE_PROFILE,
     RLVRLaunchConfig,
     build_eval_profile,
     pipeline_smoke_grpo_settings,

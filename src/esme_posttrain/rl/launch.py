@@ -1,4 +1,8 @@
-"""Bounded launch validation for the Esme-214M-RL Countdown-Lite GRPO tranche."""
+"""Bounded launch preparation for the Esme-214M-RL Countdown-Lite GRPO tranche.
+
+``rl.config`` pins the recipe at parse time. This module checks the bundle and task
+manifest on disk, projects rollout tokens and cost, and builds launch blockers.
+"""
 
 from __future__ import annotations
 
@@ -17,69 +21,46 @@ from esme_posttrain.launch.config_guards import (
     IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
-    LaunchError,
     build_modal_launch_command,
     estimate_cost_usd,
     load_json_object,
     object_field,
-    positive_int,
-    str_field,
-    validate_modal_runtime,
 )
 from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
 )
-from esme_posttrain.launch.config_models import BundleConfig, GPUProfile, ModalRuntime, parse_config
+from esme_posttrain.launch.config_models import (
+    GPUProfile,
+    ModalRuntime,
+    parse_config,
+    positive_int,
+    str_field,
+)
+from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.rl.config import (
-    Acceptance,
-    Artifacts,
+    ARTIFACT_NAME,
+    COUNTDOWN_LITE_DATASET,
+    DISALLOWED_REWARD_TERMS,
+    FULL_RUN_SPEND_CAP_USD,
+    METHOD,
+    PIPELINE_SMOKE_PROFILE,
+    STAGE,
+    STARTS_FROM,
     CountdownDataset,
     GRPOSettings,
     PipelineSmoke,
-    RewardPolicy,
     RLVRBudgets,
-    RLVRMonitoring,
     RLVRSettings,
+    timeout_cost_ceiling_usd,
 )
 from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows, render_chat_prompt
 
-RUN_ID = "esme_214m_rlvr_countdown_lite_grpo"
-RUN_CARD = "run_cards/esme-214m-rl.md"
-ARTIFACT_NAME = "Esme-214M-RL"
-STAGE = "rlvr"
-STARTS_FROM = "Esme-214M-Chat"
 MANIFEST_TYPE = "rl_tasks"
-COUNTDOWN_LITE_DATASET = "esme_214m_rl_countdown_lite"
-METHOD = "grpo"
-MODAL_VOLUME = "esme-posttrain-esme-rlvr-countdown"
-FULL_RUN_SPEND_CAP_USD = 25.0
 FULL_EVAL_PROFILE = "full_acceptance_30x32"
 BEFORE_EVAL_DEBUG_PROFILE = "before_eval_debug"
-PIPELINE_SMOKE_PROFILE = "pipeline_smoke"
-
-DISALLOWED_REWARD_TERMS = frozenset({"style", "sharpness", "friendliness", "naturalness", "tone"})
 VERIFIABLE_REWARD_TYPES = frozenset(
     {"exact_match", "numeric_match", "regex_match", "unit_test", "execution_check"}
 )
-EXPECTED_ARTIFACTS = (
-    "config.json",
-    "data-report.json",
-    "rollouts.jsonl",
-    "metrics.jsonl",
-    "checkpoint.pt",
-    "best-checkpoint.pt",
-    "best-checkpoint.json",
-    "tokenizer.json",
-    "eval-before.json",
-    "eval-after.json",
-    "cost.json",
-    "environment.txt",
-    "manifest.json",
-)
-# Opting into a final-checkpoint acceptance eval adds one artifact; the base
-# manifest stays valid for provenance configs that predate it.
-EXPECTED_ARTIFACTS_WITH_FINAL_EVAL = (*EXPECTED_ARTIFACTS, "eval-after-final.json")
-EXACT_SOLVE_REWARD_MARGIN = 0.4
 
 
 @dataclass(frozen=True)
@@ -194,7 +175,7 @@ def build_grpo_dry_run(
         "spend_cap_usd": FULL_RUN_SPEND_CAP_USD,
         "runtime_spend_stop_usd": config.runtime.full_run_runtime_spend_stop_usd,
         "timeout_hours": config.runtime.timeout_hours,
-        "timeout_cost_ceiling_usd": round(_timeout_cost_ceiling_usd(config.runtime), 4),
+        "timeout_cost_ceiling_usd": round(timeout_cost_ceiling_usd(config.runtime), 4),
         "eval_profile": full_eval["profile"],
         "eval_rollouts": full_eval["total_samples"],
         "eval_task_budget": full_eval["tasks"],
@@ -283,51 +264,20 @@ def format_rlvr_dry_run(payload: dict[str, object]) -> str:
 
 def validate_rlvr_payload(payload: object, config_path: Path) -> RLVRLaunchConfig:
     settings = parse_config(RLVRSettings, payload, source=config_path)
-    if settings.schema_version != 1:
-        raise LaunchError("schema_version must be 1")
-    if settings.run_id != RUN_ID:
-        raise LaunchError(f"run_id must be {RUN_ID}")
-    if settings.run_card != RUN_CARD:
-        raise LaunchError(f"run_card must be {RUN_CARD}")
-    if settings.requires_approval is not True:
-        raise LaunchError("requires_approval must be true")
-    if settings.artifact_name != ARTIFACT_NAME:
-        raise LaunchError(f"artifact_name must be {ARTIFACT_NAME}")
-    if settings.stage != STAGE:
-        raise LaunchError(f"stage must be {STAGE}")
-    if settings.starts_from != STARTS_FROM:
-        raise LaunchError(f"starts_from must be {STARTS_FROM}")
-
     config_dir = config_path.parent
-    input_bundle_path = _validate_input_bundle(settings.input_bundle, config_dir)
+    repo_root = config_dir.parent
+    input_bundle_path = (config_dir / settings.input_bundle.path).resolve()
+    try:
+        validate_bundle_compatibility(input_bundle_path)
+    except BundleError as error:
+        raise LaunchError(str(error)) from error
     dataset_manifest_path, dataset = _validate_dataset(settings.dataset, config_dir)
-    budgets = _validate_budgets(settings.budgets, dataset)
-    grpo = _validate_grpo(settings.grpo)
-    _validate_reward_policy(settings.reward_policy)
-    runtime = validate_modal_runtime(
-        settings.runtime,
-        full_run_spend_cap_usd=FULL_RUN_SPEND_CAP_USD,
-        full_run_cap_label=f"{FULL_RUN_SPEND_CAP_USD:.0f}",
-        modal_volume=MODAL_VOLUME,
-        require_smoke_profile_metrics=False,
-    )
-    _validate_timeout_cost_ceiling(runtime)
-    _validate_monitoring(settings.monitoring)
-    _validate_eval_monitoring_bounds(
-        settings.monitoring,
-        budgets,
-    )
-    pipeline_smoke_output_dir, pipeline_smoke_report_path, pipeline_smoke_doc_path = (
-        _validate_pipeline_smoke(
-            settings.pipeline_smoke,
-            budgets=budgets,
-            grpo=grpo,
-            monitoring=settings.monitoring,
-            config_dir=config_dir,
-        )
-    )
-    output_dir, report_path, doc_path = _validate_artifacts(settings.artifacts, config_dir)
-    _validate_acceptance(settings.acceptance)
+    budgets = settings.budgets
+    _validate_budgets_against_dataset(budgets, dataset)
+    grpo = settings.grpo
+    runtime = settings.runtime
+    smoke = settings.pipeline_smoke
+    artifacts = settings.artifacts
 
     estimated_train_tokens = _estimate_train_tokens(
         input_bundle_path=input_bundle_path,
@@ -361,32 +311,16 @@ def validate_rlvr_payload(payload: object, config_path: Path) -> RLVRLaunchConfi
         input_bundle_path=input_bundle_path,
         dataset_manifest_path=dataset_manifest_path,
         dataset=dataset,
-        output_dir=output_dir,
-        report_path=report_path,
-        doc_path=doc_path,
-        pipeline_smoke_output_dir=pipeline_smoke_output_dir,
-        pipeline_smoke_report_path=pipeline_smoke_report_path,
-        pipeline_smoke_doc_path=pipeline_smoke_doc_path,
+        output_dir=(repo_root / artifacts.output_dir).resolve(),
+        report_path=(repo_root / artifacts.report_path).resolve(),
+        doc_path=(repo_root / artifacts.doc_path).resolve(),
+        pipeline_smoke_output_dir=(repo_root / smoke.output_dir).resolve(),
+        pipeline_smoke_report_path=(repo_root / smoke.report_path).resolve(),
+        pipeline_smoke_doc_path=(repo_root / smoke.doc_path).resolve(),
         estimated_full_cost_usd=estimated_full_cost,
         estimated_train_tokens=estimated_train_tokens,
         full_launch_command=_launch_command(config_path, runtime),
     )
-
-
-def _validate_timeout_cost_ceiling(runtime: ModalRuntime) -> None:
-    timeout_cost_ceiling = _timeout_cost_ceiling_usd(runtime)
-    hard_stop = float(runtime.full_run_runtime_spend_stop_usd)
-    if timeout_cost_ceiling > hard_stop:
-        raise LaunchError(
-            "runtime timeout cost ceiling exceeds runtime.full_run_runtime_spend_stop_usd: "
-            f"{timeout_cost_ceiling:.4f} > {hard_stop:.4f}"
-        )
-
-
-def _timeout_cost_ceiling_usd(runtime: ModalRuntime) -> float:
-    selected = str(runtime.selected_gpu)
-    selected_profile = runtime.gpu_profiles[selected]
-    return int(runtime.timeout_hours) * float(selected_profile.usd_per_hour)
 
 
 def validate_rl_task_manifest(manifest_path: Path) -> DatasetSummary:
@@ -530,37 +464,8 @@ def _acceptance_preflight(config: RLVRLaunchConfig, full_eval: dict[str, Any]) -
     }
 
 
-def _validate_input_bundle(payload: BundleConfig, config_dir: Path) -> Path:
-    if payload.format != "llm_pretrain_dense_v1":
-        raise LaunchError("input_bundle.format must be llm_pretrain_dense_v1")
-    if payload.model_family != "DenseBackbone":
-        raise LaunchError("input_bundle.model_family must be DenseBackbone")
-    if payload.read_only is not True:
-        raise LaunchError("input_bundle.read_only must be true")
-    path = (config_dir / str_field(payload.path, "input_bundle.path")).resolve()
-    try:
-        validate_bundle_compatibility(path)
-    except BundleError as error:
-        raise LaunchError(str(error)) from error
-    return path
-
-
 def _validate_dataset(payload: CountdownDataset, config_dir: Path) -> tuple[Path, DatasetSummary]:
-    if payload.name != COUNTDOWN_LITE_DATASET:
-        raise LaunchError(f"dataset.name must be {COUNTDOWN_LITE_DATASET}")
-    if payload.train_split != "train":
-        raise LaunchError("dataset.train_split must be train")
-    if payload.eval_split != "eval":
-        raise LaunchError("dataset.eval_split must be eval")
-    if payload.secondary_transfer_eval != "GSM8K-lite":
-        raise LaunchError("dataset.secondary_transfer_eval must be GSM8K-lite")
-    if payload.remote_download_allowed is not False:
-        raise LaunchError("dataset.remote_download_allowed must stay false")
-    if payload.train_on_gsm8k_lite is not False:
-        raise LaunchError("dataset.train_on_gsm8k_lite must be false")
-    manifest_path = (
-        config_dir / str_field(payload.manifest_path, "dataset.manifest_path")
-    ).resolve()
+    manifest_path = (config_dir / payload.manifest_path).resolve()
     summary = validate_rl_task_manifest(manifest_path)
     if summary.name != COUNTDOWN_LITE_DATASET:
         raise LaunchError(f"dataset manifest.name must be {COUNTDOWN_LITE_DATASET}")
@@ -647,257 +552,13 @@ def _validate_rl_manifest(manifest_path: Path, manifest: dict[str, Any]) -> Data
     )
 
 
-def _validate_budgets(payload: RLVRBudgets, dataset: DatasetSummary) -> RLVRBudgets:
-    dataset_budget = positive_int(payload.dataset_sample_budget, "budgets.dataset_sample_budget")
-    if dataset_budget != dataset.record_count:
+def _validate_budgets_against_dataset(payload: RLVRBudgets, dataset: DatasetSummary) -> None:
+    if payload.dataset_sample_budget != dataset.record_count:
         raise LaunchError("budgets.dataset_sample_budget must equal the manifest record count")
-    train_budget = positive_int(payload.train_task_budget, "budgets.train_task_budget")
-    eval_budget = positive_int(payload.eval_task_budget, "budgets.eval_task_budget")
-    if train_budget > dataset.split_counts.get("train", 0):
+    if payload.train_task_budget > dataset.split_counts.get("train", 0):
         raise LaunchError("budgets.train_task_budget exceeds train split records")
-    if eval_budget > dataset.split_counts.get("eval", 0):
+    if payload.eval_task_budget > dataset.split_counts.get("eval", 0):
         raise LaunchError("budgets.eval_task_budget exceeds eval split records")
-    positive_int(payload.max_rollout_tokens, "budgets.max_rollout_tokens")
-    positive_int(payload.max_eval_rollouts, "budgets.max_eval_rollouts")
-    return payload
-
-
-def _validate_grpo(payload: GRPOSettings) -> GRPOSettings:
-    for key, value in (
-        ("zero_variance_max_resamples", payload.zero_variance_max_resamples),
-        ("replay_buffer_max_age_steps", payload.replay_buffer_max_age_steps),
-    ):
-        if value < 0:
-            raise LaunchError(f"grpo.{key} must be a non-negative integer")
-    if "random_reward_seed" in payload.model_fields_set:
-        seed_value = payload.random_reward_seed
-        if seed_value < 0:
-            raise LaunchError("grpo.random_reward_seed must be a non-negative integer")
-    if payload.method != METHOD:
-        raise LaunchError(f"grpo.method must be {METHOD}")
-    for key, value in (
-        ("max_steps", payload.max_steps),
-        ("prompts_per_step", payload.prompts_per_step),
-        ("group_size", payload.group_size),
-        ("max_new_tokens", payload.max_new_tokens),
-        ("seed", payload.seed),
-    ):
-        positive_int(value, f"grpo.{key}")
-    for key, numeric_value in (
-        ("temperature", payload.temperature),
-        ("learning_rate", payload.learning_rate),
-        ("grad_clip", payload.grad_clip),
-    ):
-        if numeric_value <= 0:
-            raise LaunchError(f"grpo.{key} must be positive")
-    kl_beta = payload.kl_beta
-    if kl_beta < 0:
-        raise LaunchError("grpo.kl_beta must be non-negative")
-    if payload.scheduler not in {"constant", "linear_warmup_decay", "cosine_decay"}:
-        raise LaunchError("grpo.scheduler must be constant, linear_warmup_decay, or cosine_decay")
-    warmup_steps = payload.warmup_steps
-    if warmup_steps < 0:
-        raise LaunchError("grpo.warmup_steps must be a non-negative integer")
-    if warmup_steps > payload.max_steps:
-        raise LaunchError("grpo.warmup_steps must be <= grpo.max_steps")
-    weight_decay = payload.weight_decay
-    if weight_decay < 0:
-        raise LaunchError("grpo.weight_decay must be non-negative")
-    return payload
-
-
-def _validate_reward_policy(payload: RewardPolicy) -> None:
-    if payload.verifiable_only is not True:
-        raise LaunchError("reward_policy.verifiable_only must be true")
-    exact = payload.exact_solve_reward
-    valid = payload.valid_expression_reward
-    invalid = payload.invalid_reward
-    format_reward = payload.format_expression_reward
-    closeness_weight = payload.closeness_weight
-    if not (float(exact) > float(valid) >= float(invalid)):
-        raise LaunchError(
-            "reward_policy must satisfy exact_solve_reward > valid_expression_reward >= "
-            "invalid_reward"
-        )
-    if "format_expression_reward" in payload.model_fields_set and not (
-        float(valid) >= float(format_reward) >= float(invalid)
-    ):
-        raise LaunchError(
-            "reward_policy must satisfy valid_expression_reward >= "
-            "format_expression_reward >= invalid_reward"
-        )
-    if float(closeness_weight) < 0:
-        raise LaunchError("reward_policy.closeness_weight must be non-negative")
-    if float(exact) < float(valid) + float(closeness_weight) + EXACT_SOLVE_REWARD_MARGIN:
-        raise LaunchError(
-            "reward_policy.exact_solve_reward must exceed the closeness ceiling "
-            "(valid_expression_reward + closeness_weight) by at least "
-            f"{EXACT_SOLVE_REWARD_MARGIN}"
-        )
-    blocked_terms = payload.disallowed_observation_terms
-    if not DISALLOWED_REWARD_TERMS.issubset({str(item) for item in blocked_terms}):
-        raise LaunchError("reward_policy.disallowed_observation_terms is missing required terms")
-
-
-def _validate_monitoring(payload: RLVRMonitoring) -> None:
-    for key, value in (
-        ("log_interval", payload.log_interval),
-        ("checkpoint_interval", payload.checkpoint_interval),
-        ("samples_per_eval_task", payload.samples_per_eval_task),
-        ("eval_max_new_tokens", payload.eval_max_new_tokens),
-        ("eval_progress_interval_tasks", payload.eval_progress_interval_tasks),
-        ("eval_progress_interval_samples", payload.eval_progress_interval_samples),
-        ("eval_sample_batch_size", payload.eval_sample_batch_size),
-        ("debug_eval_task_budget", payload.debug_eval_task_budget),
-        ("debug_samples_per_eval_task", payload.debug_samples_per_eval_task),
-    ):
-        positive_int(value, f"monitoring.{key}")
-    for key, numeric_value in (
-        ("eval_wall_timeout_seconds", payload.eval_wall_timeout_seconds),
-        ("eval_wall_timeout_seconds_per_sample", payload.eval_wall_timeout_seconds_per_sample),
-        ("eval_no_progress_timeout_seconds", payload.eval_no_progress_timeout_seconds),
-        (
-            "eval_no_progress_timeout_seconds_per_sample",
-            payload.eval_no_progress_timeout_seconds_per_sample,
-        ),
-    ):
-        if numeric_value <= 0:
-            raise LaunchError(f"monitoring.{key} must be positive")
-    if payload.eval_sample_batch_size > payload.samples_per_eval_task:
-        raise LaunchError("monitoring.eval_sample_batch_size must be <= samples_per_eval_task")
-    if payload.debug_samples_per_eval_task > payload.samples_per_eval_task:
-        raise LaunchError("monitoring.debug_samples_per_eval_task must be <= samples_per_eval_task")
-    if payload.eval_progress_interval_samples > payload.samples_per_eval_task:
-        raise LaunchError(
-            "monitoring.eval_progress_interval_samples must be <= samples_per_eval_task"
-        )
-    str_field(payload.wandb_project, "monitoring.wandb_project")
-    if payload.wandb_required_for_modal is not True:
-        raise LaunchError("monitoring.wandb_required_for_modal must be true")
-    tags = payload.wandb_tags
-    if "stage=rlvr" not in tags:
-        raise LaunchError("monitoring.wandb_tags must include stage=rlvr")
-
-
-def _validate_eval_monitoring_bounds(monitoring: RLVRMonitoring, budgets: RLVRBudgets) -> None:
-    eval_rollouts = int(budgets.eval_task_budget) * int(monitoring.samples_per_eval_task)
-    if eval_rollouts > int(budgets.max_eval_rollouts):
-        raise LaunchError(
-            "eval_task_budget * monitoring.samples_per_eval_task exceeds budgets.max_eval_rollouts"
-        )
-    if int(monitoring.debug_eval_task_budget) > int(budgets.eval_task_budget):
-        raise LaunchError("monitoring.debug_eval_task_budget must be <= budgets.eval_task_budget")
-
-
-def _validate_pipeline_smoke(
-    payload: PipelineSmoke,
-    *,
-    budgets: RLVRBudgets,
-    grpo: GRPOSettings,
-    monitoring: RLVRMonitoring,
-    config_dir: Path,
-) -> tuple[Path, Path, Path]:
-    if payload.profile != PIPELINE_SMOKE_PROFILE:
-        raise LaunchError(f"pipeline_smoke.profile must be {PIPELINE_SMOKE_PROFILE}")
-    if payload.enabled is not True:
-        raise LaunchError("pipeline_smoke.enabled must be true")
-    for key, count in (
-        ("train_task_budget", payload.train_task_budget),
-        ("max_steps", payload.max_steps),
-        ("prompts_per_step", payload.prompts_per_step),
-        ("group_size", payload.group_size),
-        ("max_new_tokens", payload.max_new_tokens),
-        ("max_rollout_tokens", payload.max_rollout_tokens),
-        ("eval_task_budget", payload.eval_task_budget),
-        ("samples_per_eval_task", payload.samples_per_eval_task),
-        ("eval_max_new_tokens", payload.eval_max_new_tokens),
-        ("eval_progress_interval_tasks", payload.eval_progress_interval_tasks),
-        ("eval_progress_interval_samples", payload.eval_progress_interval_samples),
-        ("eval_sample_batch_size", payload.eval_sample_batch_size),
-    ):
-        positive_int(count, f"pipeline_smoke.{key}")
-    warmup_steps = payload.warmup_steps
-    if warmup_steps < 0:
-        raise LaunchError("pipeline_smoke.warmup_steps must be a non-negative integer")
-    for key, value in (
-        ("eval_wall_timeout_seconds", payload.eval_wall_timeout_seconds),
-        ("eval_no_progress_timeout_seconds", payload.eval_no_progress_timeout_seconds),
-    ):
-        if value <= 0:
-            raise LaunchError(f"pipeline_smoke.{key} must be positive")
-    if payload.train_task_budget > int(budgets.train_task_budget):
-        raise LaunchError("pipeline_smoke.train_task_budget must be <= budgets.train_task_budget")
-    if payload.eval_task_budget > int(budgets.eval_task_budget):
-        raise LaunchError("pipeline_smoke.eval_task_budget must be <= budgets.eval_task_budget")
-    if payload.max_steps > int(grpo.max_steps):
-        raise LaunchError("pipeline_smoke.max_steps must be <= grpo.max_steps")
-    if payload.warmup_steps > payload.max_steps:
-        raise LaunchError("pipeline_smoke.warmup_steps must be <= pipeline_smoke.max_steps")
-    if payload.prompts_per_step > int(grpo.prompts_per_step):
-        raise LaunchError("pipeline_smoke.prompts_per_step must be <= grpo.prompts_per_step")
-    if payload.group_size > int(grpo.group_size):
-        raise LaunchError("pipeline_smoke.group_size must be <= grpo.group_size")
-    if payload.samples_per_eval_task > int(monitoring.samples_per_eval_task):
-        raise LaunchError(
-            "pipeline_smoke.samples_per_eval_task must be <= monitoring.samples_per_eval_task"
-        )
-    if payload.eval_sample_batch_size > payload.samples_per_eval_task:
-        raise LaunchError(
-            "pipeline_smoke.eval_sample_batch_size must be <= pipeline_smoke.samples_per_eval_task"
-        )
-
-    output_dir = Path(str_field(payload.output_dir, "pipeline_smoke.output_dir"))
-    if output_dir.is_absolute() or ".." in output_dir.parts or output_dir.parts[:1] != ("runs",):
-        raise LaunchError("pipeline_smoke.output_dir must be a relative path under runs/")
-    report_path = Path(str_field(payload.report_path, "pipeline_smoke.report_path"))
-    if report_path.is_absolute() or ".." in report_path.parts:
-        raise LaunchError("pipeline_smoke.report_path must stay inside the repository")
-    doc_path = Path(str_field(payload.doc_path, "pipeline_smoke.doc_path"))
-    if doc_path.is_absolute() or ".." in doc_path.parts or doc_path.parts[:1] != ("docs",):
-        raise LaunchError("pipeline_smoke.doc_path must be a relative path under docs/")
-    repo_root = config_dir.parent
-    return (
-        (repo_root / output_dir).resolve(),
-        (repo_root / report_path).resolve(),
-        (repo_root / doc_path).resolve(),
-    )
-
-
-def _validate_artifacts(payload: Artifacts, config_dir: Path) -> tuple[Path, Path, Path]:
-    output_dir = Path(str_field(payload.output_dir, "artifacts.output_dir"))
-    if output_dir.is_absolute() or ".." in output_dir.parts or output_dir.parts[:1] != ("runs",):
-        raise LaunchError("artifacts.output_dir must be a relative path under runs/")
-    report_path = Path(str_field(payload.report_path, "artifacts.report_path"))
-    if report_path.is_absolute() or ".." in report_path.parts:
-        raise LaunchError("artifacts.report_path must stay inside the repository")
-    doc_path = Path(str_field(payload.doc_path, "artifacts.doc_path"))
-    if doc_path.is_absolute() or ".." in doc_path.parts or doc_path.parts[:1] != ("docs",):
-        raise LaunchError("artifacts.doc_path must be a relative path under docs/")
-    required = payload.required_files
-    if tuple(required) not in (EXPECTED_ARTIFACTS, EXPECTED_ARTIFACTS_WITH_FINAL_EVAL):
-        raise LaunchError("artifacts.required_files must match the GRPO evidence manifest")
-    repo_root = config_dir.parent
-    return (
-        (repo_root / output_dir).resolve(),
-        (repo_root / report_path).resolve(),
-        (repo_root / doc_path).resolve(),
-    )
-
-
-def _validate_acceptance(payload: Acceptance) -> None:
-    if payload.primary_metric != "valid_expression_rate":
-        raise LaunchError("acceptance.primary_metric must be valid_expression_rate")
-    if payload.record_no_improvement is not True:
-        raise LaunchError("acceptance.record_no_improvement must be true")
-    for key, value in (
-        ("baseline_valid_expression_rate", payload.baseline_valid_expression_rate),
-        ("baseline_exact_solve_rate", payload.baseline_exact_solve_rate),
-        ("baseline_pass_at_1", payload.baseline_pass_at_1),
-        ("baseline_pass_at_8", payload.baseline_pass_at_8),
-        ("baseline_pass_at_32", payload.baseline_pass_at_32),
-    ):
-        if not 0 <= value <= 1:
-            raise LaunchError(f"acceptance.{key} must be a rate in [0, 1]")
 
 
 def _estimate_train_tokens(

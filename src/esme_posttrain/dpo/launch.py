@@ -1,13 +1,7 @@
-"""Approval-gated launch validation for the Esme-214M-Chat DPO polish stage.
+"""Approval-gated launch preparation for the Esme-214M-Chat DPO polish stage.
 
-Mirrors the multi-turn SFT launch contract (``sft_multiturn_launch``): the dry-run
-never starts Modal, smoke spend is capped at $2 with no env bypass, and the full
-run refuses without ``--approved`` AND bounded beta-sweep learning-gate evidence.
-It pins the DPO recipe: its own run_id, a separate output stem + Volume
-(``esme-214m-chat-dpo``), warm-start from the accepted SFT foundation as the
-frozen reference, ``loss_type=sigmoid`` vanilla DPO, the SmolLM2-360M config
-(beta 0.5 / lr 1e-6 / cosine warmup 0.1 / 2 epochs / max_length 1024 /
-max_prompt_length 512), a length-normalization toggle, and W&B ``stage=dpo`` tags.
+The dry-run never starts Modal. ``dpo.config`` pins the recipe at parse time; this
+module adds cost projections, launch blockers, and the bounded beta-sweep gate.
 """
 
 from __future__ import annotations
@@ -15,107 +9,45 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import TypeAdapter, ValidationError
 
 from esme_posttrain.dpo.config import (
-    Acceptance,
-    Datasets,
+    EXPECTED_SWEEP_BETAS,
     DPOBudgets,
-    DPOMonitoring,
-    DPOObjective,
     DPOOptimizer,
     DPOSettings,
     LearningGate,
-    PairFiltering,
     PreferenceSource,
-    SFTReference,
 )
 from esme_posttrain.launch.config_guards import (
     IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
-    LaunchError,
     build_modal_launch_command,
     estimate_cost_usd,
     load_json_object,
-    validate_modal_runtime,
-    validate_output_artifacts,
 )
 from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
 )
 from esme_posttrain.launch.config_guards import (
-    positive_int as _positive_int,
-)
-from esme_posttrain.launch.config_guards import (
     smoke_launch_blockers as _common_smoke_launch_blockers,
-)
-from esme_posttrain.launch.config_guards import (
-    str_field as _str,
 )
 from esme_posttrain.launch.config_models import (
     FrozenJSON,
     GPUProfile,
     ModalRuntime,
-    PaddedSequence,
     parse_config,
 )
-from esme_posttrain.sft.data import DatasetSource
+from esme_posttrain.sft.data_types import DatasetSource
 
-# DPO is far cheaper than SFT (one bounded pass on UltraFeedback at lr 1e-6); the
-# full-run runaway cap is intentionally lower than the SFT $40 cap.
-DPO_FULL_RUN_SPEND_CAP_USD = 15.0
-
-RUN_ID = "esme_214m_chat_dpo"
-RUN_CARD = "run_cards/esme-214m-chat-dpo.md"
-ARTIFACT_NAME = "Esme-214M-Chat"
-REFERENCE_ARTIFACT_NAME = "Esme-214M-Instruct"
-MODAL_VOLUME = "esme-posttrain-esme-chat-dpo"
-SFT_FOUNDATION_VOLUME = "esme-posttrain-esme-sft-multiturn"
-MAX_APPROVED_TRAIN_PAIRS = 64_000
-MAX_APPROVED_TRAIN_TOKENS = 200_000_000
-
-_ULTRAFEEDBACK_REVISION = "3949bf5f8c17c394422ccfab0c31ea9c20bdeb85"
-EXPECTED_PREFERENCE_DATASET: dict[str, str] = {
-    "name": "ultrafeedback-binarized",
-    "source": "HuggingFaceH4/ultrafeedback_binarized",
-    "revision": _ULTRAFEEDBACK_REVISION,
-    "license": "mit",
-    "split": "train_prefs",
-}
-EXPECTED_EVAL_DATASET: dict[str, str] = {
-    "name": "ultrafeedback-binarized",
-    "source": "HuggingFaceH4/ultrafeedback_binarized",
-    "revision": _ULTRAFEEDBACK_REVISION,
-    "license": "mit",
-    "split": "test_prefs",
-}
-EXPECTED_ARTIFACTS: tuple[str, ...] = (
-    "config.json",
-    "data-report.json",
-    "selected-pair-manifest.jsonl",
-    "eval-pair-manifest.jsonl",
-    "decoding-precheck.json",
-    "metrics.jsonl",
-    "checkpoint.pt",
-    "best-checkpoint.pt",
-    "best-checkpoint.json",
-    "chat-samples.md",
-    "tokenizer.json",
-    "manifest.json",
-    "eval-report.json",
-    "cost.json",
-    "environment.txt",
-)
 LEARNING_GATE_BLOCKER = (
     "full Esme-214M-Chat DPO launch requires learning_gate.evidence with "
     "bounded_beta_sweep proof where held-out preference accuracy improves versus "
     "the SFT reference and chosen-logp does not collapse"
 )
-# The bounded beta sweep the launch learning-gate requires.
-EXPECTED_SWEEP_BETAS: tuple[float, ...] = (0.1, 0.3, 0.5)
 
 
 @dataclass(frozen=True)
@@ -162,42 +94,11 @@ def load_dpo_config(config_path: Path) -> DPOLaunchConfig:
 
 def validate_dpo_payload(payload: object, config_path: Path) -> DPOLaunchConfig:
     settings = parse_config(DPOSettings, payload, source=config_path)
-    if settings.schema_version != 1:
-        raise LaunchError("schema_version must be 1")
-    if settings.run_id != RUN_ID:
-        raise LaunchError(f"run_id must be {RUN_ID}")
-    if settings.run_card != RUN_CARD:
-        raise LaunchError(f"run_card must be {RUN_CARD}")
-    if settings.requires_approval is not True:
-        raise LaunchError("requires_approval must be true")
-    if settings.artifact_name != ARTIFACT_NAME:
-        raise LaunchError(f"artifact_name must be {ARTIFACT_NAME}")
-    if settings.starts_from != REFERENCE_ARTIFACT_NAME:
-        raise LaunchError(f"starts_from must be {REFERENCE_ARTIFACT_NAME}")
-    if settings.stage != "dpo":
-        raise LaunchError("stage must be dpo")
-
-    _validate_sft_reference(settings.sft_reference)
-    preference_source, eval_source = _validate_datasets(settings.datasets)
-    budgets = _validate_budgets(settings.budgets)
-    _validate_optimizer(settings.optimizer)
-    _validate_dpo(settings.dpo)
-    _validate_sequence(settings.sequence)
-    runtime = validate_modal_runtime(
-        settings.runtime,
-        full_run_spend_cap_usd=DPO_FULL_RUN_SPEND_CAP_USD,
-        full_run_cap_label=f"{DPO_FULL_RUN_SPEND_CAP_USD:.0f}",
-        modal_volume=MODAL_VOLUME,
-        require_smoke_profile_metrics=False,
-    )
-    _validate_monitoring(settings.monitoring)
-    output_dir = validate_output_artifacts(
-        settings.artifacts,
-        expected_files=EXPECTED_ARTIFACTS,
-        manifest_label="DPO evidence manifest",
-    )
-    _validate_learning_gate(settings.learning_gate)
-    _validate_acceptance(settings.acceptance)
+    preference_source = _dataset_source(settings.datasets.preference_train, role="train")
+    eval_source = _dataset_source(settings.datasets.preference_eval, role="eval")
+    budgets = settings.budgets
+    runtime = settings.runtime
+    output_dir = Path(settings.artifacts.output_dir)
 
     selected_profile = runtime.gpu_profiles[runtime.selected_gpu]
     estimated_full_cost = estimate_cost_usd(
@@ -309,198 +210,16 @@ def full_launch_blockers(
     return blockers
 
 
-# --- section validators -------------------------------------------------------
-
-
-def _validate_sft_reference(payload: SFTReference) -> None:
-    if payload.volume != SFT_FOUNDATION_VOLUME:
-        raise LaunchError(f"sft_reference.volume must be {SFT_FOUNDATION_VOLUME}")
-    if payload.format != "llm_posttrain_instruct_sft_v1":
-        raise LaunchError("sft_reference.format must be llm_posttrain_instruct_sft_v1")
-    if payload.model_family != "DenseBackbone":
-        raise LaunchError("sft_reference.model_family must be DenseBackbone")
-    if payload.read_only is not True:
-        raise LaunchError("sft_reference.read_only must be true")
-    _str(payload.checkpoint_path, "sft_reference.checkpoint_path")
-    _str(payload.tokenizer_path, "sft_reference.tokenizer_path")
-    _str(payload.wandb_run, "sft_reference.wandb_run")
-    _positive_int(payload.best_step, "sft_reference.best_step")
-
-
-def _validate_datasets(payload: Datasets) -> tuple[DatasetSource, DatasetSource]:
-    if payload.non_commercial_training_approved is not False:
-        raise LaunchError("datasets.non_commercial_training_approved must stay false")
-    train = _validate_preference_source(
-        payload.preference_train,
-        expected=EXPECTED_PREFERENCE_DATASET,
-        role="train",
-    )
-    eval_source = _validate_preference_source(
-        payload.preference_eval,
-        expected=EXPECTED_EVAL_DATASET,
-        role="eval",
-    )
-    _validate_filtering(payload.filtering)
-    return train, eval_source
-
-
-def _validate_preference_source(
-    payload: PreferenceSource, *, expected: Mapping[str, str], role: str
-) -> DatasetSource:
-    for key, value in (
-        ("name", payload.name),
-        ("source", payload.source),
-        ("revision", payload.revision),
-        ("license", payload.license),
-        ("split", payload.split),
-    ):
-        if value != expected[key]:
-            raise LaunchError(f"datasets.preference_{role}.{key} must be {expected[key]}")
-    if payload.role != role:
-        raise LaunchError(f"datasets.preference_{role}.role must be {role}")
+def _dataset_source(payload: PreferenceSource, *, role: Literal["train", "eval"]) -> DatasetSource:
     return DatasetSource(
-        name=expected["name"],
-        source=expected["source"],
-        revision=expected["revision"],
-        license=expected["license"],
-        split=expected["split"],
-        role="train" if role == "train" else "eval",
+        name=payload.name,
+        source=payload.source,
+        revision=payload.revision,
+        license=payload.license,
+        split=payload.split,
+        role=role,
         train_allowed=role == "train",
     )
-
-
-def _validate_filtering(payload: PairFiltering) -> None:
-    _positive_int(payload.max_prompt_chars, "datasets.filtering.max_prompt_chars")
-    _positive_int(payload.max_response_chars, "datasets.filtering.max_response_chars")
-    if payload.drop_identical_responses is not True:
-        raise LaunchError("datasets.filtering.drop_identical_responses must be true")
-
-
-def _validate_budgets(payload: DPOBudgets) -> DPOBudgets:
-    max_train_pairs = _positive_int(payload.max_train_pairs, "budgets.max_train_pairs")
-    max_train_tokens = _positive_int(payload.max_train_tokens, "budgets.max_train_tokens")
-    target_train_tokens = _positive_int(payload.target_train_tokens, "budgets.target_train_tokens")
-    if max_train_pairs > MAX_APPROVED_TRAIN_PAIRS:
-        raise LaunchError(f"budgets.max_train_pairs must be <= {MAX_APPROVED_TRAIN_PAIRS}")
-    if max_train_tokens > MAX_APPROVED_TRAIN_TOKENS:
-        raise LaunchError(f"budgets.max_train_tokens must be <= {MAX_APPROVED_TRAIN_TOKENS}")
-    if target_train_tokens > max_train_tokens:
-        raise LaunchError("budgets.target_train_tokens must be <= budgets.max_train_tokens")
-    if payload.max_length != 1024:
-        raise LaunchError("budgets.max_length must be 1024 to match the Esme-214M context")
-    if payload.max_prompt_length != 512:
-        raise LaunchError("budgets.max_prompt_length must be 512 (SmolLM2-360M DPO config)")
-    if payload.max_prompt_length >= payload.max_length:
-        raise LaunchError("budgets.max_prompt_length must be < budgets.max_length")
-    for key, value in (
-        ("min_train_pairs", payload.min_train_pairs),
-        ("max_eval_pairs", payload.max_eval_pairs),
-        ("min_eval_pairs", payload.min_eval_pairs),
-        ("max_eval_tokens", payload.max_eval_tokens),
-        ("smoke_train_pairs", payload.smoke_train_pairs),
-        ("smoke_train_tokens", payload.smoke_train_tokens),
-        ("smoke_eval_pairs", payload.smoke_eval_pairs),
-    ):
-        _positive_int(value, f"budgets.{key}")
-    # max_*_pairs are caps; min_*_pairs are the sufficiency floors. Selecting fewer
-    # than the cap (UltraFeedback is length-filtered at max_length=1024) is normal;
-    # the floor is the minimum clean pairs a run needs to be sufficient.
-    if payload.min_train_pairs > max_train_pairs:
-        raise LaunchError(
-            "budgets.min_train_pairs (floor) must be <= budgets.max_train_pairs (cap)"
-        )
-    if payload.min_eval_pairs > payload.max_eval_pairs:
-        raise LaunchError("budgets.min_eval_pairs (floor) must be <= budgets.max_eval_pairs (cap)")
-    if payload.smoke_train_pairs > max_train_pairs:
-        raise LaunchError("budgets.smoke_train_pairs must be <= budgets.max_train_pairs")
-    if payload.smoke_train_tokens > max_train_tokens:
-        raise LaunchError("budgets.smoke_train_tokens must be <= budgets.max_train_tokens")
-    return payload
-
-
-def _validate_optimizer(payload: DPOOptimizer) -> DPOOptimizer:
-    if payload.name != "adamw_torch":
-        raise LaunchError("optimizer.name must be adamw_torch")
-    lr = payload.learning_rate
-    if lr <= 0:
-        raise LaunchError("optimizer.learning_rate must be positive")
-    if lr > 1e-5:
-        raise LaunchError("optimizer.learning_rate must be <= 1e-5 (DPO LR is ~10-100x below SFT)")
-    for key, value in (
-        ("micro_batch_size", payload.micro_batch_size),
-        ("gradient_accumulation_steps", payload.gradient_accumulation_steps),
-        ("effective_batch_size", payload.effective_batch_size),
-        ("epochs", payload.epochs),
-        ("max_steps", payload.max_steps),
-        ("smoke_max_steps", payload.smoke_max_steps),
-        ("seed", payload.seed),
-    ):
-        _positive_int(value, f"optimizer.{key}")
-    if (
-        payload.micro_batch_size * payload.gradient_accumulation_steps
-        != payload.effective_batch_size
-    ):
-        raise LaunchError(
-            "optimizer.effective_batch_size must equal "
-            "micro_batch_size * gradient_accumulation_steps"
-        )
-    if payload.smoke_max_steps > payload.max_steps:
-        raise LaunchError("optimizer.smoke_max_steps must be <= optimizer.max_steps")
-    if payload.grad_clip <= 0:
-        raise LaunchError("optimizer.grad_clip must be positive")
-    if payload.scheduler not in {"constant", "linear_warmup_decay", "cosine_decay"}:
-        raise LaunchError(
-            "optimizer.scheduler must be constant, linear_warmup_decay, or cosine_decay"
-        )
-    warmup_ratio = payload.warmup_ratio
-    if not 0 <= warmup_ratio < 1:
-        raise LaunchError("optimizer.warmup_ratio must be in [0, 1)")
-    if payload.weight_decay < 0:
-        raise LaunchError("optimizer.weight_decay must be non-negative")
-    return payload
-
-
-def _validate_dpo(payload: DPOObjective) -> None:
-    if payload.loss_type != "sigmoid":
-        raise LaunchError("dpo.loss_type must be sigmoid (vanilla DPO); SimPO/IPO are out of scope")
-    beta = payload.beta
-    if beta <= 0:
-        raise LaunchError("dpo.beta must be positive")
-    if payload.reference_free is not False:
-        raise LaunchError("dpo.reference_free must be false (frozen SFT reference is required)")
-    if payload.auxiliary_sft_loss is not False:
-        raise LaunchError(
-            "dpo.auxiliary_sft_loss must be false (measured net-negative; not added by reflex)"
-        )
-
-
-def _validate_sequence(payload: PaddedSequence) -> None:
-    value = payload.pad_to_multiple_of
-    if value is not None and value <= 0:
-        raise LaunchError("sequence.pad_to_multiple_of must be a positive integer or null")
-
-
-def _validate_monitoring(payload: DPOMonitoring) -> None:
-    _positive_int(payload.log_interval, "monitoring.log_interval")
-    _positive_int(payload.eval_interval, "monitoring.eval_interval")
-    _positive_int(payload.checkpoint_interval, "monitoring.checkpoint_interval")
-    _positive_int(payload.sample_new_tokens, "monitoring.sample_new_tokens")
-    _str(payload.wandb_project, "monitoring.wandb_project")
-    if payload.wandb_required_for_modal is not True:
-        raise LaunchError("monitoring.wandb_required_for_modal must be true")
-    tags = payload.wandb_tags
-    if "stage=dpo" not in tags:
-        raise LaunchError("monitoring.wandb_tags must include stage=dpo")
-    if payload.log_chosen_rejected_logps is not True:
-        raise LaunchError("monitoring.log_chosen_rejected_logps must be true (displacement watch)")
-
-
-def _validate_learning_gate(payload: LearningGate) -> None:
-    if payload.full_run_requires_beta_sweep is not True:
-        raise LaunchError("learning_gate.full_run_requires_beta_sweep must be true")
-    swept = payload.swept_betas
-    if tuple(float(b) for b in swept) != EXPECTED_SWEEP_BETAS:
-        raise LaunchError(f"learning_gate.swept_betas must be {list(EXPECTED_SWEEP_BETAS)}")
 
 
 def _learning_gate_blockers(payload: LearningGate) -> list[str]:
@@ -585,18 +304,6 @@ def _bounded_beta_sweep_blockers(evidence: Mapping[str, FrozenJSON]) -> list[str
             "learning_gate.evidence.bounded_beta_sweep.evidence_uri must be a non-empty string"
         )
     return blockers
-
-
-def _validate_acceptance(payload: Acceptance) -> None:
-    if payload.preference_accuracy_must_beat_reference is not True:
-        raise LaunchError("acceptance.preference_accuracy_must_beat_reference must be true")
-    if payload.no_chosen_logp_collapse is not True:
-        raise LaunchError("acceptance.no_chosen_logp_collapse must be true")
-    if payload.repetition_or_length_must_improve is not True:
-        raise LaunchError("acceptance.repetition_or_length_must_improve must be true")
-    proxies = payload.proxies
-    if len(proxies) < 3:
-        raise LaunchError("acceptance.proxies must list the primary cheap proxy signals")
 
 
 def _launch_command(config_path: Path, runtime: ModalRuntime, *, mode: str) -> str:

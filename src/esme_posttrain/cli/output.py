@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NoReturn, Protocol
 
-from esme_posttrain.launch.config_guards import LaunchError
+from esme_posttrain.launch.errors import LaunchError
 
 Payload = dict[str, object]
 PayloadFormatter = Callable[[Payload], str]
