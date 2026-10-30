@@ -1,8 +1,12 @@
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import torch
@@ -228,7 +232,7 @@ def test_dpo_rejects_mismatched_policy_reference_config(tmp_path: Path) -> None:
     tokenizer = tiny_chat_tokenizer()
     policy = DenseBackbone(tiny_backbone_config())
     other = tiny_backbone_config()
-    reference = DenseBackbone(type(other)(**{**other.to_dict(), "layers": 2}))
+    reference = DenseBackbone(dataclasses.replace(other, layers=2))
     pair = tokenize_preference_pair(
         tokenizer,
         PreferencePair(
@@ -314,7 +318,7 @@ def test_dpo_logs_chosen_rejected_logps_every_eval(tmp_path: Path) -> None:
     assert "wandb_run_url" in result.to_dict()
 
 
-def _tiny_dpo_pairs(tokenizer) -> tuple:
+def _tiny_dpo_pairs(tokenizer) -> tuple[Any, ...]:
     return tuple(
         tokenize_preference_pair(
             tokenizer,
@@ -359,7 +363,7 @@ def _dpo_config(output_dir: Path, *, max_steps: int, resume_from_latest: bool = 
     )
 
 
-def _train_rows(metrics_path: Path) -> dict[int, dict]:
+def _train_rows(metrics_path: Path) -> dict[int, dict[str, Any]]:
     rows = [
         json.loads(line)
         for line in metrics_path.read_text(encoding="utf-8").splitlines()
@@ -737,7 +741,7 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
         margin_increased=True,
         chosen_logp_collapsed=False,
     )
-    _assert_accepted_dpo_result(accepted)
+    _assert_accepted_dpo_result(accepted)  # pyright: ignore[reportArgumentType]
 
     lower_accuracy = SimpleNamespace(
         base_eval=SimpleNamespace(preference_accuracy=0.6),
@@ -746,7 +750,7 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
         chosen_logp_collapsed=False,
     )
     with pytest.raises(DPOFullRunError, match="preference accuracy"):
-        _assert_accepted_dpo_result(lower_accuracy)
+        _assert_accepted_dpo_result(lower_accuracy)  # pyright: ignore[reportArgumentType]
 
     collapsed = SimpleNamespace(
         base_eval=SimpleNamespace(preference_accuracy=0.5),
@@ -755,7 +759,7 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
         chosen_logp_collapsed=True,
     )
     with pytest.raises(DPOFullRunError, match="log-prob collapsed"):
-        _assert_accepted_dpo_result(collapsed)
+        _assert_accepted_dpo_result(collapsed)  # pyright: ignore[reportArgumentType]
 
 
 def test_dpo_full_prompt_masking_check_raises_on_leaked_prompt() -> None:
@@ -866,7 +870,7 @@ def test_full_run_blocks_modal_gpu_mismatch() -> None:
     assert any("DPO_MODAL_GPU must match" in b for b in blockers)
 
 
-def _passing_beta_sweep_evidence() -> dict[str, object]:
+def _passing_beta_sweep_evidence() -> dict[str, Any]:
     return {
         "bounded_beta_sweep": {
             "kind": "bounded_beta_sweep",

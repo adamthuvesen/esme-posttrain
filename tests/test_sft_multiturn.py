@@ -1,7 +1,10 @@
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 import torch
@@ -16,10 +19,8 @@ from esme_posttrain.sft.config import MULTITURN_FULL_RUN_SPEND_CAP_USD
 from esme_posttrain.sft.data import iter_rows, measure_multi_turn_lengths, tokenize_multi_turn
 from esme_posttrain.sft.data_types import ChatTurn, DataError, DatasetSource, MultiTurnExample
 from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
-from esme_posttrain.sft.full_multiturn import (
-    SFTFullRunError,
-    run_full_multi_turn_sft,
-)
+from esme_posttrain.sft.full_multiturn import run_full_multi_turn_sft
+from esme_posttrain.sft.full_shared import SFTFullRunError
 from esme_posttrain.sft.launch_multiturn import (
     build_multi_turn_dry_run,
     full_launch_blockers,
@@ -93,6 +94,7 @@ def test_multi_turn_masking_supervises_every_assistant_turn_and_masks_others() -
         for token, label in zip(tokenized.input_ids, tokenized.labels, strict=True)
         if label != IGNORE_INDEX
     ]
+    assert eos_id is not None
     assert supervised_ids.count(eos_id) == 3
 
     # Role markers and user/system content never enter the loss.
@@ -245,7 +247,7 @@ def test_multi_turn_parsing_capacity_filtering_and_turn_distribution(tmp_path: P
     assert smol_counts.selected_multi_turn == 1
     assert smol_counts.selected_single_turn == 1
 
-    distribution = turn_distribution(result.examples).to_dict()
+    distribution: dict[str, Any] = turn_distribution(result.examples).to_dict()
     assert distribution["multi_turn_examples"] >= 1
     assert distribution["single_turn_examples"] >= 1
     assert distribution["mean_assistant_turns"] > 1.0
@@ -321,7 +323,7 @@ def test_multi_turn_modal_smoke_body_refreshes_manifest_with_expected_artifacts(
 
     def fake_run_multi_turn_cpu_fixture(
         config: object, *, output_dir: Path, wandb_enabled: bool
-    ) -> dict:
+    ) -> dict[str, Any]:
         output_dir.mkdir(parents=True)
         return {"status": "local_cpu_fixture_complete", "wandb_enabled": wandb_enabled}
 
@@ -340,7 +342,7 @@ def test_multi_turn_modal_smoke_body_refreshes_manifest_with_expected_artifacts(
         json.loads(CONFIG_PATH.read_text(encoding="utf-8")),
         commit="abc123",
         dirty=False,
-        started=modal_chat_sft.time.perf_counter(),
+        started=time.perf_counter(),
     )
 
     assert refresh_calls == [(output_dir, MULTITURN_EXPECTED_ARTIFACTS)]
@@ -706,7 +708,7 @@ def test_training_launches_block_when_base_bundle_missing(
 # --- helpers ------------------------------------------------------------------
 
 
-def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 

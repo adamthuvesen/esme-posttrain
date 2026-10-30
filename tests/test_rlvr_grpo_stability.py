@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Unit tests for the GRPO stability bundle (Dr. GRPO / DAPO / ARPO)."""
 
 from __future__ import annotations

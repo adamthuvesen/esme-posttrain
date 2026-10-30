@@ -284,6 +284,7 @@ def run_sft_training(
     trained_tokens = 0
     supervised_tokens = 0
     resumed_from_checkpoint: Path | None = None
+    restored_best: _BestCheckpointState | None = None
     if config.resume_from_latest:
         resumed = _resume_latest_checkpoint(output_dir, model, optimizer, scheduler, device)
         if resumed is not None:
@@ -329,7 +330,7 @@ def run_sft_training(
     last_components: dict[str, float] = {}
     current_step = start_step
     last_completed_step = start_step
-    if resumed_from_checkpoint is not None:
+    if restored_best is not None:
         best_selector_value = restored_best.selected_metric_value
         selected_step = restored_best.selected_step
         selected_eval_suite = restored_best.selected_eval_suite

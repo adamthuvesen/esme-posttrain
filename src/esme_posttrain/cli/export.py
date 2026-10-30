@@ -3,11 +3,16 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from esme_posttrain.cli.output import emit_payload, exit_with_error, format_stage_payload
+from esme_posttrain.cli.output import (
+    Subparsers,
+    emit_payload,
+    exit_with_error,
+    format_stage_payload,
+)
 from esme_posttrain.export.dense_bundle import ExportRequest, export_dense_bundle
 
 
-def add_export_parsers(subparsers: argparse._SubParsersAction) -> None:
+def add_export_parsers(subparsers: Subparsers) -> None:
     export_bundle = subparsers.add_parser(
         "export-dense-bundle",
         help="Export a posttrain DenseBackbone checkpoint as an llm-infer bundle.",

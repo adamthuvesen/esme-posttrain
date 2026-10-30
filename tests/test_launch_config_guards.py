@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -165,7 +166,7 @@ def test_launch_settings_preserve_serialized_config_and_isolate_mutation(
 
     source["runtime"]["gpu_profiles"]["A100"]["usd_per_hour"] = 999
     source["budgets"].clear()
-    detached = config.settings.to_dict()
+    detached: dict[str, Any] = config.settings.to_dict()
     detached["runtime"]["gpu_profiles"]["A100"]["usd_per_hour"] = 999
     assert config.settings.to_dict() == original
 
@@ -174,7 +175,7 @@ def test_launch_settings_preserve_serialized_config_and_isolate_mutation(
     with pytest.raises(ValidationError, match="frozen"):
         config.selected_gpu_profile.usd_per_hour = 999
     with pytest.raises(TypeError):
-        config.settings.runtime.gpu_profiles["A100"] = config.selected_gpu_profile
+        config.settings.runtime.gpu_profiles["A100"] = config.selected_gpu_profile  # pyright: ignore[reportIndexIssue]
     assert isinstance(config.settings.artifacts.required_files, tuple)
 
 
@@ -182,7 +183,8 @@ def test_learning_gate_evidence_is_deeply_immutable() -> None:
     config_path = Path("configs/esme-214m-sft-multiturn.json")
     source = json.loads(config_path.read_text(encoding="utf-8"))
     config = validate_multi_turn_payload(source, config_path.resolve())
-    sweep = config.settings.learning_gate.evidence["bounded_matched_interval_eval_sweep"]
+    evidence: Any = config.settings.learning_gate.evidence
+    sweep = evidence["bounded_matched_interval_eval_sweep"]
     original_steps = tuple(sweep["interval_eval_steps"])
     source["learning_gate"]["evidence"]["bounded_matched_interval_eval_sweep"][
         "interval_eval_steps"

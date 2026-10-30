@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import json
@@ -12,15 +14,16 @@ from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.sft.data import sequence_efficiency_report, tokenize_multi_turn
 from esme_posttrain.sft.data_types import ChatTurn, MultiTurnExample, TokenizedExample
-from esme_posttrain.sft.eval_suite import EvalSplit
-from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
-from esme_posttrain.sft.trainer import (
+from esme_posttrain.sft.eval_suite import (
     EvalMetrics,
+    EvalSplit,
     EvalSuiteResult,
+    no_robots_catastrophic_regression,
+)
+from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
+from esme_posttrain.sft.sampling import generate_samples, markdown_fenced_text
+from esme_posttrain.sft.trainer import (
     SFTTrainerConfig,
-    _generate_samples,
-    _markdown_fenced_text,
-    _no_robots_catastrophic_regression,
     load_sft_checkpoint,
     run_sft_training,
 )
@@ -191,7 +194,7 @@ def test_sample_generation_trims_eos_marker_and_trailing_tokens(
 
     monkeypatch.setattr(model, "generate", fake_generate)
 
-    (sample,) = _generate_samples(model, tokenizer, (example,), sample_new_tokens=4)
+    (sample,) = generate_samples(model, tokenizer, (example,), sample_new_tokens=4)
 
     assert sample.endswith("assistant red")
     assert "<eos>" not in sample
@@ -199,7 +202,7 @@ def test_sample_generation_trims_eos_marker_and_trailing_tokens(
 
 
 def test_markdown_sample_fence_handles_generated_code_blocks() -> None:
-    lines = _markdown_fenced_text("```python\nprint('hi')\n```")
+    lines = markdown_fenced_text("```python\nprint('hi')\n```")
 
     assert lines[0] == "````text"
     assert lines[-1] == "````"
@@ -377,8 +380,8 @@ def test_matched_eval_selector_best_checkpoint_and_no_robots_guardrail(
             "no_robots": EvalMetrics(1.6, 5.0, 10, 1),
         },
     )
-    assert not _no_robots_catastrophic_regression(safe_suite, baseline=1.0, multiplier=1.5)
-    assert _no_robots_catastrophic_regression(bad_suite, baseline=1.0, multiplier=1.5)
+    assert not no_robots_catastrophic_regression(safe_suite, baseline=1.0, multiplier=1.5)
+    assert no_robots_catastrophic_regression(bad_suite, baseline=1.0, multiplier=1.5)
 
 
 def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) -> None:

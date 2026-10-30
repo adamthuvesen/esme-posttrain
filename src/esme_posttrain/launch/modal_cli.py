@@ -96,12 +96,12 @@ def with_full_output_stem(
     full_launch_command: str,
     volume_output_dir: str,
 ) -> dict[str, Any]:
-    updated = {
+    updated: dict[str, Any] = {
         **payload,
         "full_launch_command": full_launch_command,
         "volume_output_dir": volume_output_dir,
     }
-    preflight = dict(updated.get("preflight", {}))
+    preflight: dict[str, Any] = dict(updated.get("preflight", {}))
     preflight["exact_launch_command"] = full_launch_command
     preflight["volume_output_dir"] = volume_output_dir
     updated["preflight"] = preflight

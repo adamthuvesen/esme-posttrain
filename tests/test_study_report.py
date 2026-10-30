@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import hashlib
@@ -15,11 +17,11 @@ from esme_posttrain.studies.report import (
     StudyReportError,
     _p_value,
     _paired_problem_effects,
-    _score_countdown_sample,
     _seed_problem_bootstrap_95,
     _sign_flip_permutation_p,
     generate_study_report,
     load_study_specification,
+    score_countdown_sample,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -123,7 +125,7 @@ def test_specification_rejects_unknown_fields() -> None:
 
 
 def test_completion_scoring_matches_decomposition_leading_zero_rule() -> None:
-    score = _score_countdown_sample("\\boxed{3 - 06}", numbers=(3, 6), target=18)
+    score = score_countdown_sample("\\boxed{3 - 06}", numbers=(3, 6), target=18)
 
     assert score.is_valid_expression is False
     assert score.is_exact_solve is False

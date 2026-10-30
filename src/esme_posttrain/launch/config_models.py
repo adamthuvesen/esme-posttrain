@@ -182,7 +182,7 @@ class ModalRuntime(FrozenConfig):
 
 
 class SmokeModalRuntime(ModalRuntime):
-    gpu_profiles: SmokeGPUProfiles
+    gpu_profiles: SmokeGPUProfiles  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 def check_stage_runtime(

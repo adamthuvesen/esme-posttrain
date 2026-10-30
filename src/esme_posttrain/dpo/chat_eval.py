@@ -109,11 +109,11 @@ class ChatEvalComparison:
             "prompt_names": [name for name, _ in self.prompts],
             "sft": self.sft.to_dict(),
             "dpo": self.dpo.to_dict(),
-            "summary_comparison": self._summary_comparison(),
+            "summary_comparison": self.summary_comparison(),
             "degeneration_flags": list(self.degeneration_flags),
         }
 
-    def _summary_comparison(self) -> dict[str, Any]:
+    def summary_comparison(self) -> dict[str, Any]:
         comparison: dict[str, Any] = {}
         for decoding in self.decodings:
             sft = self.sft.report.per_decoding[decoding]
@@ -240,7 +240,7 @@ def write_chat_eval_markdown(comparison: ChatEvalComparison, path: Path) -> None
         "| Decoder | Metric | SFT | DPO |",
         "| --- | --- | --- | --- |",
     ]
-    summary = comparison._summary_comparison()
+    summary = comparison.summary_comparison()
     for decoding, row in summary.items():
         lines.append(
             f"| {decoding} | mean response length | "

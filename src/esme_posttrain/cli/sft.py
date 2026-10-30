@@ -3,12 +3,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from esme_posttrain.cli.output import run_config_stage
+from esme_posttrain.cli.output import Subparsers, run_config_stage
 from esme_posttrain.sft.launch_multiturn import build_multi_turn_dry_run, load_multi_turn_config
 from esme_posttrain.sft.smoke_multiturn import run_multi_turn_cpu_fixture
 
 
-def add_sft_parsers(subparsers: argparse._SubParsersAction) -> None:
+def add_sft_parsers(subparsers: Subparsers) -> None:
     mt_dry_run = subparsers.add_parser(
         "sft-multiturn-dry-run",
         help="Validate the approval-gated Esme multi-turn SFT config.",

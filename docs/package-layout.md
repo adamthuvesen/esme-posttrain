@@ -71,7 +71,7 @@ DPO can reuse `sft.data`, `sft.data_types`, `sft.sampling`, and `sft.fixtures`, 
 New modules inside these packages inherit their boundaries.
 For a new top-level package, declare its position in the graph before running the check.
 
-- Import each name from the module that defines it. `make type` rejects imports through a re-export (`no_implicit_reexport`).
+- Import each name from the module that defines it. `make type` rejects imports through a re-export (`reportPrivateLocalImportUsage`).
 - Keep package `__init__.py` files boring. Avoid broad re-export barrels; they hide ownership and can create import cycles.
 - If a module grows large, split by responsibility inside the stage package before adding a new top-level package.
 

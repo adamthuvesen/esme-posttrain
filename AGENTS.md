@@ -30,8 +30,8 @@ Prove changes with `make verify` (`verify-esme-posttrain` skill at `.agents/skil
 | --- | --- | --- |
 | Stage boundaries and shared-code dependency direction | `pyproject.toml::dependency-direction`, `make architecture` | 2026-11-04 |
 | DPO must not import the SFT trainer, even indirectly | `pyproject.toml::dpo-without-sft-trainer`, `make architecture` | 2026-11-04 |
-| Type-check Modal entrypoints with package code | `pyproject.toml::files`, `make type` | 2026-11-04 |
-| Import each name from its defining module, not a re-export | `pyproject.toml::no_implicit_reexport`, `make type` | 2026-11-06 |
+| Type-check Modal entrypoints with package code | `pyproject.toml::include`, `make type` | 2026-11-04 |
+| Import each name from its defining module, not a re-export | `pyproject.toml::reportPrivateLocalImportUsage`, `make type` | 2026-11-06 |
 | A parsed stage config is a valid recipe: run id, volume, data, caps | `src/esme_posttrain/sft/config.py::_check_recipe`, `src/esme_posttrain/dpo/config.py::_check_recipe`, `src/esme_posttrain/rl/config.py::_check_recipe`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_recipe_drift` | 2026-11-06 |
 | Smoke spend cap ($2), per-stage full-run cap, and Modal timeout bound | `src/esme_posttrain/launch/config_models.py::check_stage_runtime`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_over_cap_runtime_without_launch_module` | 2026-11-06 |
 | Every path to a paid Modal call passes an approval gate first | `tests/test_modal_launch_gates.py::test_modal_launches_pass_an_approval_gate` | 2026-11-06 |

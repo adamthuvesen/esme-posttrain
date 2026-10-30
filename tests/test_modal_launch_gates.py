@@ -58,7 +58,9 @@ def _is_gate(node: ast.AST) -> bool:
 
 
 def _gated(function: ast.FunctionDef, line: int) -> bool:
-    return any(_is_gate(n) and n.lineno < line for n in ast.walk(function))
+    return any(
+        isinstance(n, ast.If) and _is_gate(n) and n.lineno < line for n in ast.walk(function)
+    )
 
 
 def _ungated_paths(path: Path) -> tuple[int, list[str]]:
@@ -131,11 +133,11 @@ def test_emit_completions_refuses_without_approval_and_prints_command(
     with pytest.raises(
         SystemExit, match=r"need --approved\. Ask Adam, then run: uv run .*--approved"
     ):
-        emit.main.info.raw_f(str(jobs), str(tmp_path / "out"))
+        emit.main.info.raw_f(str(jobs), str(tmp_path / "out"))  # pyright: ignore[reportOptionalCall]
 
     jobs.write_text(json.dumps([job]), encoding="utf-8")
     with pytest.raises(SystemExit, match="give exactly one of bundle, checkpoint"):
-        emit.main.info.raw_f(str(jobs), str(tmp_path / "out"))
+        emit.main.info.raw_f(str(jobs), str(tmp_path / "out"))  # pyright: ignore[reportOptionalCall]
 
 
 @pytest.mark.parametrize("path", LAUNCHERS, ids=lambda p: p.name)

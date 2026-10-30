@@ -27,8 +27,9 @@ import statistics
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-import plotly.graph_objects as go
+import plotly.graph_objects as go  # pyright: ignore[reportMissingImports]
 from plot_run_telemetry import (
     BLUE,
     CARD_HEIGHT,
@@ -48,10 +49,10 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from esme_posttrain.studies.report import (  # noqa: E402
     ProblemMetrics,
-    _parse_countdown_key,
-    _read_jsonl,
-    _score_completion_rows,
-    _score_countdown_sample,
+    parse_countdown_key,
+    read_jsonl,
+    score_completion_rows,
+    score_countdown_sample,
 )
 
 TASKS = 200
@@ -95,21 +96,21 @@ def score(directory: Path, *, samples: int = 16) -> HeldoutScore:
     actual = {key: provenance["sampling"][key] for key in expected}
     if actual != expected or provenance["dataset"]["config"] != "heldout_large":
         raise ValueError(f"{directory} was sampled with {actual}, expected {expected}")
-    rows = _read_jsonl(directory / "completions.jsonl")
-    metrics, per_problem = _score_completion_rows(rows)
+    rows = read_jsonl(directory / "completions.jsonl")
+    metrics, per_problem = score_completion_rows(rows)
     if metrics["problem_count"] != TASKS:
         raise ValueError(f"{directory} has {metrics['problem_count']} problems, expected {TASKS}")
     # A valid expression with only "+" uses every supplied number once, so it is their sum.
     sum_template = 0
     for row in rows:
-        target, numbers = _parse_countdown_key(row["problem"]["gold_answer"])
+        target, numbers = parse_countdown_key(row["problem"]["gold_answer"])
         for sample in row["samples"]:
             match = re.fullmatch(r"\\boxed\{(.*)\}", sample)
             expression = match.group(1) if match else ""
             if (
                 "+" in expression
                 and set(expression) <= set("0123456789+ ")
-                and _score_countdown_sample(
+                and score_countdown_sample(
                     sample, numbers=numbers, target=target
                 ).is_valid_expression
             ):
@@ -214,7 +215,7 @@ def summarize(root: Path) -> dict[str, object]:
     }
 
 
-def tradeoff_figure(summary: dict) -> go.Figure:
+def tradeoff_figure(summary: dict[str, Any]) -> go.Figure:
     arms = summary["arms_step240"]
     colors = {
         "placebo": REFERENCE_GREY,
@@ -266,7 +267,7 @@ def tradeoff_figure(summary: dict) -> go.Figure:
     return figure
 
 
-def curves_figure(summary: dict) -> go.Figure:
+def curves_figure(summary: dict[str, Any]) -> go.Figure:
     curves = summary["learning_curves"]
     chat = summary["chat"]
     figure = go.Figure(
@@ -327,7 +328,7 @@ def curves_figure(summary: dict) -> go.Figure:
     return figure
 
 
-def pass_at_k_figure(summary: dict) -> go.Figure:
+def pass_at_k_figure(summary: dict[str, Any]) -> go.Figure:
     data = summary["pass_at_k"]
     figure = go.Figure(
         layout=card_layout(

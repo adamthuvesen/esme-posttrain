@@ -22,8 +22,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "basedpyright==1.40.2",
   "import-linter>=2.15",
-  "mypy>=2.2.0",
   "pytest>=8.2",
   "pytest-xdist>=3.8.0",
   "ruff==0.17.4",
@@ -37,22 +37,24 @@ addopts = "-q"
 testpaths = ["tests"]
 pythonpath = ["."]
 
-[tool.mypy]
-files = ["src/esme_posttrain", "scripts/modal_*.py", "scripts/plot_*.py"]
-plugins = ["pydantic.mypy"]
-disallow_untyped_defs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-# One import path per name: import from the defining module, not a re-export.
-no_implicit_reexport = true
+[tool.basedpyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.14"
+include = ["src/esme_posttrain", "scripts", "tests", ".agents/skills/verify-esme-posttrain/verify"]
+venvPath = "."
+venv = ".venv"
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportUnknownParameterType = false
+reportUnknownLambdaType = false
+# Importing a name through a module that only re-exports it is an error.
+reportPrivateLocalImportUsage = "error"
 
-# Plot scripts run with `uv run --with plotly`; plotly ships no type information.
-[[tool.mypy.overrides]]
-module = ["plotly", "plotly.*"]
-ignore_missing_imports = true
-
-[tool.pydantic-mypy]
-init_typed = true
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+reportMissingParameterType = false
+extraPaths = [".", "src"]
 
 [tool.importlinter]
 root_package = "esme_posttrain"

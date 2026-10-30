@@ -21,7 +21,7 @@ from typing import Any
 
 from tokenizers import Tokenizer
 
-from esme_posttrain.sft.data import _clean_text, iter_rows
+from esme_posttrain.sft.data import clean_text, iter_rows
 from esme_posttrain.sft.data_types import ChatTurn, DataError, DatasetSource
 from esme_posttrain.training.collate import IGNORE_INDEX
 
@@ -167,7 +167,7 @@ def _render_prompt(prompt_turns: tuple[ChatTurn, ...]) -> str:
     """
     parts: list[str] = []
     for turn in prompt_turns:
-        content = _clean_text(turn.content)
+        content = clean_text(turn.content)
         if turn.role == "system":
             parts.append(f"system\n{content}\n")
         elif turn.role == "user":
@@ -230,7 +230,7 @@ def _tokenize_completion(
     max_length: int,
     pair: PreferencePair,
 ) -> TokenizedCompletion:
-    response_ids = list(tokenizer.encode(_clean_text(response), add_special_tokens=False).ids)
+    response_ids = list(tokenizer.encode(clean_text(response), add_special_tokens=False).ids)
     if not response_ids:
         raise DataError(f"{pair.source}:{pair.row_id} produced zero response tokens")
     if response_ids[-1] != eos_id:
@@ -263,7 +263,7 @@ def measure_preference_lengths(
     prompt_len = len(prompt_ids)
 
     def _response_len(text: str) -> int:
-        ids = list(tokenizer.encode(_clean_text(text), add_special_tokens=False).ids)
+        ids = list(tokenizer.encode(clean_text(text), add_special_tokens=False).ids)
         if eos_id is not None and (not ids or ids[-1] != eos_id):
             ids.append(int(eos_id))
         return len(ids)
@@ -315,7 +315,7 @@ def parse_ultrafeedback_row(source: DatasetSource, row_id: str, row: Any) -> Pre
         return None
     chosen_response = chosen_turns[-1].content
     rejected_response = rejected_turns[-1].content
-    if _clean_text(chosen_response) == _clean_text(rejected_response):
+    if clean_text(chosen_response) == clean_text(rejected_response):
         return None
     return PreferencePair(
         prompt_turns=prompt_turns,
@@ -444,7 +444,7 @@ def _iter_tokenized_preference_pairs(
         if parsed is None:
             counts.rejected_unparsable += 1
             continue
-        prompt_chars = sum(len(_clean_text(turn.content)) for turn in parsed.prompt_turns)
+        prompt_chars = sum(len(clean_text(turn.content)) for turn in parsed.prompt_turns)
         if (
             prompt_chars > source.max_prompt_chars
             or len(parsed.chosen) > source.max_response_chars

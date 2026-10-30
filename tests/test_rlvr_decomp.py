@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """CPU-fixture proof for the GRPO-gain decomposition pipeline (esme-posttrain side).
 
 Proves the two esme-posttrain halves of the decomposition without Modal: the random-reward
@@ -12,6 +13,7 @@ import json
 import re
 from dataclasses import replace
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import torch
@@ -47,7 +49,7 @@ RL_FIXTURE_CONFIG = REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.j
 
 
 def _tiny_config(
-    output_dir: Path, *, reward_mode: str, random_reward_seed: int = 214
+    output_dir: Path, *, reward_mode: Literal["verifier", "random"], random_reward_seed: int = 214
 ) -> CountdownGRPOTrainerConfig:
     return CountdownGRPOTrainerConfig(
         max_steps=2,
@@ -73,7 +75,7 @@ def _tiny_config(
     )
 
 
-def _run_tiny_grpo(output_dir: Path, *, reward_mode: str) -> Path:
+def _run_tiny_grpo(output_dir: Path, *, reward_mode: Literal["verifier", "random"]) -> Path:
     loaded = load_dense_backbone_bundle(TINY_BUNDLE)
     reference = load_dense_backbone_bundle(TINY_BUNDLE).model
     train_rows = load_countdown_lite_rows(TINY_MANIFEST, split="train")

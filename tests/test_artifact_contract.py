@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 import torch
@@ -235,9 +236,9 @@ def test_contract_check_uses_safe_tensor_loading(
     exported_chat_bundle: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     torch_load = torch.load
-    calls: list[bool | None] = []
+    calls: list[Any] = []
 
-    def recording_load(*args: object, **kwargs: object) -> object:
+    def recording_load(*args: Any, **kwargs: Any) -> Any:
         calls.append(kwargs.get("weights_only"))
         return torch_load(*args, **kwargs)
 
@@ -281,7 +282,7 @@ def _write_tiny_dpo_artifact(artifact_dir: Path) -> Path:
     return artifact_dir
 
 
-def _read_json(path: Path) -> dict[str, object]:
+def _read_json(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
     return payload

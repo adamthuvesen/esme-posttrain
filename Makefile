@@ -15,13 +15,14 @@ lint:  ## Lint and format-check (no changes)
 	uv run --locked ruff check .
 	uv run --locked ruff format --check .
 
-type:  ## Check package and Modal entrypoint types
-	uv run --locked mypy
+type:  ## Strict type-check the package, Modal entrypoints, scripts, and tests
+	uv run --locked basedpyright
 
 test:  ## Run tests in parallel, including the full CPU stage chain
 	uv run --locked pytest -n auto
 
-check: architecture lint type test  ## The gate: architecture + lint + types + tests
+check:  ## The gate: architecture, lint, types, and tests in parallel
+	@$(MAKE) -j4 architecture lint type test
 
 verify:  ## Drive the real stage chain and launch entrypoints offline (ARGS=all|list|control|<drive>)
 	.agents/skills/verify-esme-posttrain/verify $(ARGS)

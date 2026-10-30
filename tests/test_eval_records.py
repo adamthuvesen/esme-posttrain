@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Tests for the typed evaluation records and their loud-failure behavior."""
 
 from __future__ import annotations

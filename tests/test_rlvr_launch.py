@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 import json
@@ -7,6 +8,7 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from scripts import modal_rlvr_grpo
@@ -27,7 +29,7 @@ RL_FIXTURE_CONFIG = REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.j
 
 
 def test_rlvr_fixture_dry_run_via_api() -> None:
-    payload = build_rlvr_dry_run(RL_FIXTURE_CONFIG)
+    payload: dict[str, Any] = build_rlvr_dry_run(RL_FIXTURE_CONFIG)
 
     assert payload["command"] == "rlvr-dry-run"
     assert payload["artifact_name"] == "Esme-214M-RL"
@@ -154,13 +156,13 @@ def test_modal_launcher_full_run_returns_receipt_without_get(
         report_path=tmp_path / "grpo-report.json",
         doc_path=tmp_path / "grpo-report.md",
     )
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class FakeCall:
         object_id = "fc-rlvr-test"
         app_id = "ap-rlvr-test"
 
-        def get(self) -> dict[str, object]:
+        def get(self) -> dict[str, Any]:
             raise AssertionError("launcher must not wait for the remote GRPO result")
 
     class FakeRunner:
@@ -287,7 +289,7 @@ def test_modal_launcher_pipeline_smoke_dry_run_uses_dedicated_command(
 
 
 def test_full_acceptance_eval_stays_30x32_with_scaled_timeout(full_rl_recipe_path: Path) -> None:
-    payload = build_rlvr_dry_run(full_rl_recipe_path)
+    payload: dict[str, Any] = build_rlvr_dry_run(full_rl_recipe_path)
 
     assert payload["eval_profile"] == "full_acceptance_30x32"
     assert payload["eval_task_budget"] == 30
@@ -494,7 +496,7 @@ def test_build_rlvr_dry_run_raises_launch_error_for_bad_config(tmp_path: Path) -
         build_rlvr_dry_run(config_path)
 
 
-def _load_absolute_fixture_config() -> dict[str, object]:
+def _load_absolute_fixture_config() -> dict[str, Any]:
     config = _load_json(RL_FIXTURE_CONFIG)
     config_dir = RL_FIXTURE_CONFIG.parent
     input_bundle = _as_object(config["input_bundle"])
@@ -504,16 +506,16 @@ def _load_absolute_fixture_config() -> dict[str, object]:
     return config
 
 
-def _load_json(path: Path) -> dict[str, object]:
+def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, data: dict[str, object]) -> Path:
+def _write_json(path: Path, data: dict[str, Any]) -> Path:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return path
 
 
-def _as_object(value: object) -> dict[str, object]:
+def _as_object(value: object) -> dict[str, Any]:
     assert isinstance(value, dict)
     return value
 

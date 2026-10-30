@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -150,14 +151,7 @@ def test_countdown_lite_baseline_resumes_from_partial_without_duplicates(
     )
 
     first = run_countdown_lite_baseline(request)
-    resumed = run_countdown_lite_baseline(
-        CountdownBaselineRequest(
-            **{
-                **request.__dict__,
-                "resume_from_partial": True,
-            }
-        )
-    )
+    resumed = run_countdown_lite_baseline(dataclasses.replace(request, resume_from_partial=True))
 
     partial_path = output_dir / "baseline-partial.jsonl"
     partial_lines = partial_path.read_text(encoding="utf-8").splitlines()
@@ -178,7 +172,7 @@ def test_countdown_lite_baseline_resumes_from_partial_without_duplicates(
 def test_one_sample_baseline_reports_only_pass_at_1(tmp_path: Path) -> None:
     config = load_rlvr_config(RL_FIXTURE_CONFIG)
 
-    report = run_countdown_lite_baseline(
+    report: dict[str, Any] = run_countdown_lite_baseline(
         CountdownBaselineRequest(
             manifest_path=config.dataset_manifest_path,
             bundle_path=config.input_bundle_path,
@@ -311,7 +305,7 @@ def test_blocked_grpo_report_records_spend_and_modal_evidence() -> None:
     assert report["ready_for_hq_inspection"] is True
 
 
-def _spend_evidence() -> dict[str, object]:
+def _spend_evidence() -> dict[str, Any]:
     return {
         "paid_compute": True,
         "actual_or_estimated_cost_usd": 0.5,
@@ -320,7 +314,7 @@ def _spend_evidence() -> dict[str, object]:
     }
 
 
-def _modal_evidence() -> dict[str, object]:
+def _modal_evidence() -> dict[str, Any]:
     return {
         "app": "esme-posttrain-rlvr-countdown-grpo",
         "app_id": "ap-fixture",

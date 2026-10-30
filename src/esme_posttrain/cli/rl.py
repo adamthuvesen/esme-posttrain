@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from esme_posttrain.cli.output import Payload, emit_payload, exit_with_error
+from esme_posttrain.cli.output import Payload, Subparsers, emit_payload, exit_with_error
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.rl.checkpoint_bundle import CheckpointBundleRequest, export_checkpoint_bundle
 from esme_posttrain.rl.countdown_heldout import write_countdown_heldout_dataset
@@ -17,7 +17,7 @@ from esme_posttrain.rl.launch import build_rlvr_dry_run, format_rlvr_dry_run, lo
 from esme_posttrain.rl.pipeline_smoke import run_rlvr_pipeline_smoke
 
 
-def add_rl_parsers(subparsers: argparse._SubParsersAction) -> None:
+def add_rl_parsers(subparsers: Subparsers) -> None:
     rlvr_dry_run = subparsers.add_parser(
         "rlvr-dry-run",
         help="Validate the Esme RLVR prep config without training.",

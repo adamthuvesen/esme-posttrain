@@ -155,8 +155,8 @@ def _read_run(
         _check_artifact(provenance_path, run.provenance.sha256, root),
     ]
     provenance = _read_json(provenance_path)
-    rows = _read_jsonl(completions_path)
-    metrics, per_problem = _score_completion_rows(rows)
+    rows = read_jsonl(completions_path)
+    metrics, per_problem = score_completion_rows(rows)
     training = {
         "status": None,
         "selected_step": None,
@@ -212,7 +212,7 @@ def _read_run(
     )
 
 
-def _score_completion_rows(
+def score_completion_rows(
     rows: list[dict[str, Any]],
 ) -> tuple[dict[str, float | int], ProblemMetrics]:
     if not rows:
@@ -237,7 +237,7 @@ def _score_completion_rows(
             raise StudyReportError("completion row problem.id must be a non-empty string")
         if not isinstance(gold_answer, str):
             raise StudyReportError(f"problem {problem_id} gold_answer must be a string")
-        target, numbers = _parse_countdown_key(gold_answer)
+        target, numbers = parse_countdown_key(gold_answer)
         if problem_id in seen_ids:
             raise StudyReportError(f"duplicate problem ID in completion artifact: {problem_id}")
         seen_ids.add(problem_id)
@@ -252,7 +252,7 @@ def _score_completion_rows(
         problem_valid = 0
         problem_exact = 0
         for sample in samples:
-            result = _score_countdown_sample(sample, numbers=numbers, target=target)
+            result = score_countdown_sample(sample, numbers=numbers, target=target)
             problem_valid += int(result.is_valid_expression)
             problem_exact += int(result.is_exact_solve)
         valid += problem_valid
@@ -276,7 +276,7 @@ def _score_completion_rows(
     }, per_problem
 
 
-def _score_countdown_sample(
+def score_countdown_sample(
     sample: str, *, numbers: tuple[int, ...], target: int
 ) -> VerificationResult:
     # CompletionSet artifacts contain the already-extracted answer in a box. The
@@ -289,7 +289,7 @@ def _score_countdown_sample(
     return verify_countdown_lite_expression(expression, numbers=numbers, target=target)
 
 
-def _parse_countdown_key(value: str) -> tuple[int, tuple[int, ...]]:
+def parse_countdown_key(value: str) -> tuple[int, tuple[int, ...]]:
     try:
         target_part, numbers_part = value.split(";", maxsplit=1)
         target = int(target_part.removeprefix("target="))
@@ -807,7 +807,7 @@ def _read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
     rows = []
     try:
         with path.open(encoding="utf-8") as handle:

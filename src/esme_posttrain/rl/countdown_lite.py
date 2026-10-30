@@ -87,7 +87,7 @@ def build_countdown_lite_tasks() -> tuple[CountdownTask, ...]:
         ("eval", "medium", 12),
         ("eval", "hard", 8),
     )
-    pools = _candidate_pools()
+    pools = candidate_pools()
     tasks: list[CountdownTask] = []
     for split, difficulty, count in specs:
         selected = pools[difficulty][:count]
@@ -256,7 +256,7 @@ def load_countdown_lite_rows(
     return tuple(rows)
 
 
-def _candidate_pools() -> dict[str, list[tuple[tuple[int, ...], int, str]]]:
+def candidate_pools() -> dict[str, list[tuple[tuple[int, ...], int, str]]]:
     seen: set[tuple[tuple[int, ...], int]] = set()
     pools: dict[str, list[tuple[tuple[int, ...], int, str]]] = {
         "easy": [],
@@ -266,7 +266,7 @@ def _candidate_pools() -> dict[str, list[tuple[tuple[int, ...], int, str]]]:
     for width in (2, 3):
         for numbers in product(range(1, 10), repeat=width):
             sorted_numbers = tuple(sorted(numbers))
-            solutions = _solutions_for_numbers(sorted_numbers)
+            solutions = solutions_for_numbers(sorted_numbers)
             for target, solution in sorted(solutions.items()):
                 if target < 0 or target > 64:
                     continue
@@ -274,7 +274,7 @@ def _candidate_pools() -> dict[str, list[tuple[tuple[int, ...], int, str]]]:
                 if key in seen:
                     continue
                 seen.add(key)
-                difficulty = _difficulty_for(sorted_numbers, target, solution)
+                difficulty = difficulty_for(sorted_numbers, target, solution)
                 pools[difficulty].append((sorted_numbers, target, solution))
     for difficulty, tasks in pools.items():
         tasks.sort(
@@ -287,7 +287,7 @@ def _candidate_pools() -> dict[str, list[tuple[tuple[int, ...], int, str]]]:
     return pools
 
 
-def _difficulty_for(numbers: tuple[int, ...], target: int, solution: str) -> str:
+def difficulty_for(numbers: tuple[int, ...], target: int, solution: str) -> str:
     if len(numbers) == 2 and target <= 24:
         return "easy"
     if len(numbers) == 3 and 0 <= target <= 36 and solution.count("*") <= 1:
@@ -305,7 +305,7 @@ def stable_task_score(
     return score
 
 
-def _solutions_for_numbers(numbers: tuple[int, ...]) -> dict[int, str]:
+def solutions_for_numbers(numbers: tuple[int, ...]) -> dict[int, str]:
     solutions: dict[int, str] = {}
     for ordered_numbers in set(permutations(numbers)):
         if len(ordered_numbers) == 2:

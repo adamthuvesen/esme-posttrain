@@ -113,8 +113,6 @@ def run_modal_grpo(
         posttrain_volume.commit()
 
         def milestone_callback(stage: str, fields: dict[str, Any]) -> None:
-            if status_path is None:
-                return
             _write_remote_milestone(status_path, stage, **fields)
             posttrain_volume.commit()
 
