@@ -30,3 +30,4 @@ modal_logs/
 
 # Local planning notes that must not be published.
 docs/internal/
+.verify/

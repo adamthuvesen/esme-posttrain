@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := check
-.PHONY: install fmt architecture lint type test check
+.PHONY: install fmt architecture lint type test check verify
 
 install:  ## Sync the dev environment
 	uv sync --locked --extra dev
@@ -22,3 +22,6 @@ test:  ## Run tests in parallel, including the full CPU stage chain
 	uv run --locked pytest -n auto
 
 check: architecture lint type test  ## The gate: architecture + lint + types + tests
+
+verify:  ## Drive the real stage chain and launch entrypoints offline (ARGS=all|list|control|<drive>)
+	.agents/skills/verify-esme-posttrain/verify $(ARGS)

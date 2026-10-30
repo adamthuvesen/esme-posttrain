@@ -14,6 +14,8 @@ make test         # tests in parallel (pytest -n auto), including the full CPU s
 
 Everything runs through `uv` (`uv run …`, never bare `python`/`pip`). Make targets use `uv --locked`, so run `uv lock` after a dependency change. CI runs `make check`.
 
+Prove changes with `make verify` (`verify-esme-posttrain` skill at `.agents/skills/verify-esme-posttrain/`).
+
 ## Red Lines
 
 - The GitHub remote is public. Never push without Adam's explicit approval.
@@ -22,13 +24,13 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`). Make tar
 
 ## Enforced Rules
 
-`tests/test_enforced_rules.py` fails when a cited file, name, or make target does not exist.
+`tests/test_enforced_rules.py` fails when this section is missing, a row cites nothing, or a cited name is not defined in its file.
 
 | Rule | Enforced by | Added |
 | --- | --- | --- |
 | Stage boundaries and shared-code dependency direction | `pyproject.toml::dependency-direction`, `make architecture` | 2026-11-04 |
 | DPO must not import the SFT trainer, even indirectly | `pyproject.toml::dpo-without-sft-trainer`, `make architecture` | 2026-11-04 |
-| Type-check Modal entrypoints with package code | `pyproject.toml::scripts/modal_*.py`, `make type` | 2026-11-04 |
+| Type-check Modal entrypoints with package code | `pyproject.toml::files`, `make type` | 2026-11-04 |
 | Import each name from its defining module, not a re-export | `pyproject.toml::no_implicit_reexport`, `make type` | 2026-11-06 |
 | A parsed stage config is a valid recipe: run id, volume, data, caps | `src/esme_posttrain/sft/config.py::_check_recipe`, `src/esme_posttrain/dpo/config.py::_check_recipe`, `src/esme_posttrain/rl/config.py::_check_recipe`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_recipe_drift` | 2026-11-06 |
 | Smoke spend cap ($2), per-stage full-run cap, and Modal timeout bound | `src/esme_posttrain/launch/config_models.py::check_stage_runtime`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_over_cap_runtime_without_launch_module` | 2026-11-06 |
@@ -36,6 +38,7 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`). Make tar
 | Full runs refuse without `--approved` | `src/esme_posttrain/launch/config_guards.py::full_launch_blockers`, `tests/test_sft_multiturn.py::test_full_run_refused_without_approval`, `tests/test_chat_dpo.py::test_full_run_refused_without_approval` | 2026-11-06 |
 | Remote dataset reads need an explicit download flag | `tests/test_sft_multiturn.py::test_remote_dataset_rows_refuse_without_download_approval` | 2026-11-06 |
 | Nothing under `docs/internal/` is committed | `tests/test_enforced_rules.py::test_docs_internal_is_never_tracked` | 2026-11-06 |
+| The verify drives must observe FAIL against a wrong expectation | `.agents/skills/verify-esme-posttrain/verify::control`, `make verify` | 2026-11-06 |
 
 ## Where Things Live
 

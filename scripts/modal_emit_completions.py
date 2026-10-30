@@ -8,9 +8,9 @@ remote function converts the checkpoint with ``export_checkpoint_bundle``, sampl
 it with ``emit_completion_set``, and returns the small CompletionSet files, which
 are written locally under ``--out-root``. Checkpoints never leave the volume.
 
-Usage (spends GPU time, so it refuses without ``--approved`` after Adam approves):
+Usage (spends GPU time; the refusal prints the approved command to ask Adam about):
     uv run --with modal==1.5.1 modal run scripts/modal_emit_completions.py \\
-        --jobs <jobs.json> --out-root runs/<dir> --approved
+        --jobs <jobs.json> --out-root runs/<dir>
 """
 
 from __future__ import annotations
