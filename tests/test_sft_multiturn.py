@@ -11,24 +11,16 @@ from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_
 from esme_posttrain.cli import main
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data import (
-    IGNORE_INDEX,
-    ChatTurn,
-    DataError,
-    DatasetSource,
-    MultiTurnExample,
-    measure_multi_turn_lengths,
-    tokenize_multi_turn,
-)
+from esme_posttrain.sft.config import EXPECTED_ARTIFACTS as MULTITURN_EXPECTED_ARTIFACTS
+from esme_posttrain.sft.config import MULTITURN_FULL_RUN_SPEND_CAP_USD
+from esme_posttrain.sft.data import iter_rows, measure_multi_turn_lengths, tokenize_multi_turn
+from esme_posttrain.sft.data_types import ChatTurn, DataError, DatasetSource, MultiTurnExample
+from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.sft.full_multiturn import (
     SFTFullRunError,
     run_full_multi_turn_sft,
 )
 from esme_posttrain.sft.launch_multiturn import (
-    EXPECTED_ARTIFACTS as MULTITURN_EXPECTED_ARTIFACTS,
-)
-from esme_posttrain.sft.launch_multiturn import (
-    MULTITURN_FULL_RUN_SPEND_CAP_USD,
     build_multi_turn_dry_run,
     full_launch_blockers,
     load_multi_turn_config,
@@ -47,11 +39,7 @@ from esme_posttrain.sft.probe_multiturn import (
     multi_turn_probe_blockers,
 )
 from esme_posttrain.sft.sample_artifacts import write_multi_turn_samples
-from esme_posttrain.sft.smoke_multiturn import (
-    run_multi_turn_cpu_fixture,
-    tiny_backbone_config,
-    tiny_chat_tokenizer,
-)
+from esme_posttrain.sft.smoke_multiturn import run_multi_turn_cpu_fixture
 from esme_posttrain.sft.sweep_multiturn import (
     SWEEP_ARMS,
     SWEEP_SPEND_CAP_USD,
@@ -59,7 +47,7 @@ from esme_posttrain.sft.sweep_multiturn import (
     multi_turn_sweep_blockers,
 )
 from esme_posttrain.sft.trainer import load_sft_checkpoint
-from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-sft-multiturn.json"
@@ -854,3 +842,17 @@ def test_multi_turn_sweep_blocks_gpu_mismatch() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     blockers = multi_turn_sweep_blockers(config, timeout_hours=3, modal_gpu="L4")
     assert any("SFT_MODAL_GPU must match runtime.selected_gpu" in b for b in blockers)
+
+
+def test_remote_dataset_rows_refuse_without_download_approval() -> None:
+    source = DatasetSource(
+        name="smol-smoltalk",
+        source="HuggingFaceTB/smol-smoltalk",
+        revision="0" * 40,
+        license="apache-2.0",
+        split="train",
+        role="train",
+    )
+
+    with pytest.raises(DataError, match="remote dataset access is disabled"):
+        next(iter_rows(source, allow_remote_download=False))

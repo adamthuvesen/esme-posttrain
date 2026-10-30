@@ -11,12 +11,9 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from tokenizers import Tokenizer
-from tokenizers.models import WordLevel
-from tokenizers.pre_tokenizers import Whitespace
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
-from esme_posttrain.modeling import BackboneConfig, DenseBackbone
+from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.run_artifacts import (
     refresh_manifest_files,
     write_environment,
@@ -30,6 +27,7 @@ from esme_posttrain.sft.data import (
     sequence_efficiency_report,
     tokenize_multi_turn,
 )
+from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.sft.launch_multiturn import EXPECTED_ARTIFACTS, MultiTurnLaunchConfig
 from esme_posttrain.sft.launch_shared import prepare_evidence_dir as _prepare_evidence_dir
 from esme_posttrain.sft.multiturn_data import turn_distribution
@@ -228,42 +226,6 @@ def _assert_multi_turn_masking(examples: tuple[TokenizedExample, ...]) -> bool:
             "multi-turn fixture must include at least one example with >1 assistant turn"
         )
     return True
-
-
-def tiny_backbone_config() -> BackboneConfig:
-    return BackboneConfig(
-        name="tiny-multi-turn-sft-fixture",
-        vocab_size=32,
-        context_length=48,
-        embedding_dim=16,
-        layers=1,
-        heads=2,
-        kv_heads=1,
-        feedforward_dim=32,
-        z_loss_weight=0.0,
-    )
-
-
-def tiny_chat_tokenizer() -> Tokenizer:
-    vocab = {
-        "<unk>": 0,
-        "<eos>": 1,
-        "user": 2,
-        "assistant": 3,
-        "system": 4,
-        "say": 5,
-        "red": 6,
-        "blue": 7,
-        "green": 8,
-        "repeat": 9,
-        "one": 10,
-        "two": 11,
-        "again": 12,
-        "helpful": 13,
-    }
-    tokenizer = Tokenizer(WordLevel(vocab=vocab, unk_token="<unk>"))
-    tokenizer.pre_tokenizer = Whitespace()
-    return tokenizer
 
 
 def _tiny_train_examples() -> tuple[MultiTurnExample, ...]:

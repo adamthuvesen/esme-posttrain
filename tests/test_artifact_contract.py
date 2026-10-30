@@ -20,7 +20,7 @@ from esme_posttrain.bundle import (
 from esme_posttrain.export.dense_bundle import ExportRequest, export_dense_bundle
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.rl.bundle import RLVRBundleIdentity, write_rlvr_bundle
-from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
+from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import save_training_checkpoint
 
 EXPECTED_BUNDLE_FILES = {

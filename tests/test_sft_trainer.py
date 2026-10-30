@@ -17,7 +17,7 @@ from esme_posttrain.sft.data import (
     sequence_efficiency_report,
     tokenize_multi_turn,
 )
-from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
+from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.sft.trainer import (
     EvalMetrics,
     EvalSplit,

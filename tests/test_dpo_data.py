@@ -14,7 +14,7 @@ from esme_posttrain.dpo.data import (
     tokenize_preference_pair,
 )
 from esme_posttrain.sft.data import IGNORE_INDEX, ChatTurn, DataError, DatasetSource
-from esme_posttrain.sft.smoke_multiturn import tiny_chat_tokenizer
+from esme_posttrain.sft.fixtures import tiny_chat_tokenizer
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-chat-dpo.json"

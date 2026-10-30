@@ -83,7 +83,7 @@ Esme-214M is small enough to make the full LLM lifecycle practical to build and 
 ## Quickstart
 
 ```bash
-uv sync --extra dev
+make install
 uv run esme-posttrain --version
 make check
 ```
@@ -106,11 +106,15 @@ Start with [package-layout.md](docs/package-layout.md) to find the owner of a ch
 Launch loaders return typed configuration. Training and launch code use those
 values directly. Stage exporters share one dense-bundle writer.
 
-Run `make check` before committing. It checks formatting, package and Modal
-entrypoint types, and tests. Pydantic's mypy plugin checks model constructors
+Run `make check` before committing. It checks dependency boundaries, formatting,
+package and Modal entrypoint types, and tests. Pydantic's mypy plugin checks model constructors
 and rejects assignments to frozen config fields. The tests include the full CPU stage chain,
 DPO resume equivalence, and bundle round trips. All checks run locally
 without remote datasets or paid compute. CI runs the same command.
+
+Setup and checks enforce the committed `uv.lock`. Use `uv add` to add a dependency,
+or `uv lock` after editing dependency declarations. Commit `pyproject.toml` and `uv.lock` together.
+Run `make architecture` for dependency errors with the import chain and repair guidance.
 
 ## Current Artifacts
 
@@ -138,7 +142,8 @@ src/esme_posttrain/
   sft/                supervised fine-tuning stage
   dpo/                preference-tuning stage
   rl/                 verifier-reward RL stage
-  launch/             shared launch validation and cross-stage CPU acceptance
+  launch/             shared launch validation and spend guards
+  acceptance/         cross-stage CPU acceptance
   training/           shared training runtime (collate, metrics, checkpointing)
   export/             dense bundle export
 ```

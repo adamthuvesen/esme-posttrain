@@ -12,11 +12,12 @@ This repo keeps stage-specific implementation code out of the package root. When
 | DPO export provenance | `export/dense_bundle.py` | `tests/test_export_dense_bundle.py` |
 | RL export provenance or checkpoint conversion | `rl/bundle.py` and `rl/checkpoint_bundle.py` | `tests/test_rlvr_decomp.py` |
 | Training objective | The stage trainer | The stage's trainer tests |
-| Stage handoff | `launch/full_path_smoke.py` | `tests/test_full_path_smoke.py` |
+| Stage handoff | `acceptance/full_path_smoke.py` | `tests/test_full_path_smoke.py` |
+| Shared tiny model or chat tokenizer | `sft/fixtures.py` | SFT and DPO fixture tests |
 | CLI command | Its group in `cli/` | The matching CLI or stage tests |
 
-Run test files with `uv run pytest <path>`. Run `make check` before committing.
-It includes the full CPU stage chain and type checking for Modal entrypoints.
+Run test files with `uv run --locked pytest <path>`. Run `make check` before committing.
+It includes dependency boundaries, the full CPU stage chain, and type checking for Modal entrypoints.
 
 Config shape errors identify the input file and nested field. Recipe errors
 name the failed constraint. Mypy reports the
@@ -50,7 +51,8 @@ Do not add root compatibility aliases.
 - `src/esme_posttrain/studies/`: strict study specifications and generated
   artifact-backed JSON/Markdown reports.
 - `src/esme_posttrain/launch/`: shared frozen config models, spend/blocker helpers,
-  command construction, launch utilities, and the full-path CPU smoke.
+  command construction, and launch utilities.
+- `src/esme_posttrain/acceptance/`: the full-path CPU smoke that coordinates stage handoffs.
 - `src/esme_posttrain/training/`: shared training runtime used by the stage packages: collation, metrics, checkpointing, seeding/precision, and W&B setup.
 - `src/esme_posttrain/export/`: one canonical dense-bundle writer plus DPO export and generation verification.
 
@@ -60,6 +62,13 @@ settings only when writing JSON. `rl/bundle.py` owns RL export identity and call
 the shared writer. It serves both training and checkpoint conversion.
 
 ## Import Rules
+
+`make architecture` enforces the dependency graph declared in `pyproject.toml`.
+It reports the offending import chain and a repair direction.
+Shared code cannot depend on stages. Stages cannot depend on CLI or acceptance code.
+DPO can reuse `sft.data`, `sft.sampling`, and `sft.fixtures`, but cannot reach the SFT trainer.
+New modules inside these packages inherit their boundaries.
+For a new top-level package, declare its position in the graph before running the check.
 
 - Internal imports should use canonical package paths such as `esme_posttrain.sft.trainer`, `esme_posttrain.dpo.launch`, `esme_posttrain.rl.launch`, `esme_posttrain.launch.config_guards`, and `esme_posttrain.export.dense_bundle`.
 - Keep package `__init__.py` files boring. Avoid broad re-export barrels; they hide ownership and can create import cycles.

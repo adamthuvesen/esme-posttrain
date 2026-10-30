@@ -13,9 +13,11 @@ Local instructions for `esme-posttrain`. The global agent rules still apply; thi
 ## Commands
 
 ```bash
-make check        # lint, format, package + Modal types, tests; green before any commit
+make install      # install the committed dependency versions
+make check        # architecture, lint, types, tests; green before any commit
+make architecture # dependency boundaries with repair guidance
 make fmt          # auto-format + safe lint fixes
-uv run pytest     # tests, including the full CPU stage chain
+make test         # tests, including the full CPU stage chain
 ```
 
 Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
@@ -38,6 +40,9 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
 | --- | --- | --- |
 | Type-check Modal entrypoints alongside package code | `pyproject.toml` mypy scope, run by local and CI `make check` | 2026-11-04 |
 | Resolve launch-script imports in both direct and Makefile test runs | `pyproject.toml` pytest `pythonpath` | 2026-11-04 |
+| Keep stage boundaries and shared-code dependency direction | Import Linter contracts in `pyproject.toml`, run by `make architecture` and `make check` | 2026-11-04 |
+| DPO chat and fixture reuse must not import the SFT trainer, even indirectly | `dpo-without-sft-trainer` Import Linter contract | 2026-11-04 |
+| Verify with the committed dependency resolution | `uv --locked` in Makefile setup and check commands, also used by CI | 2026-11-04 |
 
 ## Scope
 

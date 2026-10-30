@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "import-linter>=2.15",
   "mypy>=2.2.0",
   "pytest>=8.2",
   "ruff>=0.5",
@@ -44,6 +45,47 @@ warn_unused_ignores = true
 
 [tool.pydantic-mypy]
 init_typed = true
+
+[tool.importlinter]
+root_package = "esme_posttrain"
+
+[[tool.importlinter.contracts]]
+id = "dependency-direction"
+name = "Entry points depend on stages, stages depend on shared code"
+type = "layers"
+containers = ["esme_posttrain"]
+exhaustive = true
+layers = [
+    "__main__",
+    "cli",
+    "acceptance : studies",
+    "sft | dpo | rl",
+    "export",
+    "training : launch : run_artifacts : evals : bundle : modeling",
+]
+# DPO shares the SFT chat format, sampling, and CPU fixture builders.
+ignore_imports = [
+    "esme_posttrain.dpo.** -> esme_posttrain.sft.data",
+    "esme_posttrain.dpo.** -> esme_posttrain.sft.sampling",
+    "esme_posttrain.dpo.** -> esme_posttrain.sft.fixtures",
+]
+broken_contract_guidance = """
+Import shared behavior from its owner in training/, launch/, bundle.py, or modeling.py.
+For example, import WandbConfig from esme_posttrain.training.wandb_init, not a stage trainer.
+Keep cross-stage coordination in acceptance/ or cli/. DPO may reuse sft.data, sft.sampling, and sft.fixtures.
+Place a new top-level module in these layers. See docs/package-layout.md for ownership.
+"""
+
+[[tool.importlinter.contracts]]
+id = "dpo-without-sft-trainer"
+name = "DPO reuses SFT chat code without depending on the SFT trainer"
+type = "forbidden"
+source_modules = ["esme_posttrain.dpo"]
+forbidden_modules = ["esme_posttrain.sft.trainer"]
+broken_contract_guidance = """
+Use training.wandb_init.WandbConfig for monitoring and sft.fixtures for tiny models and tokenizers.
+Keep SFT trainer imports out of shared chat and fixture code too. This check follows indirect imports.
+"""
 
 [tool.ruff]
 line-length = 100

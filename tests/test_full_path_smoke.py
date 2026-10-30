@@ -8,6 +8,9 @@ from typing import Any
 import pytest
 import torch
 
+from esme_posttrain.acceptance.full_path_smoke import (
+    load_full_path_smoke_config,
+)
 from esme_posttrain.bundle import (
     BUNDLE_FORMAT,
     BUNDLE_SCHEMA_VERSION,
@@ -16,9 +19,6 @@ from esme_posttrain.bundle import (
 from esme_posttrain.cli import main
 from esme_posttrain.dpo.smoke import run_dpo_cpu_fixture
 from esme_posttrain.launch.errors import LaunchError
-from esme_posttrain.launch.full_path_smoke import (
-    load_full_path_smoke_config,
-)
 from esme_posttrain.sft.smoke_multiturn import run_multi_turn_cpu_fixture
 from esme_posttrain.training.checkpointing import load_training_checkpoint
 

@@ -69,7 +69,7 @@ from esme_posttrain.dpo.trainer import (
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.sft.data import IGNORE_INDEX, ChatTurn
-from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
+from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
 from esme_posttrain.training.collate import collate_batch
 

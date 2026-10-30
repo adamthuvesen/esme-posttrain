@@ -149,9 +149,10 @@ flowchart TB
     Export --> shared
 ```
 
-There is one deliberate cross-stage import: `dpo/` reuses the SFT chat
-template and sampling so the DPO policy sees exactly the format the SFT
-foundation was trained on. `rl/` writes its eval outputs through the typed
+The deliberate cross-stage imports let `dpo/` reuse the SFT chat template,
+sampling, and tiny fixture builders. This keeps the chat format consistent with SFT.
+The fixture builders live in `sft/fixtures.py` and do not import the SFT trainer.
+`rl/` writes its eval outputs through the typed
 records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 
 ## Module Ownership
@@ -163,7 +164,8 @@ records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 | [`rl/`](../src/esme_posttrain/rl/) | Countdown-Lite task generation and verification, GRPO trainer, baselines, held-out transfer, reports, launch validation | a task registry or plugin framework |
 | [`evals/`](../src/esme_posttrain/evals/) | typed records for the eval contract, shapes pinned by golden fixtures | scoring logic |
 | [`training/`](../src/esme_posttrain/training/) | collate, metrics, checkpointing, seeding/precision, W&B init | stage objectives |
-| [`launch/`](../src/esme_posttrain/launch/) | shared config guards, spend blockers, Modal CLI shell, full-path CPU smoke | stage recipes (each stage's launch module pins its own) |
+| [`launch/`](../src/esme_posttrain/launch/) | shared config guards, spend blockers, Modal CLI shell | stage recipes and cross-stage coordination |
+| [`acceptance/`](../src/esme_posttrain/acceptance/) | full-path CPU smoke and stage handoff checks | stage implementation |
 | [`export/`](../src/esme_posttrain/export/) | canonical dense-bundle serialization, DPO export, generation smoke | stage objectives, serving |
 | [`studies/`](../src/esme_posttrain/studies/) | hashed study specs and rebuilt JSON/Markdown reports | running training |
 | [`modeling.py`](../src/esme_posttrain/modeling.py) | the shared `DenseBackbone` model primitives | tokenization, training loop |
@@ -174,13 +176,19 @@ records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 Dependency direction stays simple:
 
 ```text
-cli / tests / full-path smoke -> sft + dpo + rl -> training + modeling + bundle + launch guards
-dpo -> sft        (chat template, sampling)
+cli / tests / acceptance -> sft + dpo + rl -> training + modeling + bundle + launch guards
+dpo -> sft        (chat template, sampling, tiny fixture builders)
 rl -> evals       (typed eval records)
 rl -> export     (canonical bundle serialization)
 studies -> rl     (Countdown-Lite spec)
 export -> bundle + training checkpointing
 ```
+
+Import Linter enforces these boundaries through `make architecture`, also included in `make check`.
+Its contracts live in `pyproject.toml`. A failure shows the import chain and the supported owner.
+The graph covers every top-level module and all package descendants.
+The three permitted DPO imports are supported interfaces, not temporary rule exemptions.
+A separate contract rejects indirect DPO dependencies on the SFT trainer through those interfaces.
 
 ## Launch Contract
 
@@ -236,7 +244,7 @@ with the stage, including the distinction between warm-start and exported checkp
 
 `esme-posttrain full-path-cpu-smoke` runs the whole chain locally with no
 spend and records every artifact handoff
-([`launch/full_path_smoke.py`](../src/esme_posttrain/launch/full_path_smoke.py)):
+([`acceptance/full_path_smoke.py`](../src/esme_posttrain/acceptance/full_path_smoke.py)):
 
 1. Validate the base bundle contract.
 2. Run a tiny SFT fixture.

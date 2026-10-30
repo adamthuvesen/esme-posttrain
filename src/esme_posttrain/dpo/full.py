@@ -20,11 +20,11 @@ import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.dpo.chat_eval import FIXED_MULTI_TURN_PROMPTS
-from esme_posttrain.dpo.data import build_preference_set
+from esme_posttrain.dpo.data import TokenizedPreferencePair, build_preference_set
 from esme_posttrain.dpo.decoding_precheck import run_decoding_precheck
 from esme_posttrain.dpo.launch import EXPECTED_ARTIFACTS, DPOLaunchConfig
 from esme_posttrain.dpo.sample_artifacts import write_chat_samples
-from esme_posttrain.dpo.trainer import DPOTrainerConfig, run_dpo_training
+from esme_posttrain.dpo.trainer import DPOTrainerConfig, DPOTrainResult, run_dpo_training
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.run_artifacts import (
     RuntimeSpendTracker,
@@ -34,6 +34,7 @@ from esme_posttrain.run_artifacts import (
     write_selected_row_manifest,
 )
 from esme_posttrain.training.checkpointing import load_training_checkpoint
+from esme_posttrain.training.wandb_init import WandbConfig
 
 
 class DPOFullRunError(RuntimeError):
@@ -255,9 +256,7 @@ def _pair_caps(config: DPOLaunchConfig, *, smoke: bool) -> dict[str, int]:
     }
 
 
-def _wandb_config(config: DPOLaunchConfig, *, smoke: bool) -> Any:
-    from esme_posttrain.sft.trainer import WandbConfig
-
+def _wandb_config(config: DPOLaunchConfig, *, smoke: bool) -> WandbConfig:
     monitoring = config.settings.monitoring
     return WandbConfig(
         enabled=True,
@@ -300,7 +299,7 @@ def _assert_data_safe(
         raise DPOFullRunError("preference eval set is empty")
 
 
-def _assert_accepted_dpo_result(result: Any) -> None:
+def _assert_accepted_dpo_result(result: DPOTrainResult) -> None:
     if result.selected_eval.preference_accuracy <= result.base_eval.preference_accuracy:
         raise DPOFullRunError(
             "held-out preference accuracy did not improve versus the SFT reference"
@@ -313,7 +312,7 @@ def _assert_accepted_dpo_result(result: Any) -> None:
         raise DPOFullRunError("chosen response log-prob collapsed versus the SFT reference")
 
 
-def _assert_prompt_masking(pairs: tuple[Any, ...]) -> bool:
+def _assert_prompt_masking(pairs: tuple[TokenizedPreferencePair, ...]) -> bool:
     if not pairs:
         raise DPOFullRunError("no selected preference pairs to assert prompt masking on")
     for pair in pairs:
