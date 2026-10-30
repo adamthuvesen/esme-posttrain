@@ -18,7 +18,7 @@ lint:  ## Lint and format-check (no changes)
 type:  ## Check package and Modal entrypoint types
 	uv run --locked mypy
 
-test:  ## Run tests, including the full CPU stage chain
-	uv run --locked pytest
+test:  ## Run tests in parallel, including the full CPU stage chain
+	uv run --locked pytest -n auto
 
 check: architecture lint type test  ## The gate: architecture + lint + types + tests

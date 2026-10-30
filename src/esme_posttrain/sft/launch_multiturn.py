@@ -259,7 +259,7 @@ def _learning_gate_blockers(payload: LearningGate) -> list[str]:
 
 
 def _launch_command(config_path: Path, runtime: ModalRuntime, *, mode: str) -> str:
-    flag = " --full-run" if mode == "full-run" else ""
+    flag = " --full-run" if mode == "full-run" else " --modal-smoke"
     return build_modal_launch_command(
         config_path=config_path,
         runtime=runtime,

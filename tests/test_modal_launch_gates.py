@@ -1,9 +1,9 @@
 """Every path to a paid Modal call passes an approval gate first.
 
 A launcher is any repo module that builds a ``modal.App``. A launch is
-``<modal function>.remote/.spawn/.map/...``. A gate is an earlier ``if`` whose
-test reads ``approved`` or ``blockers`` and whose body returns or raises. A
-helper that launches without a gate passes only when every caller gates first.
+``<modal function>.remote/.spawn/.map/...``. A gate is an earlier
+``if not approved:`` or ``if blockers:`` whose body returns or raises. A helper
+that launches without a gate passes only when every caller gates first.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LAUNCH_METHODS = {"remote", "spawn", "map", "starmap", "for_each", "spawn_map"}
-GATE_NAMES = ("approved", "blockers")
 LAUNCHERS = sorted(
     path
     for path in [*REPO_ROOT.glob("scripts/*.py"), *REPO_ROOT.glob("src/**/*.py")]
@@ -38,12 +37,24 @@ def _modal_function_names(tree: ast.Module) -> set[str]:
     }
 
 
+def _name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    return node.attr if isinstance(node, ast.Attribute) else None
+
+
 def _is_gate(node: ast.AST) -> bool:
     if not isinstance(node, ast.If):
         return False
-    names = {getattr(n, "id", None) or getattr(n, "attr", None) for n in ast.walk(node.test)}
+    test = node.test
+    refuses_unapproved = (
+        isinstance(test, ast.UnaryOp)
+        and isinstance(test.op, ast.Not)
+        and _name(test.operand) == "approved"
+    )
+    stops_on_blockers = (_name(test) or "").endswith("blockers")
     stops = any(isinstance(n, ast.Return | ast.Raise) for s in node.body for n in ast.walk(s))
-    return stops and any(name in GATE_NAMES for name in names)
+    return stops and (refuses_unapproved or stops_on_blockers)
 
 
 def _gated(function: ast.FunctionDef, line: int) -> bool:
@@ -125,3 +136,27 @@ def test_emit_completions_refuses_without_approval_and_prints_command(
     jobs.write_text(json.dumps([job]), encoding="utf-8")
     with pytest.raises(SystemExit, match="give exactly one of bundle, checkpoint"):
         emit.main.info.raw_f(str(jobs), str(tmp_path / "out"))
+
+
+@pytest.mark.parametrize("path", LAUNCHERS, ids=lambda p: p.name)
+def test_launchers_with_a_parser_have_one_cli_surface(path: Path) -> None:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    if "build_parser" not in functions:
+        return
+    entrypoints = [
+        f
+        for f in functions.values()
+        if any(
+            isinstance(d, ast.Call)
+            and isinstance(d.func, ast.Attribute)
+            and d.func.attr == "local_entrypoint"
+            for d in f.decorator_list
+        )
+    ]
+    for entrypoint in entrypoints:
+        args = entrypoint.args
+        assert args.vararg and not (args.args or args.kwonlyargs), (
+            f"{path.name}:{entrypoint.lineno} {entrypoint.name}() declares its own flags. "
+            "Take `*argv: str` and pass it to launch(), so build_parser() is the only CLI surface."
+        )

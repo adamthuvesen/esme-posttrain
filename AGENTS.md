@@ -9,10 +9,10 @@ make install      # install the committed dependency versions
 make check        # the gate: architecture, lint, types, tests; same command as CI
 make architecture # dependency boundaries with repair guidance
 make fmt          # auto-format + safe lint fixes
-make test         # tests, including the full CPU stage chain
+make test         # tests in parallel (pytest -n auto), including the full CPU stage chain
 ```
 
-Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
+Everything runs through `uv` (`uv run …`, never bare `python`/`pip`). Make targets use `uv --locked`, so run `uv lock` after a dependency change. CI runs `make check`.
 
 ## Red Lines
 
@@ -22,21 +22,20 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
 
 ## Enforced Rules
 
-`tests/test_enforced_rules.py` fails when a cited path or name does not exist.
+`tests/test_enforced_rules.py` fails when a cited file, name, or make target does not exist.
 
 | Rule | Enforced by | Added |
 | --- | --- | --- |
-| Stage boundaries and shared-code dependency direction | `pyproject.toml::dependency-direction`, run by `make architecture` | 2026-11-04 |
-| DPO must not import the SFT trainer, even indirectly | `pyproject.toml::dpo-without-sft-trainer` | 2026-11-04 |
-| Type-check Modal entrypoints with package code | `pyproject.toml::scripts/modal_*.py` | 2026-11-04 |
-| Import each name from its defining module, not a re-export | `pyproject.toml::no_implicit_reexport` | 2026-11-06 |
-| A parsed stage config is a valid recipe: run id, volume, data, caps | `src/esme_posttrain/sft/config.py::_check_recipe`, `src/esme_posttrain/dpo/config.py::_check_recipe`, `src/esme_posttrain/rl/config.py::_check_recipe` | 2026-11-06 |
+| Stage boundaries and shared-code dependency direction | `pyproject.toml::dependency-direction`, `make architecture` | 2026-11-04 |
+| DPO must not import the SFT trainer, even indirectly | `pyproject.toml::dpo-without-sft-trainer`, `make architecture` | 2026-11-04 |
+| Type-check Modal entrypoints with package code | `pyproject.toml::scripts/modal_*.py`, `make type` | 2026-11-04 |
+| Import each name from its defining module, not a re-export | `pyproject.toml::no_implicit_reexport`, `make type` | 2026-11-06 |
+| A parsed stage config is a valid recipe: run id, volume, data, caps | `src/esme_posttrain/sft/config.py::_check_recipe`, `src/esme_posttrain/dpo/config.py::_check_recipe`, `src/esme_posttrain/rl/config.py::_check_recipe`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_recipe_drift` | 2026-11-06 |
 | Smoke spend cap ($2), per-stage full-run cap, and Modal timeout bound | `src/esme_posttrain/launch/config_models.py::check_stage_runtime`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_over_cap_runtime_without_launch_module` | 2026-11-06 |
+| Every path to a paid Modal call passes an approval gate first | `tests/test_modal_launch_gates.py::test_modal_launches_pass_an_approval_gate` | 2026-11-06 |
 | Full runs refuse without `--approved` | `src/esme_posttrain/launch/config_guards.py::full_launch_blockers`, `tests/test_sft_multiturn.py::test_full_run_refused_without_approval`, `tests/test_chat_dpo.py::test_full_run_refused_without_approval` | 2026-11-06 |
 | Remote dataset reads need an explicit download flag | `tests/test_sft_multiturn.py::test_remote_dataset_rows_refuse_without_download_approval` | 2026-11-06 |
-| Nothing under `docs/internal/` is committed | `.gitignore::docs/internal/` | 2026-11-06 |
-| Launch-script imports resolve in direct and Makefile test runs | `pyproject.toml::pythonpath` | 2026-11-04 |
-| Verify with the committed dependency resolution | `Makefile::--locked`, `.github/workflows/check.yml::make check` | 2026-11-04 |
+| Nothing under `docs/internal/` is committed | `tests/test_enforced_rules.py::test_docs_internal_is_never_tracked` | 2026-11-06 |
 
 ## Where Things Live
 

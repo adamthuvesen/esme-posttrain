@@ -211,40 +211,9 @@ def run_modal_throughput_probe(
 
 
 @app.local_entrypoint()
-def main(
-    config: str,
-    approved: bool = False,
-    json: bool = False,
-    full_run: bool = False,
-    modal_sweep: bool = False,
-    throughput_probe: bool = False,
-    dry_run: bool = False,
-    resume: bool = False,
-) -> None:
-    argv = ["--config", config]
-    if dry_run:
-        argv.append("--dry-run")
-        if modal_sweep:
-            argv.append("--modal-sweep")
-        if throughput_probe:
-            argv.append("--throughput-probe")
-        if full_run:
-            argv.append("--full-run")
-    elif full_run:
-        argv.append("--full-run")
-    elif throughput_probe:
-        argv.append("--throughput-probe")
-    elif modal_sweep:
-        argv.append("--modal-sweep")
-    else:
-        argv.append("--modal-smoke")
-    if approved:
-        argv.append(LAUNCH_APPROVAL_FLAG)
-    if resume:
-        argv.append("--resume")
-    if json:
-        argv.append("--json")
-    raise SystemExit(launch(argv))
+def main(*argv: str) -> None:
+    # Modal passes the raw flags through, so build_parser() is the only CLI surface.
+    raise SystemExit(launch(list(argv)))
 
 
 def build_parser() -> argparse.ArgumentParser:

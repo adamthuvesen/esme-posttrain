@@ -25,6 +25,7 @@ dev = [
   "import-linter>=2.15",
   "mypy>=2.2.0",
   "pytest>=8.2",
+  "pytest-xdist>=3.8.0",
   "ruff>=0.5",
 ]
 
@@ -37,13 +38,18 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.mypy]
-files = ["src/esme_posttrain", "scripts/modal_*.py"]
+files = ["src/esme_posttrain", "scripts/modal_*.py", "scripts/plot_*.py"]
 plugins = ["pydantic.mypy"]
 disallow_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 # One import path per name: import from the defining module, not a re-export.
 no_implicit_reexport = true
+
+# Plot scripts run with `uv run --with plotly`; plotly ships no type information.
+[[tool.mypy.overrides]]
+module = ["plotly", "plotly.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_typed = true

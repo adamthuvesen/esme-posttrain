@@ -141,32 +141,9 @@ def run_modal_grpo(
 
 
 @app.local_entrypoint()
-def main(
-    config: str,
-    approved: bool = False,
-    json: bool = False,
-    full_run: bool = False,
-    debug_before_eval: bool = False,
-    pipeline_smoke: bool = False,
-    modal_pipeline_smoke: bool = False,
-    dry_run: bool = False,
-) -> None:
-    argv = ["--config", config]
-    if dry_run:
-        argv.append("--dry-run")
-    if full_run:
-        argv.append("--full-run")
-    if debug_before_eval:
-        argv.append("--debug-before-eval")
-    if pipeline_smoke:
-        argv.append("--pipeline-smoke")
-    if modal_pipeline_smoke:
-        argv.append("--modal-pipeline-smoke")
-    if approved:
-        argv.append(LAUNCH_APPROVAL_FLAG)
-    if json:
-        argv.append("--json")
-    raise SystemExit(launch(argv))
+def main(*argv: str) -> None:
+    # Modal passes the raw flags through, so build_parser() is the only CLI surface.
+    raise SystemExit(launch(list(argv)))
 
 
 def build_parser() -> argparse.ArgumentParser:

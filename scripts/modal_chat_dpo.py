@@ -198,37 +198,9 @@ def run_modal_chat_eval(
 
 
 @app.local_entrypoint()
-def main(
-    config: str,
-    approved: bool = False,
-    json: bool = False,
-    full_run: bool = False,
-    beta_sweep: bool = False,
-    chat_eval: bool = False,
-    dry_run: bool = False,
-) -> None:
-    argv = ["--config", config]
-    if dry_run:
-        argv.append("--dry-run")
-        if beta_sweep:
-            argv.append("--beta-sweep")
-        if full_run:
-            argv.append("--full-run")
-        if chat_eval:
-            argv.append("--chat-eval")
-    elif full_run:
-        argv.append("--full-run")
-    elif beta_sweep:
-        argv.append("--beta-sweep")
-    elif chat_eval:
-        argv.append("--chat-eval")
-    else:
-        argv.append("--modal-smoke")
-    if approved:
-        argv.append(LAUNCH_APPROVAL_FLAG)
-    if json:
-        argv.append("--json")
-    raise SystemExit(launch(argv))
+def main(*argv: str) -> None:
+    # Modal passes the raw flags through, so build_parser() is the only CLI surface.
+    raise SystemExit(launch(list(argv)))
 
 
 def build_parser() -> argparse.ArgumentParser:

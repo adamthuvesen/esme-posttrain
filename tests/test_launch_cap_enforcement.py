@@ -119,3 +119,52 @@ def test_settings_model_rejects_over_cap_runtime_without_launch_module(
 
     with pytest.raises(ValidationError, match="full_run_max_cost_usd must be <="):
         settings_model.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    ("config_path", "settings_model", "section", "key", "value", "message"),
+    [
+        (
+            REPO_ROOT / "configs" / "esme-214m-sft-multiturn.json",
+            MultiTurnSettings,
+            "datasets",
+            "non_commercial_training_approved",
+            True,
+            "datasets.non_commercial_training_approved must stay false",
+        ),
+        (
+            REPO_ROOT / "configs" / "esme-214m-chat-dpo.json",
+            DPOSettings,
+            "datasets",
+            "non_commercial_training_approved",
+            True,
+            "datasets.non_commercial_training_approved must stay false",
+        ),
+        (
+            REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.json",
+            RLVRSettings,
+            "dataset",
+            "remote_download_allowed",
+            True,
+            "dataset.remote_download_allowed must stay false",
+        ),
+    ],
+    ids=["sft-multiturn", "chat-dpo", "rlvr-grpo"],
+)
+def test_settings_model_rejects_recipe_drift(
+    config_path: Path,
+    settings_model: type[FrozenConfig],
+    section: str,
+    key: str,
+    value: object,
+    message: str,
+) -> None:
+    run_id_drift = _load_payload(config_path)
+    run_id_drift["run_id"] = "unreviewed_run"
+    with pytest.raises(ValidationError, match="run_id must be"):
+        settings_model.model_validate(run_id_drift)
+
+    data_drift = _load_payload(config_path)
+    data_drift[section][key] = value
+    with pytest.raises(ValidationError, match=message):
+        settings_model.model_validate(data_drift)
