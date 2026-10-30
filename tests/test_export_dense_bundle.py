@@ -20,6 +20,11 @@ from esme_posttrain.training.checkpointing import save_training_checkpoint
 
 def test_export_dense_bundle_writes_validator_shape_and_chat_metadata(tmp_path: Path) -> None:
     artifact_dir = _write_tiny_dpo_artifact(tmp_path / "artifact")
+    tokenizer_path = artifact_dir / "tokenizer.json"
+    tokenizer_path.write_text(
+        json.dumps(json.loads(tokenizer_path.read_text(encoding="utf-8"))) + "\n",
+        encoding="utf-8",
+    )
     output_dir = tmp_path / "bundle"
 
     smoke = export_dense_bundle(
@@ -57,6 +62,7 @@ def test_export_dense_bundle_writes_validator_shape_and_chat_metadata(tmp_path: 
     assert weights["format"] == BUNDLE_FORMAT
     assert weights["key_format"] == BUNDLE_FORMAT
     assert weights["model_config"] == canonical_model_config(tiny_backbone_config())
+    assert (output_dir / "tokenizer.json").read_bytes() == tokenizer_path.read_bytes()
     assert smoke["status"] == "ok"
     assert smoke["finish_reason"] in {"eos", "length"}
     assert (
@@ -79,6 +85,28 @@ def test_export_dense_bundle_requires_completed_artifact_files(tmp_path: Path) -
                 source_volume="esme-posttrain-esme-chat-dpo",
                 source_path="esme-214m-chat-dpo-full",
                 wandb_run="pgt1zlpq",
+                dpo_step=600,
+            )
+        )
+
+
+def test_export_dense_bundle_requires_eos_token(tmp_path: Path) -> None:
+    artifact_dir = _write_tiny_dpo_artifact(tmp_path / "artifact")
+    tokenizer_path = artifact_dir / "tokenizer.json"
+    tokenizer_path.write_text(
+        tokenizer_path.read_text(encoding="utf-8").replace('"<eos>"', '"<end>"'),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ExportError, match="missing required <eos> token"):
+        export_dense_bundle(
+            ExportRequest(
+                artifact_dir=artifact_dir,
+                output_dir=tmp_path / "bundle",
+                model_id="esme-214m-chat",
+                source_volume="local-cpu",
+                source_path="dpo-artifact",
+                wandb_run="disabled",
                 dpo_step=600,
             )
         )

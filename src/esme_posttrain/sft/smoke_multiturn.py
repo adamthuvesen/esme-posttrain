@@ -51,7 +51,7 @@ def run_multi_turn_cpu_fixture(
     max_steps: int | None = None,
 ) -> dict[str, Any]:
     evidence_dir = _prepare_evidence_dir(config.output_dir, output_dir)
-    fixture_steps = int(config.payload["optimizer"]["smoke_max_steps"])
+    fixture_steps = config.settings.optimizer.smoke_max_steps
     if max_steps is not None:
         if max_steps <= 0:
             raise ValueError("max_steps must be positive")
@@ -74,7 +74,7 @@ def run_multi_turn_cpu_fixture(
         tokenize_multi_turn(tokenizer, example, max_sequence_tokens=model.config.context_length)
         for example in _tiny_eval_examples()
     )
-    sequence_config = config.payload["sequence"]
+    sequence_config = config.settings.sequence
 
     multi_turn_masking = _assert_multi_turn_masking(train_examples)
     distribution = turn_distribution(train_examples)
@@ -99,17 +99,17 @@ def run_multi_turn_cpu_fixture(
                     train_examples,
                     max_sequence_tokens=model.config.context_length,
                     micro_batch_size=1,
-                    sequence_packing=bool(sequence_config["sequence_packing"]),
-                    pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-                    no_packing_rationale=str(sequence_config["no_packing_rationale"]),
+                    sequence_packing=sequence_config.sequence_packing,
+                    pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+                    no_packing_rationale=sequence_config.no_packing_rationale,
                 ),
                 "eval": sequence_efficiency_report(
                     eval_examples,
                     max_sequence_tokens=model.config.context_length,
                     micro_batch_size=1,
-                    sequence_packing=bool(sequence_config["sequence_packing"]),
-                    pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-                    no_packing_rationale=str(sequence_config["no_packing_rationale"]),
+                    sequence_packing=sequence_config.sequence_packing,
+                    pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+                    no_packing_rationale=sequence_config.no_packing_rationale,
                 ),
             },
         },
@@ -129,16 +129,16 @@ def run_multi_turn_cpu_fixture(
             micro_batch_size=1,
             gradient_accumulation_steps=2,
             learning_rate=0.05,
-            scheduler=str(config.payload["optimizer"]["scheduler"]),
+            scheduler=config.settings.optimizer.scheduler,
             warmup_steps=min(
                 fixture_steps,
                 2,
-                int(config.payload["optimizer"]["warmup_steps"]),
+                config.settings.optimizer.warmup_steps,
             ),
-            weight_decay=float(config.payload["optimizer"]["weight_decay"]),
+            weight_decay=config.settings.optimizer.weight_decay,
             precision="fp32",
-            pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-            seed=int(config.payload["optimizer"]["seed"]),
+            pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+            seed=config.settings.optimizer.seed,
             output_dir=evidence_dir,
             artifact_name=config.artifact_name,
             eval_interval=min(10, fixture_steps),
@@ -147,7 +147,7 @@ def run_multi_turn_cpu_fixture(
             sample_new_tokens=6,
             wandb=WandbConfig(
                 enabled=wandb_enabled,
-                project=str(config.payload["monitoring"]["wandb_project"]),
+                project=config.settings.monitoring.wandb_project,
                 run_name=f"{config.run_id}-modal-smoke" if wandb_enabled else None,
                 tags=("Esme-214M-Instruct", "sft", "multi-turn", "smoke", "fixture"),
                 group=config.run_id,
@@ -159,7 +159,7 @@ def run_multi_turn_cpu_fixture(
                     "run_type": "smoke",
                     "dataset_mix": "fixture",
                     "eval_holdout": "fixture",
-                    "gpu": config.runtime["selected_gpu"] if wandb_enabled else "cpu",
+                    "gpu": config.runtime.selected_gpu if wandb_enabled else "cpu",
                     "tuning_mode": "full",
                     "resume": False,
                 },

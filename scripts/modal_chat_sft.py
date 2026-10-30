@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import modal
+
 from esme_posttrain.launch.config_guards import (
     IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
@@ -35,6 +37,7 @@ from esme_posttrain.launch.modal_cli import (
 from esme_posttrain.sft.full_multiturn import run_full_multi_turn_sft
 from esme_posttrain.sft.launch_multiturn import (
     EXPECTED_ARTIFACTS,
+    MultiTurnLaunchConfig,
     build_multi_turn_dry_run,
     full_launch_blockers,
     load_multi_turn_config,
@@ -76,15 +79,6 @@ MODAL_FULL_OUTPUT_STEM = os.environ.get(
 MODAL_SWEEP_OUTPUT_ROOT = DEFAULT_MODAL_SWEEP_ROOT
 MODAL_PROBE_OUTPUT_ROOT = DEFAULT_MODAL_PROBE_ROOT
 
-try:
-    import modal
-except ImportError:  # pragma: no cover - Modal is a runtime dependency for launch.
-    modal = None
-
-run_modal_full_sft = None
-run_modal_sweep = None
-run_modal_throughput_probe = None
-
 
 def _resolve_base_bundle_local() -> Path:
     return Path(os.environ.get(BASE_BUNDLE_ENV, DEFAULT_BASE_BUNDLE_LOCAL)).expanduser()
@@ -104,153 +98,155 @@ def _base_bundle_blocker() -> str | None:
     )
 
 
-if modal is not None:  # pragma: no cover - exercised by Modal, not local unit tests.
-    image = (
-        modal.Image.debian_slim(python_version="3.13")
-        .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
-        .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
-        .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
-    )
-    # Training modes need the regenerable esme-pretrain bundle in the image and
-    # are guarded loudly at launch when it is missing.
-    if BASE_BUNDLE_LOCAL.is_dir():
-        image = image.add_local_dir(str(BASE_BUNDLE_LOCAL), remote_path=str(BASE_BUNDLE_REMOTE))
-    posttrain_volume = modal.Volume.from_name(MODAL_VOLUME_NAME, create_if_missing=True)
-    app = modal.App(MODAL_APP_NAME)
+image = (
+    modal.Image.debian_slim(python_version="3.13")
+    .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
+    .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
+    .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
+)
+# Training modes need the regenerable esme-pretrain bundle in the image and
+# are guarded loudly at launch when it is missing.
+if BASE_BUNDLE_LOCAL.is_dir():
+    image = image.add_local_dir(str(BASE_BUNDLE_LOCAL), remote_path=str(BASE_BUNDLE_REMOTE))
+posttrain_volume = modal.Volume.from_name(MODAL_VOLUME_NAME, create_if_missing=True)
+app = modal.App(MODAL_APP_NAME)
 
-    @app.function(
-        image=image,
-        gpu=SFT_MODAL_GPU,
-        timeout=SFT_TIMEOUT_HOURS * 60 * 60,
-        volumes={str(VOLUME_MOUNT): posttrain_volume},
-        secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
-    )
-    def run_modal_smoke(config_payload: dict[str, Any], commit: str, dirty: bool) -> dict[str, Any]:
-        started = time.perf_counter()
-        try:
-            return _run_modal_smoke_body(
-                config_payload, commit=commit, dirty=dirty, started=started
-            )
-        finally:
-            posttrain_volume.commit()
 
-    @app.function(
-        image=image,
-        gpu=SFT_MODAL_GPU,
-        timeout=SFT_TIMEOUT_HOURS * 60 * 60,
-        volumes={str(VOLUME_MOUNT): posttrain_volume},
-        secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
-    )
-    def run_modal_full_sft(
-        config_payload: dict[str, Any],
-        commit: str,
-        dirty: bool,
-        resume: bool,
-        modal_gpu: str,
-        output_stem: str,
-    ) -> dict[str, Any]:
-        started = time.perf_counter()
-        try:
-            return _run_modal_full_sft_body(
-                config_payload,
-                commit=commit,
-                dirty=dirty,
-                started=started,
-                resume=resume,
-                modal_gpu=modal_gpu,
-                output_stem=output_stem,
-            )
-        finally:
-            posttrain_volume.commit()
+@app.function(
+    image=image,
+    gpu=SFT_MODAL_GPU,
+    timeout=SFT_TIMEOUT_HOURS * 60 * 60,
+    volumes={str(VOLUME_MOUNT): posttrain_volume},
+    secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
+)
+def run_modal_smoke(config_payload: dict[str, Any], commit: str, dirty: bool) -> dict[str, Any]:
+    started = time.perf_counter()
+    try:
+        return _run_modal_smoke_body(config_payload, commit=commit, dirty=dirty, started=started)
+    finally:
+        posttrain_volume.commit()
 
-    @app.function(
-        image=image,
-        gpu=SFT_MODAL_GPU,
-        timeout=SFT_SWEEP_TIMEOUT_HOURS * 60 * 60,
-        volumes={str(VOLUME_MOUNT): posttrain_volume},
-        secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
-    )
-    def run_modal_sweep(
-        config_payload: dict[str, Any],
-        commit: str,
-        dirty: bool,
-        modal_gpu: str,
-        timeout_hours: int,
-    ) -> dict[str, Any]:
-        started = time.perf_counter()
-        try:
-            return _run_modal_sweep_body(
-                config_payload,
-                commit=commit,
-                dirty=dirty,
-                modal_gpu=modal_gpu,
-                timeout_hours=timeout_hours,
-                started=started,
-            )
-        finally:
-            posttrain_volume.commit()
 
-    @app.function(
-        image=image,
-        gpu=SFT_MODAL_GPU,
-        timeout=SFT_PROBE_TIMEOUT_HOURS * 60 * 60,
-        volumes={str(VOLUME_MOUNT): posttrain_volume},
-    )
-    def run_modal_throughput_probe(
-        config_payload: dict[str, Any],
-        commit: str,
-        dirty: bool,
-        modal_gpu: str,
-        timeout_hours: int,
-    ) -> dict[str, Any]:
-        started = time.perf_counter()
-        try:
-            return _run_modal_throughput_probe_body(
-                config_payload,
-                commit=commit,
-                dirty=dirty,
-                modal_gpu=modal_gpu,
-                timeout_hours=timeout_hours,
-                started=started,
-            )
-        finally:
-            posttrain_volume.commit()
+@app.function(
+    image=image,
+    gpu=SFT_MODAL_GPU,
+    timeout=SFT_TIMEOUT_HOURS * 60 * 60,
+    volumes={str(VOLUME_MOUNT): posttrain_volume},
+    secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
+)
+def run_modal_full_sft(
+    config_payload: dict[str, Any],
+    commit: str,
+    dirty: bool,
+    resume: bool,
+    modal_gpu: str,
+    output_stem: str,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    try:
+        return _run_modal_full_sft_body(
+            config_payload,
+            commit=commit,
+            dirty=dirty,
+            started=started,
+            resume=resume,
+            modal_gpu=modal_gpu,
+            output_stem=output_stem,
+        )
+    finally:
+        posttrain_volume.commit()
 
-    @app.local_entrypoint()
-    def main(
-        config: str,
-        approved: bool = False,
-        json: bool = False,
-        full_run: bool = False,
-        modal_sweep: bool = False,
-        throughput_probe: bool = False,
-        dry_run: bool = False,
-        resume: bool = False,
-    ) -> None:
-        argv = ["--config", config]
-        if dry_run:
-            argv.append("--dry-run")
-            if modal_sweep:
-                argv.append("--modal-sweep")
-            if throughput_probe:
-                argv.append("--throughput-probe")
-            if full_run:
-                argv.append("--full-run")
-        elif full_run:
-            argv.append("--full-run")
-        elif throughput_probe:
-            argv.append("--throughput-probe")
-        elif modal_sweep:
+
+@app.function(
+    image=image,
+    gpu=SFT_MODAL_GPU,
+    timeout=SFT_SWEEP_TIMEOUT_HOURS * 60 * 60,
+    volumes={str(VOLUME_MOUNT): posttrain_volume},
+    secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
+)
+def run_modal_sweep(
+    config_payload: dict[str, Any],
+    commit: str,
+    dirty: bool,
+    modal_gpu: str,
+    timeout_hours: int,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    try:
+        return _run_modal_sweep_body(
+            config_payload,
+            commit=commit,
+            dirty=dirty,
+            modal_gpu=modal_gpu,
+            timeout_hours=timeout_hours,
+            started=started,
+        )
+    finally:
+        posttrain_volume.commit()
+
+
+@app.function(
+    image=image,
+    gpu=SFT_MODAL_GPU,
+    timeout=SFT_PROBE_TIMEOUT_HOURS * 60 * 60,
+    volumes={str(VOLUME_MOUNT): posttrain_volume},
+)
+def run_modal_throughput_probe(
+    config_payload: dict[str, Any],
+    commit: str,
+    dirty: bool,
+    modal_gpu: str,
+    timeout_hours: int,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    try:
+        return _run_modal_throughput_probe_body(
+            config_payload,
+            commit=commit,
+            dirty=dirty,
+            modal_gpu=modal_gpu,
+            timeout_hours=timeout_hours,
+            started=started,
+        )
+    finally:
+        posttrain_volume.commit()
+
+
+@app.local_entrypoint()
+def main(
+    config: str,
+    approved: bool = False,
+    json: bool = False,
+    full_run: bool = False,
+    modal_sweep: bool = False,
+    throughput_probe: bool = False,
+    dry_run: bool = False,
+    resume: bool = False,
+) -> None:
+    argv = ["--config", config]
+    if dry_run:
+        argv.append("--dry-run")
+        if modal_sweep:
             argv.append("--modal-sweep")
-        else:
-            argv.append("--modal-smoke")
-        if approved:
-            argv.append(LAUNCH_APPROVAL_FLAG)
-        if resume:
-            argv.append("--resume")
-        if json:
-            argv.append("--json")
-        raise SystemExit(launch(argv))
+        if throughput_probe:
+            argv.append("--throughput-probe")
+        if full_run:
+            argv.append("--full-run")
+    elif full_run:
+        argv.append("--full-run")
+    elif throughput_probe:
+        argv.append("--throughput-probe")
+    elif modal_sweep:
+        argv.append("--modal-sweep")
+    else:
+        argv.append("--modal-smoke")
+    if approved:
+        argv.append(LAUNCH_APPROVAL_FLAG)
+    if resume:
+        argv.append("--resume")
+    if json:
+        argv.append("--json")
+    raise SystemExit(launch(argv))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -376,12 +372,9 @@ def launch(argv: list[str] | None = None) -> int:
     if blockers:
         print("multi-turn SFT Modal smoke refused: " + "; ".join(blockers), file=sys.stderr)
         return 2
-    if modal is None:
-        print("multi-turn SFT Modal smoke failed: modal is not installed", file=sys.stderr)
-        return 2
     try:
         function_call = run_modal_smoke.spawn(
-            config.payload, local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT)
+            config.settings.to_dict(), local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT)
         )
         call_id = modal_call_id(function_call)
         result = function_call.get()
@@ -393,7 +386,9 @@ def launch(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _launch_throughput_probe(config: Any, *, approved: bool, json_output: bool) -> int:
+def _launch_throughput_probe(
+    config: MultiTurnLaunchConfig, *, approved: bool, json_output: bool
+) -> int:
     preflight = build_multi_turn_probe_preflight(
         config, modal_gpu=SFT_MODAL_GPU, timeout_hours=SFT_PROBE_TIMEOUT_HOURS
     )
@@ -415,12 +410,9 @@ def _launch_throughput_probe(config: Any, *, approved: bool, json_output: bool) 
         payload = {**preflight, "status": "throughput_probe_refused", "launch_blockers": blockers}
         print(_format_payload(payload, json_output=json_output))
         return 2
-    if modal is None or run_modal_throughput_probe is None:
-        print("multi-turn SFT throughput probe failed: modal is not installed", file=sys.stderr)
-        return 2
     try:
         function_call = run_modal_throughput_probe.spawn(
-            config.payload,
+            config.settings.to_dict(),
             local_git_commit(REPO_ROOT),
             local_git_dirty(REPO_ROOT),
             SFT_MODAL_GPU,
@@ -445,7 +437,7 @@ def _launch_throughput_probe(config: Any, *, approved: bool, json_output: bool) 
     return 0
 
 
-def _launch_modal_sweep(config: Any, *, approved: bool, json_output: bool) -> int:
+def _launch_modal_sweep(config: MultiTurnLaunchConfig, *, approved: bool, json_output: bool) -> int:
     preflight = build_multi_turn_sweep_preflight(
         config, timeout_hours=SFT_SWEEP_TIMEOUT_HOURS, modal_gpu=SFT_MODAL_GPU
     )
@@ -467,12 +459,9 @@ def _launch_modal_sweep(config: Any, *, approved: bool, json_output: bool) -> in
         payload = {**preflight, "status": "modal_sweep_refused", "launch_blockers": blockers}
         print(_format_payload(payload, json_output=json_output))
         return 2
-    if modal is None or run_modal_sweep is None:
-        print("multi-turn SFT Modal sweep failed: modal is not installed", file=sys.stderr)
-        return 2
     try:
         function_call = run_modal_sweep.spawn(
-            config.payload,
+            config.settings.to_dict(),
             local_git_commit(REPO_ROOT),
             local_git_dirty(REPO_ROOT),
             SFT_MODAL_GPU,
@@ -495,7 +484,12 @@ def _launch_modal_sweep(config: Any, *, approved: bool, json_output: bool) -> in
 
 
 def _launch_full_run(
-    config: Any, *, approved: bool, json_output: bool, resume: bool, output_stem: str
+    config: MultiTurnLaunchConfig,
+    *,
+    approved: bool,
+    json_output: bool,
+    resume: bool,
+    output_stem: str,
 ) -> int:
     full_launch_command = _full_launch_command(config, output_stem)
     blockers = full_launch_blockers(config, approved=approved, modal_gpu=SFT_MODAL_GPU)
@@ -513,12 +507,9 @@ def _launch_full_run(
         }
         print(_format_payload(payload, json_output=json_output))
         return 2
-    if modal is None or run_modal_full_sft is None:
-        print("multi-turn SFT full run failed: modal is not installed", file=sys.stderr)
-        return 2
     try:
         function_call = run_modal_full_sft.spawn(
-            config.payload,
+            config.settings.to_dict(),
             local_git_commit(REPO_ROOT),
             local_git_dirty(REPO_ROOT),
             resume,
@@ -537,11 +528,11 @@ def _launch_full_run(
         "full_launch_command": full_launch_command,
         "resume": resume,
         "training_mode": "resumed" if resume else "fresh",
-        "volume": config.runtime["modal_volume"],
+        "volume": config.runtime.modal_volume,
         "volume_output_dir": str(VOLUME_MOUNT / output_stem),
         "projected_cost_usd": config.estimated_full_cost_usd,
-        "runtime_spend_stop_usd": config.runtime["full_run_runtime_spend_stop_usd"],
-        "wandb_project": config.payload["monitoring"]["wandb_project"],
+        "runtime_spend_stop_usd": config.runtime.full_run_runtime_spend_stop_usd,
+        "wandb_project": config.settings.monitoring.wandb_project,
     }
     print(_format_payload(payload, json_output=json_output))
     return 0
@@ -559,16 +550,16 @@ def _run_modal_smoke_body(
     payload = run_multi_turn_cpu_fixture(config, output_dir=output_dir, wandb_enabled=True)
     elapsed = time.perf_counter() - started
     selected_profile = config.selected_gpu_profile
-    estimated_cost = elapsed * float(selected_profile["usd_per_hour"]) / 3600.0
+    estimated_cost = elapsed * selected_profile.usd_per_hour / 3600.0
     cost = {
         "paid_compute": True,
         "elapsed_seconds": elapsed,
-        "selected_gpu": config.runtime["selected_gpu"],
-        "usd_per_hour": selected_profile["usd_per_hour"],
+        "selected_gpu": config.runtime.selected_gpu,
+        "usd_per_hour": selected_profile.usd_per_hour,
         "estimated_cost_usd": estimated_cost,
-        "runtime_spend_stop_usd": config.runtime["runtime_spend_stop_usd"],
+        "runtime_spend_stop_usd": config.runtime.runtime_spend_stop_usd,
     }
-    if estimated_cost > float(config.runtime["smoke_max_cost_usd"]):
+    if estimated_cost > config.runtime.smoke_max_cost_usd:
         raise RuntimeError("multi-turn Modal smoke exceeded the approved $2 cap")
     (output_dir / "cost.json").write_text(json.dumps(cost, indent=2), encoding="utf-8")
     refresh_manifest_files(output_dir, EXPECTED_ARTIFACTS)
@@ -580,7 +571,7 @@ def _run_modal_smoke_body(
             "cost": cost,
             "output_dir": str(output_dir),
             "paid_compute": True,
-            "volume": config.runtime["modal_volume"],
+            "volume": config.runtime.modal_volume,
         }
     )
     return payload
@@ -686,7 +677,7 @@ def _validated_full_output_stem(value: str) -> str:
     return validate_output_stem(value, env_var="SFT_MODAL_FULL_OUTPUT_STEM")
 
 
-def _full_launch_command(config: Any, output_stem: str) -> str:
+def _full_launch_command(config: MultiTurnLaunchConfig, output_stem: str) -> str:
     return command_with_output_stem(
         config.full_launch_command,
         output_stem=output_stem,

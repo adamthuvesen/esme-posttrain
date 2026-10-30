@@ -13,9 +13,9 @@ Local instructions for `esme-posttrain`. The global agent rules still apply; thi
 ## Commands
 
 ```bash
-make check        # the gate: ruff lint + format-check + mypy + unit tests; green before any commit
+make check        # lint, format, package + Modal types, tests; green before any commit
 make fmt          # auto-format + safe lint fixes
-uv run pytest     # unit tests
+uv run pytest     # tests, including the full CPU stage chain
 ```
 
 Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
@@ -24,12 +24,20 @@ Everything runs through `uv` (`uv run …`, never bare `python`/`pip`).
 
 - Start with `README.md` for the current stage of the Esme post-training stack, active CLI commands, and launch prep overview.
 - Read `docs/architecture.md` for the stage pipeline, module seams, and artifact handoffs.
-- Read `docs/package-layout.md` before moving modules, adding stage code, or changing imports.
+- Use the change table in `docs/package-layout.md` to find ownership and focused checks.
 - Read the matching run card before changing a launch config, run budget, data source, acceptance gate, or artifact path:
   - `run_cards/esme-214m-sft-multiturn.md` for the multi-turn SFT foundation.
   - `run_cards/esme-214m-chat-dpo.md` for chat DPO.
   - `run_cards/esme-214m-rl.md` for RLVR prep.
-- When editing config shape, fixtures, or CLI dry-run payloads, update the matching stage launch validator (`sft/launch_multiturn.py`, `dpo/launch.py`, `rl/launch.py`) and its tests together. The validators are the single source of truth for config shape.
+- Each stage's `config.py` owns config shape. Its launch validator owns recipe constraints. Change both when a field changes behavior.
+- Consume typed settings after validation. Use `to_dict()` only at JSON boundaries.
+
+## Enforced Rules
+
+| Rule | Enforced by | Added |
+| --- | --- | --- |
+| Type-check Modal entrypoints alongside package code | `pyproject.toml` mypy scope, run by local and CI `make check` | 2026-11-04 |
+| Resolve launch-script imports in both direct and Makefile test runs | `pyproject.toml` pytest `pythonpath` | 2026-11-04 |
 
 ## Scope
 

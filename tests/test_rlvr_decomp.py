@@ -111,8 +111,20 @@ def test_checkpoint_bundle_carries_the_checkpoint_weights_and_step(tmp_path: Pat
 
     rebuilt = load_dense_backbone_bundle(Path(summary["bundle_dir"]))
     checkpoint = load_training_checkpoint(checkpoint_path)
+    template_manifest = json.loads(
+        (result.bundle_dir / "manifest.json").read_text(encoding="utf-8")
+    )
     assert rebuilt.bundle.manifest["checkpoint_step"] == 1
-    assert rebuilt.bundle.manifest["provenance"]["training_checkpoint"]["step"] == 1
+    assert rebuilt.bundle.manifest["source_checkpoint"] == template_manifest["source_checkpoint"]
+    assert (
+        rebuilt.bundle.manifest["source_checkpoint_sha256"]
+        == (template_manifest["source_checkpoint_sha256"])
+    )
+    assert rebuilt.bundle.manifest["provenance"]["training_checkpoint"] == {
+        "path": str(checkpoint_path),
+        "sha256": file_sha256(checkpoint_path),
+        "step": 1,
+    }
     for name, tensor in checkpoint.model.state_dict().items():
         assert torch.equal(rebuilt.model.state_dict()[name], tensor)
 

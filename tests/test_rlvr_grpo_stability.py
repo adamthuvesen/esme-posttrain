@@ -23,14 +23,6 @@ from esme_posttrain.rl.grpo import (
 )
 from esme_posttrain.rl.launch import load_rlvr_config
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-RL_CONFIG = REPO_ROOT / "configs" / "esme-214m-rl.json"
-BASE_BUNDLE_MANIFEST = REPO_ROOT / "exports" / "esme-214m-chat" / "manifest.json"
-requires_base_bundle = pytest.mark.skipif(
-    not BASE_BUNDLE_MANIFEST.is_file(),
-    reason="requires local exports/esme-214m-chat bundle (gitignored, absent in CI)",
-)
-
 
 def _trainer_config(**overrides: object) -> CountdownGRPOTrainerConfig:
     payload: dict[str, object] = {
@@ -303,36 +295,30 @@ def test_stratified_rows_mix_difficulties_in_every_batch_window() -> None:
     ]
 
 
-@requires_base_bundle
-def test_config_loads_and_projects_worst_case_resample_cost() -> None:
-    config = load_rlvr_config(RL_CONFIG)
+def test_config_loads_and_projects_worst_case_resample_cost(full_rl_recipe_path: Path) -> None:
+    config = load_rlvr_config(full_rl_recipe_path)
 
     grpo = config.grpo
-    sequences = int(grpo["prompts_per_step"]) * int(grpo["group_size"]) * int(grpo["max_steps"])
-    resample_factor = 1 + int(grpo["zero_variance_max_resamples"])
+    sequences = int(grpo.prompts_per_step) * int(grpo.group_size) * int(grpo.max_steps)
+    resample_factor = 1 + int(grpo.zero_variance_max_resamples)
     assert config.estimated_train_tokens % (sequences * resample_factor) == 0
     per_sequence = config.estimated_train_tokens // (sequences * resample_factor)
-    assert per_sequence > int(grpo["max_new_tokens"])
+    assert per_sequence > int(grpo.max_new_tokens)
     assert config.estimated_full_cost_usd <= 15.0
-    assert float(config.runtime["full_run_max_cost_usd"]) == 20.0
-    assert float(config.runtime["full_run_runtime_spend_stop_usd"]) == 18.0
-    assert tuple(config.payload["artifacts"]["required_files"])[-1] == "eval-after-final.json"
+    assert float(config.runtime.full_run_max_cost_usd) == 20.0
+    assert float(config.runtime.full_run_runtime_spend_stop_usd) == 18.0
+    assert tuple(config.settings.artifacts.required_files)[-1] == "eval-after-final.json"
 
 
-@requires_base_bundle
-def test_reward_policy_margin_is_enforced_at_launch_validation(tmp_path: Path) -> None:
+def test_reward_policy_margin_is_enforced_at_launch_validation(full_rl_recipe_path: Path) -> None:
     import json
 
-    payload = json.loads(RL_CONFIG.read_text(encoding="utf-8"))
+    payload = json.loads(full_rl_recipe_path.read_text(encoding="utf-8"))
     payload["reward_policy"]["closeness_weight"] = 0.5
-    (tmp_path / "configs").mkdir()
-    broken = tmp_path / "configs" / "esme-214m-rl-broken.json"
-    broken.write_text(json.dumps(payload), encoding="utf-8")
-    (tmp_path / "exports").symlink_to(REPO_ROOT / "exports")
-    (tmp_path / "data").symlink_to(REPO_ROOT / "data")
+    full_rl_recipe_path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(LaunchError, match="closeness ceiling"):
-        load_rlvr_config(broken)
+        load_rlvr_config(full_rl_recipe_path)
 
 
 def test_verifier_flags_well_formed_expressions() -> None:

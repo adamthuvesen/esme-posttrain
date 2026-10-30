@@ -17,14 +17,9 @@ from typing import Any, Literal
 import torch
 from tokenizers import Tokenizer
 
-from esme_posttrain.bundle import (
-    BUNDLE_FORMAT,
-    BUNDLE_SCHEMA_VERSION,
-    canonical_model_config,
-    file_sha256,
-    llm_infer_model_config,
-)
+from esme_posttrain.bundle import file_sha256
 from esme_posttrain.modeling import DenseBackbone, soft_cap_logits
+from esme_posttrain.rl.bundle import RLVRBundleIdentity, write_rlvr_bundle
 from esme_posttrain.rl.countdown_lite import (
     render_chat_prompt,
     verify_countdown_lite_expression,
@@ -55,16 +50,6 @@ GRPO_STD_EPSILON = 1e-4
 
 class CountdownGRPOTrainerError(TrainerError):
     pass
-
-
-@dataclass(frozen=True)
-class RLVRBundleIdentity:
-    artifact_name: str
-    reference_artifact_name: str
-    bundle_model_id: str
-    source_checkpoint: str
-    source_checkpoint_sha256: str | None
-    source_manifest: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -1081,101 +1066,6 @@ def _data_report(
     }
 
 
-def write_rlvr_bundle(
-    bundle_dir: Path,
-    *,
-    model: DenseBackbone,
-    tokenizer: Tokenizer,
-    identity: RLVRBundleIdentity,
-    checkpoint_step: int,
-    extra_provenance: dict[str, Any] | None = None,
-) -> None:
-    bundle_dir.mkdir(parents=True, exist_ok=True)
-    model_config = canonical_model_config(model.config)
-    (bundle_dir / "config.json").write_text(
-        json.dumps(model_config, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    tokenizer.save(str(bundle_dir / "tokenizer.json"))
-    weights_payload = {
-        "format_version": BUNDLE_SCHEMA_VERSION,
-        "format": BUNDLE_FORMAT,
-        "key_format": BUNDLE_FORMAT,
-        "metadata": {"key_format": BUNDLE_FORMAT, "state_dict_key": "state_dict"},
-        "state_dict_key": "state_dict",
-        "model_config": model_config,
-        "llm_infer_config": llm_infer_model_config(model_config),
-        "state_dict": model.state_dict(),
-        "checkpoint_step": checkpoint_step,
-        "source_checkpoint": identity.source_checkpoint,
-        "source_checkpoint_sha256": identity.source_checkpoint_sha256,
-    }
-    torch.save(weights_payload, bundle_dir / "weights.pt")
-    (bundle_dir / "README.md").write_text(
-        _bundle_readme(identity, checkpoint_step=checkpoint_step),
-        encoding="utf-8",
-    )
-    manifest = {
-        "schema_version": BUNDLE_SCHEMA_VERSION,
-        "format": BUNDLE_FORMAT,
-        "weights_format": BUNDLE_FORMAT,
-        "model_family": "DenseBackbone",
-        "model": {"id": identity.bundle_model_id, "name": identity.artifact_name, "stage": "rlvr"},
-        "model_config": model_config,
-        "llm_infer_config": llm_infer_model_config(model_config),
-        "checkpoint_step": checkpoint_step,
-        "source_checkpoint": identity.source_checkpoint,
-        "source_checkpoint_sha256": identity.source_checkpoint_sha256,
-        "files": {
-            "config": {
-                "path": "config.json",
-                "sha256": file_sha256(bundle_dir / "config.json"),
-            },
-            "tokenizer": {
-                "path": "tokenizer.json",
-                "sha256": file_sha256(bundle_dir / "tokenizer.json"),
-            },
-            "weights": {
-                "path": "weights.pt",
-                "sha256": file_sha256(bundle_dir / "weights.pt"),
-            },
-            "readme": {
-                "path": "README.md",
-                "sha256": file_sha256(bundle_dir / "README.md"),
-            },
-        },
-        "tokenizer": {
-            "path": "tokenizer.json",
-            "format": "tokenizers-json",
-        },
-        "eos_token_ids": _eos_token_ids(tokenizer),
-        "decoding": {
-            "eos_token_ids": _eos_token_ids(tokenizer),
-            "default_add_special_tokens": False,
-        },
-        "provenance": {
-            "source": "countdown_lite_grpo",
-            "starts_from": identity.reference_artifact_name,
-            "checkpoint_step": checkpoint_step,
-            "source_manifest": identity.source_manifest,
-            **(extra_provenance or {}),
-        },
-    }
-    (bundle_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-
-
-def _bundle_readme(identity: RLVRBundleIdentity, *, checkpoint_step: int) -> str:
-    return (
-        f"# {identity.artifact_name} DenseBackbone Bundle\n\n"
-        f"- Model id: `{identity.bundle_model_id}`\n"
-        f"- Stage: `rlvr`; checkpoint step: `{checkpoint_step}`\n"
-        f"- Starts from: `{identity.reference_artifact_name}`\n\n"
-        "Format contract: `llm_pretrain_dense_v1`.\n"
-    )
-
-
 def _write_manifest(
     manifest_path: Path,
     *,
@@ -1212,8 +1102,3 @@ def _write_manifest(
             "files": files,
         },
     )
-
-
-def _eos_token_ids(tokenizer: Tokenizer) -> list[int]:
-    eos_id = tokenizer.token_to_id("<eos>")
-    return [int(eos_id)] if eos_id is not None else []

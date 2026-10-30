@@ -12,10 +12,10 @@ lint:  ## Lint and format-check (no changes)
 	uv run ruff check .
 	uv run ruff format --check .
 
-type:  ## Check source types
+type:  ## Check package and Modal entrypoint types
 	uv run mypy
 
-test:  ## Run unit tests
-	uv run python -m pytest
+test:  ## Run tests, including the full CPU stage chain
+	uv run pytest
 
-check: lint type test  ## The gate: lint + format-check + types + unit tests
+check: lint type test  ## The gate: lint + format-check + types + tests

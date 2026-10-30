@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import modal
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
@@ -34,6 +36,7 @@ from esme_posttrain.rl.launch import (
     BEFORE_EVAL_DEBUG_PROFILE,
     MODAL_VOLUME,
     PIPELINE_SMOKE_PROFILE,
+    RLVRLaunchConfig,
     build_eval_profile,
     build_grpo_dry_run,
     full_launch_blockers,
@@ -56,124 +59,118 @@ DEFAULT_MODAL_DEBUG_OUTPUT_STEM = "esme-214m-rlvr-before-eval-debug"
 DEFAULT_MODAL_PIPELINE_SMOKE_OUTPUT_STEM = "esme-214m-rlvr-pipeline-smoke"
 MODAL_OUTPUT_STEM = os.environ.get("RLVR_MODAL_OUTPUT_STEM", DEFAULT_MODAL_OUTPUT_STEM)
 
-try:
-    import modal
-except ImportError:  # pragma: no cover - Modal is a runtime dependency for launch.
-    modal = None
 
-run_modal_grpo = None
-app = None
+image = (
+    modal.Image.debian_slim(python_version="3.13")
+    .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
+    .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
+    .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
+    .add_local_dir(str(REPO_ROOT / "configs"), remote_path="/root/configs")
+    .add_local_dir(str(REPO_ROOT / "data"), remote_path="/root/data")
+    .add_local_dir(
+        str(REPO_ROOT / "exports" / "esme-214m-chat"),
+        remote_path="/root/exports/esme-214m-chat",
+    )
+)
+posttrain_volume = modal.Volume.from_name(MODAL_VOLUME, create_if_missing=True)
+app = modal.App(MODAL_APP_NAME)
 
-if modal is not None:  # pragma: no cover - exercised by Modal, not local unit tests.
-    image = (
-        modal.Image.debian_slim(python_version="3.13")
-        .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
-        .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
-        .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
-        .add_local_dir(str(REPO_ROOT / "configs"), remote_path="/root/configs")
-        .add_local_dir(str(REPO_ROOT / "data"), remote_path="/root/data")
-        .add_local_dir(
-            str(REPO_ROOT / "exports" / "esme-214m-chat"),
-            remote_path="/root/exports/esme-214m-chat",
+
+@app.function(
+    image=image,
+    gpu=RLVR_MODAL_GPU,
+    timeout=RLVR_TIMEOUT_HOURS * 60 * 60,
+    volumes={str(VOLUME_MOUNT): posttrain_volume},
+    secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
+)
+def run_modal_grpo(
+    config_payload: dict[str, Any],
+    commit: str,
+    dirty: bool,
+    output_stem: str,
+    before_eval_only: bool,
+    pipeline_smoke: bool,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    status_path: Path | None = None
+    try:
+        _emit_remote_milestone(
+            "remote_entry",
+            output_stem=output_stem,
+            commit=commit,
+            dirty=dirty,
+            pipeline_smoke=pipeline_smoke,
         )
-    )
-    posttrain_volume = modal.Volume.from_name(MODAL_VOLUME, create_if_missing=True)
-    app = modal.App(MODAL_APP_NAME)
+        config = validate_rlvr_payload(config_payload, Path("/root/configs/esme-214m-rl.json"))
+        _emit_remote_milestone("config_validated", run_id=config.run_id)
+        blockers = full_launch_blockers(config, approved=True, modal_gpu=RLVR_MODAL_GPU)
+        if blockers:
+            _emit_remote_milestone("launch_blocked_inside_modal", blockers=blockers)
+            raise RuntimeError("GRPO refused inside Modal: " + "; ".join(blockers))
+        output_dir = fresh_output_dir(VOLUME_MOUNT, output_stem)
+        status_path = _remote_status_path(output_dir)
+        _record_remote_milestone(
+            status_path,
+            "output_dir_selected",
+            output_dir=str(output_dir),
+        )
+        posttrain_volume.commit()
 
-    @app.function(
-        image=image,
-        gpu=RLVR_MODAL_GPU,
-        timeout=RLVR_TIMEOUT_HOURS * 60 * 60,
-        volumes={str(VOLUME_MOUNT): posttrain_volume},
-        secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
-    )
-    def run_modal_grpo(
-        config_payload: dict[str, Any],
-        commit: str,
-        dirty: bool,
-        output_stem: str,
-        before_eval_only: bool,
-        pipeline_smoke: bool,
-    ) -> dict[str, Any]:
-        started = time.perf_counter()
-        status_path: Path | None = None
-        try:
-            _emit_remote_milestone(
-                "remote_entry",
-                output_stem=output_stem,
-                commit=commit,
-                dirty=dirty,
-                pipeline_smoke=pipeline_smoke,
-            )
-            config = validate_rlvr_payload(config_payload, Path("/root/configs/esme-214m-rl.json"))
-            _emit_remote_milestone("config_validated", run_id=config.run_id)
-            blockers = full_launch_blockers(config, approved=True, modal_gpu=RLVR_MODAL_GPU)
-            if blockers:
-                _emit_remote_milestone("launch_blocked_inside_modal", blockers=blockers)
-                raise RuntimeError("GRPO refused inside Modal: " + "; ".join(blockers))
-            output_dir = fresh_output_dir(VOLUME_MOUNT, output_stem)
-            status_path = _remote_status_path(output_dir)
-            _record_remote_milestone(
-                status_path,
-                "output_dir_selected",
-                output_dir=str(output_dir),
-            )
+        def milestone_callback(stage: str, fields: dict[str, Any]) -> None:
+            if status_path is None:
+                return
+            _write_remote_milestone(status_path, stage, **fields)
             posttrain_volume.commit()
 
-            def milestone_callback(stage: str, fields: dict[str, Any]) -> None:
-                if status_path is None:
-                    return
-                _write_remote_milestone(status_path, stage, **fields)
-                posttrain_volume.commit()
+        return run_countdown_lite_grpo_job(
+            config,
+            output_dir=output_dir,
+            require_cuda=True,
+            started=started,
+            commit=commit,
+            dirty=dirty,
+            milestone_callback=milestone_callback,
+            wandb_enabled=True,
+            before_eval_only=before_eval_only,
+            pipeline_smoke=pipeline_smoke,
+            paid_compute=True,
+            skip_acceptance_eval=config.skip_acceptance_eval,
+        )
+    finally:
+        _emit_remote_milestone(
+            "remote_exit",
+            status_path=str(status_path) if status_path is not None else None,
+        )
+        posttrain_volume.commit()
 
-            return run_countdown_lite_grpo_job(
-                config,
-                output_dir=output_dir,
-                require_cuda=True,
-                started=started,
-                commit=commit,
-                dirty=dirty,
-                milestone_callback=milestone_callback,
-                wandb_enabled=True,
-                before_eval_only=before_eval_only,
-                pipeline_smoke=pipeline_smoke,
-                paid_compute=True,
-                skip_acceptance_eval=config.skip_acceptance_eval,
-            )
-        finally:
-            _emit_remote_milestone(
-                "remote_exit",
-                status_path=str(status_path) if status_path is not None else None,
-            )
-            posttrain_volume.commit()
 
-    @app.local_entrypoint()
-    def main(
-        config: str,
-        approved: bool = False,
-        json: bool = False,
-        full_run: bool = False,
-        debug_before_eval: bool = False,
-        pipeline_smoke: bool = False,
-        modal_pipeline_smoke: bool = False,
-        dry_run: bool = False,
-    ) -> None:
-        argv = ["--config", config]
-        if dry_run:
-            argv.append("--dry-run")
-        if full_run:
-            argv.append("--full-run")
-        if debug_before_eval:
-            argv.append("--debug-before-eval")
-        if pipeline_smoke:
-            argv.append("--pipeline-smoke")
-        if modal_pipeline_smoke:
-            argv.append("--modal-pipeline-smoke")
-        if approved:
-            argv.append(LAUNCH_APPROVAL_FLAG)
-        if json:
-            argv.append("--json")
-        raise SystemExit(launch(argv))
+@app.local_entrypoint()
+def main(
+    config: str,
+    approved: bool = False,
+    json: bool = False,
+    full_run: bool = False,
+    debug_before_eval: bool = False,
+    pipeline_smoke: bool = False,
+    modal_pipeline_smoke: bool = False,
+    dry_run: bool = False,
+) -> None:
+    argv = ["--config", config]
+    if dry_run:
+        argv.append("--dry-run")
+    if full_run:
+        argv.append("--full-run")
+    if debug_before_eval:
+        argv.append("--debug-before-eval")
+    if pipeline_smoke:
+        argv.append("--pipeline-smoke")
+    if modal_pipeline_smoke:
+        argv.append("--modal-pipeline-smoke")
+    if approved:
+        argv.append(LAUNCH_APPROVAL_FLAG)
+    if json:
+        argv.append("--json")
+    raise SystemExit(launch(argv))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -272,12 +269,12 @@ def launch(argv: list[str] | None = None) -> int:
                     else "dry_run"
                 )
                 payload["debug_before_eval"] = True
-                payload["debug_eval_task_budget"] = config.payload["monitoring"][
-                    "debug_eval_task_budget"
-                ]
-                payload["debug_samples_per_eval_task"] = config.payload["monitoring"][
-                    "debug_samples_per_eval_task"
-                ]
+                payload["debug_eval_task_budget"] = (
+                    config.settings.monitoring.debug_eval_task_budget
+                )
+                payload["debug_samples_per_eval_task"] = (
+                    config.settings.monitoring.debug_samples_per_eval_task
+                )
             if args.modal_pipeline_smoke:
                 payload["status"] = (
                     "ready_for_modal_pipeline_smoke"
@@ -320,20 +317,6 @@ def launch(argv: list[str] | None = None) -> int:
             "doc_path": str(config.doc_path),
         }
         print(_format_payload(payload, json_output=args.json))
-        return 2
-    if modal is None or run_modal_grpo is None:
-        reason = "modal is not installed"
-        report = build_blocked_grpo_report(
-            config,
-            reason=reason,
-            launch_command=full_launch_command,
-            spend_evidence=_zero_spend_evidence("refused before Modal spawn"),
-            modal_evidence=_modal_evidence(
-                status_basis="modal import failed before Modal spawn; no Modal call was created"
-            ),
-        )
-        write_grpo_report(config, report)
-        print(f"RLVR GRPO launch failed: {reason}", file=sys.stderr)
         return 2
 
     try:
@@ -400,17 +383,15 @@ def launch(argv: list[str] | None = None) -> int:
 
 
 def _spawn_modal_grpo(
-    config: Any,
+    config: RLVRLaunchConfig,
     output_stem: str,
     *,
     before_eval_only: bool = False,
     pipeline_smoke: bool = False,
 ) -> Any:
-    if run_modal_grpo is None:
-        raise RuntimeError("Modal function is not initialized")
     try:
         return run_modal_grpo.spawn(
-            config.payload,
+            config.settings.to_dict(),
             local_git_commit(REPO_ROOT),
             local_git_dirty(REPO_ROOT),
             output_stem,
@@ -427,14 +408,14 @@ def _spawn_modal_grpo(
         ) from error
 
 
-def _validate_timeout_env_matches_config(config: Any) -> None:
-    config_timeout_hours = int(config.runtime["timeout_hours"])
+def _validate_timeout_env_matches_config(config: RLVRLaunchConfig) -> None:
+    config_timeout_hours = config.runtime.timeout_hours
     if config_timeout_hours == RLVR_TIMEOUT_HOURS:
         return
-    usd_per_hour = float(config.selected_gpu_profile["usd_per_hour"])
+    usd_per_hour = config.selected_gpu_profile.usd_per_hour
     effective_ceiling = RLVR_TIMEOUT_HOURS * usd_per_hour
     configured_ceiling = config_timeout_hours * usd_per_hour
-    hard_stop = float(config.runtime["full_run_runtime_spend_stop_usd"])
+    hard_stop = config.runtime.full_run_runtime_spend_stop_usd
     raise LaunchError(
         f"{RLVR_TIMEOUT_ENV_VAR} must match runtime.timeout_hours for bounded GRPO launch: "
         f"env={RLVR_TIMEOUT_HOURS}, config={config_timeout_hours}; "
@@ -453,7 +434,7 @@ def _zero_spend_evidence(cost_basis: str) -> dict[str, Any]:
     }
 
 
-def _launched_spend_evidence(config: Any) -> dict[str, Any]:
+def _launched_spend_evidence(config: RLVRLaunchConfig) -> dict[str, Any]:
     timeout_cost_ceiling = _timeout_cost_ceiling_usd(config)
     return {
         "paid_compute": True,
@@ -466,10 +447,8 @@ def _launched_spend_evidence(config: Any) -> dict[str, Any]:
     }
 
 
-def _timeout_cost_ceiling_usd(config: Any) -> float:
-    return float(config.runtime["timeout_hours"]) * float(
-        config.selected_gpu_profile["usd_per_hour"]
-    )
+def _timeout_cost_ceiling_usd(config: RLVRLaunchConfig) -> float:
+    return config.runtime.timeout_hours * config.selected_gpu_profile.usd_per_hour
 
 
 def _modal_evidence(
@@ -504,7 +483,7 @@ def _modal_app_id(function_call: Any | None = None) -> str | None:
 
 
 def _launch_receipt(
-    config: Any,
+    config: RLVRLaunchConfig,
     *,
     output_stem: str,
     full_launch_command: str,
@@ -525,8 +504,8 @@ def _launch_receipt(
         "debug_before_eval": before_eval_only,
         "pipeline_smoke": pipeline_smoke,
         "eval_profile": eval_profile,
-        "wandb_project": config.payload["monitoring"]["wandb_project"],
-        "wandb_required_for_modal": config.payload["monitoring"]["wandb_required_for_modal"],
+        "wandb_project": config.settings.monitoring.wandb_project,
+        "wandb_required_for_modal": config.settings.monitoring.wandb_required_for_modal,
         "wandb_mode": "online",
         "training_started": "scheduled",
         "modal_gpu_or_paid_work_started": True,
@@ -541,11 +520,11 @@ def _launch_receipt(
         "remote_status_path": str(_remote_status_path(VOLUME_MOUNT / output_stem)),
         "full_launch_command": full_launch_command,
         "resume_command": full_launch_command,
-        "volume": config.runtime["modal_volume"],
+        "volume": config.runtime.modal_volume,
         "volume_output_dir": str(VOLUME_MOUNT / output_stem),
         "output_dir": str(config.output_dir),
         "projected_cost_usd": config.estimated_full_cost_usd,
-        "runtime_spend_stop_usd": config.runtime["full_run_runtime_spend_stop_usd"],
+        "runtime_spend_stop_usd": config.runtime.full_run_runtime_spend_stop_usd,
         "timeout_cost_ceiling_usd": _timeout_cost_ceiling_usd(config),
         "report_path": str(config.report_path),
         "doc_path": str(config.doc_path),
@@ -612,7 +591,7 @@ def _selected_output_stem(*, debug_before_eval: bool, modal_pipeline_smoke: bool
 
 
 def _launch_command(
-    config: Any,
+    config: RLVRLaunchConfig,
     output_stem: str,
     *,
     before_eval_only: bool,
@@ -679,7 +658,7 @@ def _in_flight_reason(*, before_eval_only: bool, modal_pipeline_smoke: bool) -> 
 
 
 def _receipt_eval_profile(
-    config: Any, *, before_eval_only: bool, modal_pipeline_smoke: bool
+    config: RLVRLaunchConfig, *, before_eval_only: bool, modal_pipeline_smoke: bool
 ) -> str:
     if before_eval_only:
         return BEFORE_EVAL_DEBUG_PROFILE

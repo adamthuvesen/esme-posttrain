@@ -18,5 +18,5 @@ jobs:
       - name: Install dev dependencies
         run: uv sync --extra dev
 
-      - name: Lint and unit tests
+      - name: Lint, types, and tests
         run: make check

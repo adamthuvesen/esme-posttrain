@@ -62,12 +62,12 @@ def run_full_dpo(
     profile = config.selected_gpu_profile
     runtime = config.runtime
     spend_stop = float(
-        runtime["runtime_spend_stop_usd"] if smoke else runtime["full_run_runtime_spend_stop_usd"]
+        runtime.runtime_spend_stop_usd if smoke else runtime.full_run_runtime_spend_stop_usd
     )
-    max_cost = float(runtime["smoke_max_cost_usd"] if smoke else runtime["full_run_max_cost_usd"])
+    max_cost = float(runtime.smoke_max_cost_usd if smoke else runtime.full_run_max_cost_usd)
     spend_tracker = RuntimeSpendTracker(
         started=started or time.perf_counter(),
-        usd_per_hour=float(profile["usd_per_hour"]),
+        usd_per_hour=profile.usd_per_hour,
         stop_usd=spend_stop,
         output_dir=output_dir,
     )
@@ -92,8 +92,8 @@ def run_full_dpo(
         max_pairs=pair_caps["train_pairs"],
         min_pairs=pair_caps["min_train_pairs"],
         max_tokens=pair_caps["train_tokens"],
-        max_length=int(budgets["max_length"]),
-        max_prompt_length=int(budgets["max_prompt_length"]),
+        max_length=budgets.max_length,
+        max_prompt_length=budgets.max_prompt_length,
         allow_remote_download=allow_remote_download,
     )
     eval_report = build_preference_set(
@@ -101,9 +101,9 @@ def run_full_dpo(
         tokenizer,
         max_pairs=pair_caps["eval_pairs"],
         min_pairs=pair_caps["min_eval_pairs"],
-        max_tokens=int(budgets["max_eval_tokens"]),
-        max_length=int(budgets["max_length"]),
-        max_prompt_length=int(budgets["max_prompt_length"]),
+        max_tokens=budgets.max_eval_tokens,
+        max_length=budgets.max_length,
+        max_prompt_length=budgets.max_prompt_length,
         allow_remote_download=allow_remote_download,
     )
     _assert_data_safe(train_report.to_dict(), eval_report.to_dict(), pair_caps)
@@ -113,7 +113,7 @@ def run_full_dpo(
         output_dir / "config.json",
         {
             "mode": "modal_smoke_dpo" if smoke else "modal_full_dpo",
-            "source_config": config.payload,
+            "source_config": config.settings.to_dict(),
             "commit": commit,
             "dirty": dirty,
             "sft_checkpoint_path": str(sft_checkpoint_path),
@@ -147,10 +147,10 @@ def run_full_dpo(
     write_json(output_dir / "decoding-precheck.json", precheck.to_dict())
 
     optimizer = config.optimizer
-    dpo = config.payload["dpo"]
-    monitoring = config.payload["monitoring"]
-    max_steps = int(optimizer["smoke_max_steps"] if smoke else optimizer["max_steps"])
-    warmup_steps = int(round(float(optimizer["warmup_ratio"]) * max_steps))
+    dpo = config.settings.dpo
+    monitoring = config.settings.monitoring
+    max_steps = int(optimizer.smoke_max_steps if smoke else optimizer.max_steps)
+    warmup_steps = int(round(optimizer.warmup_ratio * max_steps))
     result = run_dpo_training(
         policy,
         reference,
@@ -159,30 +159,30 @@ def run_full_dpo(
         eval_report.pairs,
         DPOTrainerConfig(
             max_steps=max_steps,
-            micro_batch_size=int(optimizer["micro_batch_size"]),
-            gradient_accumulation_steps=int(optimizer["gradient_accumulation_steps"]),
-            learning_rate=float(optimizer["learning_rate"]),
-            beta=float(dpo["beta"]),
-            length_normalized=bool(dpo["length_normalized"]),
-            scheduler=str(optimizer["scheduler"]),
+            micro_batch_size=optimizer.micro_batch_size,
+            gradient_accumulation_steps=optimizer.gradient_accumulation_steps,
+            learning_rate=optimizer.learning_rate,
+            beta=dpo.beta,
+            length_normalized=dpo.length_normalized,
+            scheduler=optimizer.scheduler,
             warmup_steps=warmup_steps,
-            weight_decay=float(optimizer["weight_decay"]),
-            precision=str(runtime["precision"]),
-            pad_to_multiple_of=config.payload["sequence"]["pad_to_multiple_of"],
-            seed=int(optimizer["seed"]),
+            weight_decay=optimizer.weight_decay,
+            precision=runtime.precision,
+            pad_to_multiple_of=config.settings.sequence.pad_to_multiple_of,
+            seed=optimizer.seed,
             output_dir=output_dir,
             artifact_name=config.artifact_name,
-            grad_clip=float(optimizer["grad_clip"]),
-            log_interval=int(monitoring["log_interval"]),
-            eval_interval=int(monitoring["eval_interval"]),
-            checkpoint_interval=int(monitoring["checkpoint_interval"]),
+            grad_clip=optimizer.grad_clip,
+            log_interval=monitoring.log_interval,
+            eval_interval=monitoring.eval_interval,
+            checkpoint_interval=monitoring.checkpoint_interval,
             device=device.type,
             wandb=_wandb_config(config, smoke=smoke),
         ),
         reference_bundle_manifest={
             "sft_checkpoint_path": str(sft_checkpoint_path),
-            "wandb_run": config.payload["sft_reference"]["wandb_run"],
-            "best_step": config.payload["sft_reference"]["best_step"],
+            "wandb_run": config.settings.sft_reference.wandb_run,
+            "best_step": config.settings.sft_reference.best_step,
         },
         step_callback=check_spend,
     )
@@ -209,7 +209,7 @@ def run_full_dpo(
         "run_id": config.run_id,
         "artifact_name": config.artifact_name,
         "output_dir": str(output_dir),
-        "volume": runtime["modal_volume"],
+        "volume": runtime.modal_volume,
         "commit": commit,
         "dirty": dirty,
         "device": device.type,
@@ -235,35 +235,35 @@ def _pair_caps(config: DPOLaunchConfig, *, smoke: bool) -> dict[str, int]:
     if smoke:
         # The smoke is a tiny tightly-bounded correctness check: cap == floor.
         return {
-            "train_pairs": int(budgets["smoke_train_pairs"]),
-            "train_tokens": int(budgets["smoke_train_tokens"]),
-            "eval_pairs": int(budgets["smoke_eval_pairs"]),
-            "eval_tokens": int(budgets["max_eval_tokens"]),
-            "min_train_pairs": int(budgets["smoke_train_pairs"]),
-            "min_eval_pairs": int(budgets["smoke_eval_pairs"]),
+            "train_pairs": budgets.smoke_train_pairs,
+            "train_tokens": budgets.smoke_train_tokens,
+            "eval_pairs": budgets.smoke_eval_pairs,
+            "eval_tokens": budgets.max_eval_tokens,
+            "min_train_pairs": budgets.smoke_train_pairs,
+            "min_eval_pairs": budgets.smoke_eval_pairs,
         }
     return {
-        "train_pairs": int(budgets["max_train_pairs"]),
-        "train_tokens": int(budgets["max_train_tokens"]),
-        "eval_pairs": int(budgets["max_eval_pairs"]),
-        "eval_tokens": int(budgets["max_eval_tokens"]),
+        "train_pairs": budgets.max_train_pairs,
+        "train_tokens": budgets.max_train_tokens,
+        "eval_pairs": budgets.max_eval_pairs,
+        "eval_tokens": budgets.max_eval_tokens,
         # max_*_pairs are caps; min_*_pairs are the sufficiency floors. UltraFeedback
         # responses are long, so far fewer than the cap survive max_length=1024 --
         # which is fine as long as we clear the floor.
-        "min_train_pairs": int(budgets["min_train_pairs"]),
-        "min_eval_pairs": int(budgets["min_eval_pairs"]),
+        "min_train_pairs": budgets.min_train_pairs,
+        "min_eval_pairs": budgets.min_eval_pairs,
     }
 
 
 def _wandb_config(config: DPOLaunchConfig, *, smoke: bool) -> Any:
     from esme_posttrain.sft.trainer import WandbConfig
 
-    monitoring = config.payload["monitoring"]
+    monitoring = config.settings.monitoring
     return WandbConfig(
         enabled=True,
-        project=str(monitoring["wandb_project"]),
+        project=monitoring.wandb_project,
         run_name=f"{config.run_id}-{'smoke' if smoke else 'full-dpo'}",
-        tags=tuple(monitoring["wandb_tags"]) + (("smoke",) if smoke else ("full",)),
+        tags=tuple(monitoring.wandb_tags) + (("smoke",) if smoke else ("full",)),
         group=config.run_id,
         job_type="smoke" if smoke else "full-dpo",
         notes="Vanilla offline DPO chat polish; frozen SFT reference; no SimPO, no RL.",
@@ -271,8 +271,8 @@ def _wandb_config(config: DPOLaunchConfig, *, smoke: bool) -> Any:
             "model": config.artifact_name,
             "stage": "dpo",
             "run_type": "smoke" if smoke else "full",
-            "beta": float(config.payload["dpo"]["beta"]),
-            "length_normalized": bool(config.payload["dpo"]["length_normalized"]),
+            "beta": config.settings.dpo.beta,
+            "length_normalized": config.settings.dpo.length_normalized,
         },
     )
 

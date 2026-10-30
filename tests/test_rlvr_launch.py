@@ -23,13 +23,7 @@ from esme_posttrain.rl.launch import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RL_CONFIG = REPO_ROOT / "configs" / "esme-214m-rl.json"
 RL_FIXTURE_CONFIG = REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.json"
-BASE_BUNDLE_MANIFEST = REPO_ROOT / "exports" / "esme-214m-chat" / "manifest.json"
-requires_base_bundle = pytest.mark.skipif(
-    not BASE_BUNDLE_MANIFEST.is_file(),
-    reason="requires local exports/esme-214m-chat bundle (gitignored, absent in CI)",
-)
 
 
 def test_rlvr_fixture_dry_run_via_api() -> None:
@@ -119,8 +113,9 @@ def test_timeout_cost_ceiling_must_stay_under_runtime_hard_stop(
     )
 
 
-@requires_base_bundle
-def test_modal_launcher_dry_run_rejects_timeout_env_config_mismatch() -> None:
+def test_modal_launcher_dry_run_rejects_timeout_env_config_mismatch(
+    full_rl_recipe_path: Path,
+) -> None:
     env = {
         **os.environ,
         "PYTHONPATH": "src",
@@ -132,7 +127,7 @@ def test_modal_launcher_dry_run_rejects_timeout_env_config_mismatch() -> None:
             sys.executable,
             "scripts/modal_rlvr_grpo.py",
             "--config",
-            "configs/esme-214m-rl.json",
+            str(full_rl_recipe_path),
             "--dry-run",
             "--json",
         ],
@@ -185,7 +180,7 @@ def test_modal_launcher_full_run_returns_receipt_without_get(
     )
 
     receipt = json.loads(capsys.readouterr().out)
-    assert captured["args"][0] == config.payload
+    assert captured["args"][0] == config.settings.to_dict()
     assert captured["args"][3] == "esme-214m-rlvr-countdown-grpo"
     assert captured["args"][4] is False
     assert captured["args"][5] is False
@@ -291,9 +286,8 @@ def test_modal_launcher_pipeline_smoke_dry_run_uses_dedicated_command(
     )
 
 
-@requires_base_bundle
-def test_full_acceptance_eval_stays_30x32_with_scaled_timeout() -> None:
-    payload = build_rlvr_dry_run(RL_CONFIG)
+def test_full_acceptance_eval_stays_30x32_with_scaled_timeout(full_rl_recipe_path: Path) -> None:
+    payload = build_rlvr_dry_run(full_rl_recipe_path)
 
     assert payload["eval_profile"] == "full_acceptance_30x32"
     assert payload["eval_task_budget"] == 30
@@ -305,8 +299,8 @@ def test_full_acceptance_eval_stays_30x32_with_scaled_timeout() -> None:
     assert payload["acceptance_preflight"]["full_acceptance_preserved"] is True
     assert payload["acceptance_preflight"]["total_samples"] == 960
     assert payload["acceptance_preflight"]["timeout_margin_seconds"] == 0.0
-    config = load_rlvr_config(RL_CONFIG)
-    assert pipeline_smoke_grpo_settings(config)["warmup_steps"] == 0
+    config = load_rlvr_config(full_rl_recipe_path)
+    assert pipeline_smoke_grpo_settings(config).warmup_steps == 0
 
 
 def test_modal_launcher_mounts_wandb_secret() -> None:

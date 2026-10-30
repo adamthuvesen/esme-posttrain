@@ -12,10 +12,26 @@ max_prompt_length 512), a length-normalization toggle, and W&B ``stage=dpo`` tag
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pydantic import TypeAdapter, ValidationError
+
+from esme_posttrain.dpo.config import (
+    Acceptance,
+    Datasets,
+    DPOBudgets,
+    DPOMonitoring,
+    DPOObjective,
+    DPOOptimizer,
+    DPOSettings,
+    LearningGate,
+    PairFiltering,
+    PreferenceSource,
+    SFTReference,
+)
 from esme_posttrain.launch.config_guards import (
     IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
@@ -31,19 +47,20 @@ from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
 )
 from esme_posttrain.launch.config_guards import (
-    object_field as _require_object_field,
-)
-from esme_posttrain.launch.config_guards import (
     positive_int as _positive_int,
-)
-from esme_posttrain.launch.config_guards import (
-    require_keys as _require_keys,
 )
 from esme_posttrain.launch.config_guards import (
     smoke_launch_blockers as _common_smoke_launch_blockers,
 )
 from esme_posttrain.launch.config_guards import (
     str_field as _str,
+)
+from esme_posttrain.launch.config_models import (
+    FrozenJSON,
+    GPUProfile,
+    ModalRuntime,
+    PaddedSequence,
+    parse_config,
 )
 from esme_posttrain.sft.data import DatasetSource
 
@@ -61,14 +78,14 @@ MAX_APPROVED_TRAIN_PAIRS = 64_000
 MAX_APPROVED_TRAIN_TOKENS = 200_000_000
 
 _ULTRAFEEDBACK_REVISION = "3949bf5f8c17c394422ccfab0c31ea9c20bdeb85"
-EXPECTED_PREFERENCE_DATASET: dict[str, Any] = {
+EXPECTED_PREFERENCE_DATASET: dict[str, str] = {
     "name": "ultrafeedback-binarized",
     "source": "HuggingFaceH4/ultrafeedback_binarized",
     "revision": _ULTRAFEEDBACK_REVISION,
     "license": "mit",
     "split": "train_prefs",
 }
-EXPECTED_EVAL_DATASET: dict[str, Any] = {
+EXPECTED_EVAL_DATASET: dict[str, str] = {
     "name": "ultrafeedback-binarized",
     "source": "HuggingFaceH4/ultrafeedback_binarized",
     "revision": _ULTRAFEEDBACK_REVISION,
@@ -103,7 +120,7 @@ EXPECTED_SWEEP_BETAS: tuple[float, ...] = (0.1, 0.3, 0.5)
 
 @dataclass(frozen=True)
 class DPOLaunchConfig:
-    payload: dict[str, Any]
+    settings: DPOSettings
     config_path: Path
     preference_source: DatasetSource
     eval_source: DatasetSource
@@ -115,28 +132,27 @@ class DPOLaunchConfig:
 
     @property
     def run_id(self) -> str:
-        return str(self.payload["run_id"])
+        return self.settings.run_id
 
     @property
     def artifact_name(self) -> str:
-        return str(self.payload["artifact_name"])
+        return self.settings.artifact_name
 
     @property
-    def runtime(self) -> dict[str, Any]:
-        return dict(self.payload["runtime"])
+    def runtime(self) -> ModalRuntime:
+        return self.settings.runtime
 
     @property
-    def budgets(self) -> dict[str, Any]:
-        return dict(self.payload["budgets"])
+    def budgets(self) -> DPOBudgets:
+        return self.settings.budgets
 
     @property
-    def optimizer(self) -> dict[str, Any]:
-        return dict(self.payload["optimizer"])
+    def optimizer(self) -> DPOOptimizer:
+        return self.settings.optimizer
 
     @property
-    def selected_gpu_profile(self) -> dict[str, Any]:
-        runtime = self.runtime
-        return dict(runtime["gpu_profiles"][runtime["selected_gpu"]])
+    def selected_gpu_profile(self) -> GPUProfile:
+        return self.runtime.gpu_profiles[self.runtime.selected_gpu]
 
 
 def load_dpo_config(config_path: Path) -> DPOLaunchConfig:
@@ -144,84 +160,59 @@ def load_dpo_config(config_path: Path) -> DPOLaunchConfig:
     return validate_dpo_payload(payload, config_path)
 
 
-def validate_dpo_payload(payload: dict[str, Any], config_path: Path) -> DPOLaunchConfig:
-    _require_keys(
-        payload,
-        {
-            "schema_version",
-            "run_id",
-            "run_card",
-            "requires_approval",
-            "artifact_name",
-            "starts_from",
-            "stage",
-            "sft_reference",
-            "datasets",
-            "budgets",
-            "optimizer",
-            "dpo",
-            "sequence",
-            "runtime",
-            "monitoring",
-            "artifacts",
-            "learning_gate",
-            "acceptance",
-        },
-        "config",
-    )
-    if payload["schema_version"] != 1:
+def validate_dpo_payload(payload: object, config_path: Path) -> DPOLaunchConfig:
+    settings = parse_config(DPOSettings, payload, source=config_path)
+    if settings.schema_version != 1:
         raise LaunchError("schema_version must be 1")
-    if payload["run_id"] != RUN_ID:
+    if settings.run_id != RUN_ID:
         raise LaunchError(f"run_id must be {RUN_ID}")
-    if payload["run_card"] != RUN_CARD:
+    if settings.run_card != RUN_CARD:
         raise LaunchError(f"run_card must be {RUN_CARD}")
-    if payload["requires_approval"] is not True:
+    if settings.requires_approval is not True:
         raise LaunchError("requires_approval must be true")
-    if payload["artifact_name"] != ARTIFACT_NAME:
+    if settings.artifact_name != ARTIFACT_NAME:
         raise LaunchError(f"artifact_name must be {ARTIFACT_NAME}")
-    if payload["starts_from"] != REFERENCE_ARTIFACT_NAME:
+    if settings.starts_from != REFERENCE_ARTIFACT_NAME:
         raise LaunchError(f"starts_from must be {REFERENCE_ARTIFACT_NAME}")
-    if payload["stage"] != "dpo":
+    if settings.stage != "dpo":
         raise LaunchError("stage must be dpo")
 
-    _validate_sft_reference(_require_object_field(payload["sft_reference"], "sft_reference"))
-    preference_source, eval_source = _validate_datasets(
-        _require_object_field(payload["datasets"], "datasets")
-    )
-    budgets = _validate_budgets(_require_object_field(payload["budgets"], "budgets"))
-    _validate_optimizer(_require_object_field(payload["optimizer"], "optimizer"))
-    _validate_dpo(_require_object_field(payload["dpo"], "dpo"))
-    _validate_sequence(_require_object_field(payload["sequence"], "sequence"))
+    _validate_sft_reference(settings.sft_reference)
+    preference_source, eval_source = _validate_datasets(settings.datasets)
+    budgets = _validate_budgets(settings.budgets)
+    _validate_optimizer(settings.optimizer)
+    _validate_dpo(settings.dpo)
+    _validate_sequence(settings.sequence)
     runtime = validate_modal_runtime(
-        _require_object_field(payload["runtime"], "runtime"),
+        settings.runtime,
         full_run_spend_cap_usd=DPO_FULL_RUN_SPEND_CAP_USD,
         full_run_cap_label=f"{DPO_FULL_RUN_SPEND_CAP_USD:.0f}",
         modal_volume=MODAL_VOLUME,
         require_smoke_profile_metrics=False,
     )
-    _validate_monitoring(_require_object_field(payload["monitoring"], "monitoring"))
+    _validate_monitoring(settings.monitoring)
     output_dir = validate_output_artifacts(
-        _require_object_field(payload["artifacts"], "artifacts"),
+        settings.artifacts,
         expected_files=EXPECTED_ARTIFACTS,
         manifest_label="DPO evidence manifest",
     )
-    _validate_learning_gate(_require_object_field(payload["learning_gate"], "learning_gate"))
-    _validate_acceptance(_require_object_field(payload["acceptance"], "acceptance"))
+    _validate_learning_gate(settings.learning_gate)
+    _validate_acceptance(settings.acceptance)
 
-    selected_profile = runtime["gpu_profiles"][runtime["selected_gpu"]]
+    selected_profile = runtime.gpu_profiles[runtime.selected_gpu]
     estimated_full_cost = estimate_cost_usd(
-        tokens=int(budgets["target_train_tokens"]),
-        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
-        usd_per_hour=float(selected_profile["usd_per_hour"]),
+        tokens=int(budgets.target_train_tokens),
+        projected_tokens_per_second=float(selected_profile.projected_tokens_per_second),
+        usd_per_hour=float(selected_profile.usd_per_hour),
     )
     estimated_smoke_cost = estimate_cost_usd(
-        tokens=int(budgets["smoke_train_tokens"]),
-        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
-        usd_per_hour=float(selected_profile["usd_per_hour"]),
+        tokens=int(budgets.smoke_train_tokens),
+        projected_tokens_per_second=float(selected_profile.projected_tokens_per_second),
+        usd_per_hour=float(selected_profile.usd_per_hour),
     )
 
     return DPOLaunchConfig(
-        payload=payload,
+        settings=settings,
         config_path=config_path,
         preference_source=preference_source,
         eval_source=eval_source,
@@ -251,29 +242,29 @@ def build_dpo_dry_run(
         "status": status,
         "run_id": config.run_id,
         "artifact_name": config.artifact_name,
-        "stage": config.payload["stage"],
-        "starts_from": config.payload["starts_from"],
+        "stage": config.settings.stage,
+        "starts_from": config.settings.starts_from,
         "requires_approval": True,
         "approval_flag": LAUNCH_APPROVAL_FLAG,
-        "sft_reference": config.payload["sft_reference"],
-        "datasets": config.payload["datasets"],
-        "budgets": config.payload["budgets"],
-        "optimizer": config.payload["optimizer"],
-        "dpo": config.payload["dpo"],
-        "sequence": config.payload["sequence"],
+        "sft_reference": config.settings.sft_reference.to_dict(),
+        "datasets": config.settings.datasets.to_dict(),
+        "budgets": config.settings.budgets.to_dict(),
+        "optimizer": config.settings.optimizer.to_dict(),
+        "dpo": config.settings.dpo.to_dict(),
+        "sequence": config.settings.sequence.to_dict(),
         "runtime": {
-            **config.payload["runtime"],
+            **config.settings.runtime.to_dict(),
             "estimated_full_cost_usd": round(config.estimated_full_cost_usd, 4),
             "estimated_smoke_cost_usd": round(config.estimated_smoke_cost_usd, 4),
         },
-        "monitoring": config.payload["monitoring"],
+        "monitoring": config.settings.monitoring.to_dict(),
         "artifacts": {
             "output_dir": str(config.output_dir),
-            "required_files": config.payload["artifacts"]["required_files"],
+            "required_files": list(config.settings.artifacts.required_files),
         },
-        "learning_gate": config.payload["learning_gate"],
+        "learning_gate": config.settings.learning_gate.to_dict(),
         "dependency_pins": {"modal": MODAL_CLIENT_VERSION, **IMAGE_PACKAGE_PINS},
-        "acceptance": config.payload["acceptance"],
+        "acceptance": config.settings.acceptance.to_dict(),
         "launch_blockers": smoke_blockers,
         "full_launch_blockers": full_blockers,
         "modal_smoke_command": config.smoke_launch_command,
@@ -284,8 +275,8 @@ def build_dpo_dry_run(
                 config.preference_source.name: config.preference_source.revision,
                 f"{config.eval_source.name}-eval": config.eval_source.revision,
             },
-            "sft_reference_volume": config.payload["sft_reference"]["volume"],
-            "budgets": config.payload["budgets"],
+            "sft_reference_volume": config.settings.sft_reference.volume,
+            "budgets": config.settings.budgets.to_dict(),
             "projected_cost_usd": round(config.estimated_full_cost_usd, 4),
             "exact_launch_command": config.full_launch_command,
             "blockers": full_blockers,
@@ -297,7 +288,7 @@ def build_dpo_dry_run(
 
 def smoke_launch_blockers(config: DPOLaunchConfig) -> list[str]:
     return _common_smoke_launch_blockers(
-        runtime=config.payload["runtime"],
+        runtime=config.runtime,
         estimated_smoke_cost_usd=config.estimated_smoke_cost_usd,
     )
 
@@ -305,7 +296,7 @@ def smoke_launch_blockers(config: DPOLaunchConfig) -> list[str]:
 def full_launch_blockers(
     config: DPOLaunchConfig, *, approved: bool = False, modal_gpu: str | None = None
 ) -> list[str]:
-    runtime = config.payload["runtime"]
+    runtime = config.runtime
     blockers = _common_full_launch_blockers(
         runtime=runtime,
         estimated_full_cost_usd=config.estimated_full_cost_usd,
@@ -314,74 +305,58 @@ def full_launch_blockers(
         approval_message="full Esme-214M-Chat DPO launch requires --approved",
         modal_gpu_env_var="DPO_MODAL_GPU",
     )
-    blockers.extend(_learning_gate_blockers(config.payload["learning_gate"]))
+    blockers.extend(_learning_gate_blockers(config.settings.learning_gate))
     return blockers
 
 
 # --- section validators -------------------------------------------------------
 
 
-def _validate_sft_reference(payload: dict[str, Any]) -> None:
-    _require_keys(
-        payload,
-        {
-            "volume",
-            "checkpoint_path",
-            "tokenizer_path",
-            "format",
-            "model_family",
-            "read_only",
-            "wandb_run",
-            "best_step",
-        },
-        "sft_reference",
-    )
-    if payload["volume"] != SFT_FOUNDATION_VOLUME:
+def _validate_sft_reference(payload: SFTReference) -> None:
+    if payload.volume != SFT_FOUNDATION_VOLUME:
         raise LaunchError(f"sft_reference.volume must be {SFT_FOUNDATION_VOLUME}")
-    if payload["format"] != "llm_posttrain_instruct_sft_v1":
+    if payload.format != "llm_posttrain_instruct_sft_v1":
         raise LaunchError("sft_reference.format must be llm_posttrain_instruct_sft_v1")
-    if payload["model_family"] != "DenseBackbone":
+    if payload.model_family != "DenseBackbone":
         raise LaunchError("sft_reference.model_family must be DenseBackbone")
-    if payload["read_only"] is not True:
+    if payload.read_only is not True:
         raise LaunchError("sft_reference.read_only must be true")
-    _str(payload["checkpoint_path"], "sft_reference.checkpoint_path")
-    _str(payload["tokenizer_path"], "sft_reference.tokenizer_path")
-    _str(payload["wandb_run"], "sft_reference.wandb_run")
-    _positive_int(payload["best_step"], "sft_reference.best_step")
+    _str(payload.checkpoint_path, "sft_reference.checkpoint_path")
+    _str(payload.tokenizer_path, "sft_reference.tokenizer_path")
+    _str(payload.wandb_run, "sft_reference.wandb_run")
+    _positive_int(payload.best_step, "sft_reference.best_step")
 
 
-def _validate_datasets(payload: dict[str, Any]) -> tuple[DatasetSource, DatasetSource]:
-    _require_keys(
-        payload,
-        {"preference_train", "preference_eval", "non_commercial_training_approved", "filtering"},
-        "datasets",
-    )
-    if payload["non_commercial_training_approved"] is not False:
+def _validate_datasets(payload: Datasets) -> tuple[DatasetSource, DatasetSource]:
+    if payload.non_commercial_training_approved is not False:
         raise LaunchError("datasets.non_commercial_training_approved must stay false")
     train = _validate_preference_source(
-        _require_object_field(payload["preference_train"], "datasets.preference_train"),
+        payload.preference_train,
         expected=EXPECTED_PREFERENCE_DATASET,
         role="train",
     )
     eval_source = _validate_preference_source(
-        _require_object_field(payload["preference_eval"], "datasets.preference_eval"),
+        payload.preference_eval,
         expected=EXPECTED_EVAL_DATASET,
         role="eval",
     )
-    _validate_filtering(_require_object_field(payload["filtering"], "datasets.filtering"))
+    _validate_filtering(payload.filtering)
     return train, eval_source
 
 
 def _validate_preference_source(
-    payload: dict[str, Any], *, expected: dict[str, Any], role: str
+    payload: PreferenceSource, *, expected: Mapping[str, str], role: str
 ) -> DatasetSource:
-    _require_keys(
-        payload, {"name", "source", "revision", "license", "split", "role"}, "datasets.preference"
-    )
-    for key in ("name", "source", "revision", "license", "split"):
-        if payload[key] != expected[key]:
+    for key, value in (
+        ("name", payload.name),
+        ("source", payload.source),
+        ("revision", payload.revision),
+        ("license", payload.license),
+        ("split", payload.split),
+    ):
+        if value != expected[key]:
             raise LaunchError(f"datasets.preference_{role}.{key} must be {expected[key]}")
-    if payload["role"] != role:
+    if payload.role != role:
         raise LaunchError(f"datasets.preference_{role}.role must be {role}")
     return DatasetSource(
         name=expected["name"],
@@ -394,228 +369,151 @@ def _validate_preference_source(
     )
 
 
-def _validate_filtering(payload: dict[str, Any]) -> None:
-    _require_keys(
-        payload,
-        {"max_prompt_chars", "max_response_chars", "drop_identical_responses"},
-        "datasets.filtering",
-    )
-    _positive_int(payload["max_prompt_chars"], "datasets.filtering.max_prompt_chars")
-    _positive_int(payload["max_response_chars"], "datasets.filtering.max_response_chars")
-    if payload["drop_identical_responses"] is not True:
+def _validate_filtering(payload: PairFiltering) -> None:
+    _positive_int(payload.max_prompt_chars, "datasets.filtering.max_prompt_chars")
+    _positive_int(payload.max_response_chars, "datasets.filtering.max_response_chars")
+    if payload.drop_identical_responses is not True:
         raise LaunchError("datasets.filtering.drop_identical_responses must be true")
 
 
-def _validate_budgets(payload: dict[str, Any]) -> dict[str, Any]:
-    _require_keys(
-        payload,
-        {
-            "max_train_pairs",
-            "min_train_pairs",
-            "max_train_tokens",
-            "target_train_tokens",
-            "max_eval_pairs",
-            "min_eval_pairs",
-            "max_eval_tokens",
-            "max_length",
-            "max_prompt_length",
-            "smoke_train_pairs",
-            "smoke_train_tokens",
-            "smoke_eval_pairs",
-        },
-        "budgets",
-    )
-    max_train_pairs = _positive_int(payload["max_train_pairs"], "budgets.max_train_pairs")
-    max_train_tokens = _positive_int(payload["max_train_tokens"], "budgets.max_train_tokens")
-    target_train_tokens = _positive_int(
-        payload["target_train_tokens"], "budgets.target_train_tokens"
-    )
+def _validate_budgets(payload: DPOBudgets) -> DPOBudgets:
+    max_train_pairs = _positive_int(payload.max_train_pairs, "budgets.max_train_pairs")
+    max_train_tokens = _positive_int(payload.max_train_tokens, "budgets.max_train_tokens")
+    target_train_tokens = _positive_int(payload.target_train_tokens, "budgets.target_train_tokens")
     if max_train_pairs > MAX_APPROVED_TRAIN_PAIRS:
         raise LaunchError(f"budgets.max_train_pairs must be <= {MAX_APPROVED_TRAIN_PAIRS}")
     if max_train_tokens > MAX_APPROVED_TRAIN_TOKENS:
         raise LaunchError(f"budgets.max_train_tokens must be <= {MAX_APPROVED_TRAIN_TOKENS}")
     if target_train_tokens > max_train_tokens:
         raise LaunchError("budgets.target_train_tokens must be <= budgets.max_train_tokens")
-    if int(payload["max_length"]) != 1024:
+    if payload.max_length != 1024:
         raise LaunchError("budgets.max_length must be 1024 to match the Esme-214M context")
-    if int(payload["max_prompt_length"]) != 512:
+    if payload.max_prompt_length != 512:
         raise LaunchError("budgets.max_prompt_length must be 512 (SmolLM2-360M DPO config)")
-    if int(payload["max_prompt_length"]) >= int(payload["max_length"]):
+    if payload.max_prompt_length >= payload.max_length:
         raise LaunchError("budgets.max_prompt_length must be < budgets.max_length")
-    for key in (
-        "min_train_pairs",
-        "max_eval_pairs",
-        "min_eval_pairs",
-        "max_eval_tokens",
-        "smoke_train_pairs",
-        "smoke_train_tokens",
-        "smoke_eval_pairs",
+    for key, value in (
+        ("min_train_pairs", payload.min_train_pairs),
+        ("max_eval_pairs", payload.max_eval_pairs),
+        ("min_eval_pairs", payload.min_eval_pairs),
+        ("max_eval_tokens", payload.max_eval_tokens),
+        ("smoke_train_pairs", payload.smoke_train_pairs),
+        ("smoke_train_tokens", payload.smoke_train_tokens),
+        ("smoke_eval_pairs", payload.smoke_eval_pairs),
     ):
-        _positive_int(payload[key], f"budgets.{key}")
+        _positive_int(value, f"budgets.{key}")
     # max_*_pairs are caps; min_*_pairs are the sufficiency floors. Selecting fewer
     # than the cap (UltraFeedback is length-filtered at max_length=1024) is normal;
     # the floor is the minimum clean pairs a run needs to be sufficient.
-    if int(payload["min_train_pairs"]) > max_train_pairs:
+    if payload.min_train_pairs > max_train_pairs:
         raise LaunchError(
             "budgets.min_train_pairs (floor) must be <= budgets.max_train_pairs (cap)"
         )
-    if int(payload["min_eval_pairs"]) > int(payload["max_eval_pairs"]):
+    if payload.min_eval_pairs > payload.max_eval_pairs:
         raise LaunchError("budgets.min_eval_pairs (floor) must be <= budgets.max_eval_pairs (cap)")
-    if payload["smoke_train_pairs"] > max_train_pairs:
+    if payload.smoke_train_pairs > max_train_pairs:
         raise LaunchError("budgets.smoke_train_pairs must be <= budgets.max_train_pairs")
-    if payload["smoke_train_tokens"] > max_train_tokens:
+    if payload.smoke_train_tokens > max_train_tokens:
         raise LaunchError("budgets.smoke_train_tokens must be <= budgets.max_train_tokens")
     return payload
 
 
-def _validate_optimizer(payload: dict[str, Any]) -> dict[str, Any]:
-    _require_keys(
-        payload,
-        {
-            "name",
-            "learning_rate",
-            "micro_batch_size",
-            "gradient_accumulation_steps",
-            "effective_batch_size",
-            "epochs",
-            "max_steps",
-            "smoke_max_steps",
-            "seed",
-            "grad_clip",
-            "scheduler",
-            "warmup_ratio",
-            "weight_decay",
-        },
-        "optimizer",
-    )
-    if payload["name"] != "adamw_torch":
+def _validate_optimizer(payload: DPOOptimizer) -> DPOOptimizer:
+    if payload.name != "adamw_torch":
         raise LaunchError("optimizer.name must be adamw_torch")
-    lr = payload["learning_rate"]
-    if isinstance(lr, bool) or not isinstance(lr, int | float) or lr <= 0:
+    lr = payload.learning_rate
+    if lr <= 0:
         raise LaunchError("optimizer.learning_rate must be positive")
     if lr > 1e-5:
         raise LaunchError("optimizer.learning_rate must be <= 1e-5 (DPO LR is ~10-100x below SFT)")
-    for key in (
-        "micro_batch_size",
-        "gradient_accumulation_steps",
-        "effective_batch_size",
-        "epochs",
-        "max_steps",
-        "smoke_max_steps",
-        "seed",
+    for key, value in (
+        ("micro_batch_size", payload.micro_batch_size),
+        ("gradient_accumulation_steps", payload.gradient_accumulation_steps),
+        ("effective_batch_size", payload.effective_batch_size),
+        ("epochs", payload.epochs),
+        ("max_steps", payload.max_steps),
+        ("smoke_max_steps", payload.smoke_max_steps),
+        ("seed", payload.seed),
     ):
-        _positive_int(payload[key], f"optimizer.{key}")
-    if int(payload["micro_batch_size"]) * int(payload["gradient_accumulation_steps"]) != int(
-        payload["effective_batch_size"]
+        _positive_int(value, f"optimizer.{key}")
+    if (
+        payload.micro_batch_size * payload.gradient_accumulation_steps
+        != payload.effective_batch_size
     ):
         raise LaunchError(
             "optimizer.effective_batch_size must equal "
             "micro_batch_size * gradient_accumulation_steps"
         )
-    if int(payload["smoke_max_steps"]) > int(payload["max_steps"]):
+    if payload.smoke_max_steps > payload.max_steps:
         raise LaunchError("optimizer.smoke_max_steps must be <= optimizer.max_steps")
-    if not isinstance(payload["grad_clip"], int | float) or payload["grad_clip"] <= 0:
+    if payload.grad_clip <= 0:
         raise LaunchError("optimizer.grad_clip must be positive")
-    if payload["scheduler"] not in {"constant", "linear_warmup_decay", "cosine_decay"}:
+    if payload.scheduler not in {"constant", "linear_warmup_decay", "cosine_decay"}:
         raise LaunchError(
             "optimizer.scheduler must be constant, linear_warmup_decay, or cosine_decay"
         )
-    warmup_ratio = payload["warmup_ratio"]
-    if (
-        isinstance(warmup_ratio, bool)
-        or not isinstance(warmup_ratio, int | float)
-        or not 0 <= warmup_ratio < 1
-    ):
+    warmup_ratio = payload.warmup_ratio
+    if not 0 <= warmup_ratio < 1:
         raise LaunchError("optimizer.warmup_ratio must be in [0, 1)")
-    if not isinstance(payload["weight_decay"], int | float) or payload["weight_decay"] < 0:
+    if payload.weight_decay < 0:
         raise LaunchError("optimizer.weight_decay must be non-negative")
     return payload
 
 
-def _validate_dpo(payload: dict[str, Any]) -> None:
-    _require_keys(
-        payload,
-        {"loss_type", "beta", "length_normalized", "reference_free", "auxiliary_sft_loss"},
-        "dpo",
-    )
-    if payload["loss_type"] != "sigmoid":
+def _validate_dpo(payload: DPOObjective) -> None:
+    if payload.loss_type != "sigmoid":
         raise LaunchError("dpo.loss_type must be sigmoid (vanilla DPO); SimPO/IPO are out of scope")
-    beta = payload["beta"]
-    if isinstance(beta, bool) or not isinstance(beta, int | float) or beta <= 0:
+    beta = payload.beta
+    if beta <= 0:
         raise LaunchError("dpo.beta must be positive")
-    if not isinstance(payload["length_normalized"], bool):
-        raise LaunchError("dpo.length_normalized must be a boolean toggle")
-    if payload["reference_free"] is not False:
+    if payload.reference_free is not False:
         raise LaunchError("dpo.reference_free must be false (frozen SFT reference is required)")
-    if payload["auxiliary_sft_loss"] is not False:
+    if payload.auxiliary_sft_loss is not False:
         raise LaunchError(
             "dpo.auxiliary_sft_loss must be false (measured net-negative; not added by reflex)"
         )
 
 
-def _validate_sequence(payload: dict[str, Any]) -> None:
-    _require_keys(payload, {"pad_to_multiple_of"}, "sequence")
-    value = payload["pad_to_multiple_of"]
-    if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value <= 0):
+def _validate_sequence(payload: PaddedSequence) -> None:
+    value = payload.pad_to_multiple_of
+    if value is not None and value <= 0:
         raise LaunchError("sequence.pad_to_multiple_of must be a positive integer or null")
 
 
-def _validate_monitoring(payload: dict[str, Any]) -> None:
-    _require_keys(
-        payload,
-        {
-            "log_interval",
-            "eval_interval",
-            "checkpoint_interval",
-            "sample_new_tokens",
-            "wandb_project",
-            "wandb_required_for_modal",
-            "wandb_tags",
-            "log_chosen_rejected_logps",
-        },
-        "monitoring",
-    )
-    _positive_int(payload["log_interval"], "monitoring.log_interval")
-    _positive_int(payload["eval_interval"], "monitoring.eval_interval")
-    _positive_int(payload["checkpoint_interval"], "monitoring.checkpoint_interval")
-    _positive_int(payload["sample_new_tokens"], "monitoring.sample_new_tokens")
-    _str(payload["wandb_project"], "monitoring.wandb_project")
-    if payload["wandb_required_for_modal"] is not True:
+def _validate_monitoring(payload: DPOMonitoring) -> None:
+    _positive_int(payload.log_interval, "monitoring.log_interval")
+    _positive_int(payload.eval_interval, "monitoring.eval_interval")
+    _positive_int(payload.checkpoint_interval, "monitoring.checkpoint_interval")
+    _positive_int(payload.sample_new_tokens, "monitoring.sample_new_tokens")
+    _str(payload.wandb_project, "monitoring.wandb_project")
+    if payload.wandb_required_for_modal is not True:
         raise LaunchError("monitoring.wandb_required_for_modal must be true")
-    tags = payload["wandb_tags"]
-    if not isinstance(tags, list) or "stage=dpo" not in tags:
+    tags = payload.wandb_tags
+    if "stage=dpo" not in tags:
         raise LaunchError("monitoring.wandb_tags must include stage=dpo")
-    if payload["log_chosen_rejected_logps"] is not True:
+    if payload.log_chosen_rejected_logps is not True:
         raise LaunchError("monitoring.log_chosen_rejected_logps must be true (displacement watch)")
 
 
-def _validate_learning_gate(payload: dict[str, Any]) -> None:
-    _require_keys(
-        payload, {"full_run_requires_beta_sweep", "swept_betas", "evidence"}, "learning_gate"
-    )
-    if payload["full_run_requires_beta_sweep"] is not True:
+def _validate_learning_gate(payload: LearningGate) -> None:
+    if payload.full_run_requires_beta_sweep is not True:
         raise LaunchError("learning_gate.full_run_requires_beta_sweep must be true")
-    swept = payload["swept_betas"]
-    if not isinstance(swept, list) or tuple(float(b) for b in swept) != EXPECTED_SWEEP_BETAS:
+    swept = payload.swept_betas
+    if tuple(float(b) for b in swept) != EXPECTED_SWEEP_BETAS:
         raise LaunchError(f"learning_gate.swept_betas must be {list(EXPECTED_SWEEP_BETAS)}")
-    evidence = payload["evidence"]
-    if evidence is not None and not isinstance(evidence, dict):
-        raise LaunchError("learning_gate.evidence must be an object or null")
 
 
-def _learning_gate_blockers(payload: dict[str, Any]) -> list[str]:
-    evidence = payload["evidence"]
+def _learning_gate_blockers(payload: LearningGate) -> list[str]:
+    evidence = payload.evidence
     if evidence is None:
         return [LEARNING_GATE_BLOCKER]
-    if not isinstance(evidence, dict):
-        return ["learning_gate.evidence must be an object"]
     sweep = evidence.get("bounded_beta_sweep")
-    if not isinstance(sweep, dict):
+    if not isinstance(sweep, Mapping):
         return ["learning_gate.evidence is missing bounded_beta_sweep evidence"]
     return _bounded_beta_sweep_blockers(sweep)
 
 
-def _bounded_beta_sweep_blockers(evidence: dict[str, Any]) -> list[str]:
+def _bounded_beta_sweep_blockers(evidence: Mapping[str, FrozenJSON]) -> list[str]:
     missing = sorted(
         {
             "kind",
@@ -642,8 +540,11 @@ def _bounded_beta_sweep_blockers(evidence: dict[str, Any]) -> list[str]:
             "learning_gate.evidence.bounded_beta_sweep.selector_metric must be "
             "eval/preference_accuracy"
         )
-    swept = evidence["swept_betas"]
-    if not isinstance(swept, list) or tuple(float(b) for b in swept) != EXPECTED_SWEEP_BETAS:
+    try:
+        swept_betas = TypeAdapter(tuple[float, ...]).validate_python(evidence["swept_betas"])
+    except ValidationError:
+        swept_betas = ()
+    if swept_betas != EXPECTED_SWEEP_BETAS:
         blockers.append(
             "learning_gate.evidence.bounded_beta_sweep.swept_betas must be "
             f"{list(EXPECTED_SWEEP_BETAS)}"
@@ -686,29 +587,19 @@ def _bounded_beta_sweep_blockers(evidence: dict[str, Any]) -> list[str]:
     return blockers
 
 
-def _validate_acceptance(payload: dict[str, Any]) -> None:
-    _require_keys(
-        payload,
-        {
-            "preference_accuracy_must_beat_reference",
-            "no_chosen_logp_collapse",
-            "repetition_or_length_must_improve",
-            "proxies",
-        },
-        "acceptance",
-    )
-    if payload["preference_accuracy_must_beat_reference"] is not True:
+def _validate_acceptance(payload: Acceptance) -> None:
+    if payload.preference_accuracy_must_beat_reference is not True:
         raise LaunchError("acceptance.preference_accuracy_must_beat_reference must be true")
-    if payload["no_chosen_logp_collapse"] is not True:
+    if payload.no_chosen_logp_collapse is not True:
         raise LaunchError("acceptance.no_chosen_logp_collapse must be true")
-    if payload["repetition_or_length_must_improve"] is not True:
+    if payload.repetition_or_length_must_improve is not True:
         raise LaunchError("acceptance.repetition_or_length_must_improve must be true")
-    proxies = payload["proxies"]
-    if not isinstance(proxies, list) or len(proxies) < 3:
+    proxies = payload.proxies
+    if len(proxies) < 3:
         raise LaunchError("acceptance.proxies must list the primary cheap proxy signals")
 
 
-def _launch_command(config_path: Path, runtime: dict[str, Any], *, mode: str) -> str:
+def _launch_command(config_path: Path, runtime: ModalRuntime, *, mode: str) -> str:
     flag = " --full-run" if mode == "full-run" else " --modal-smoke"
     return build_modal_launch_command(
         config_path=config_path,

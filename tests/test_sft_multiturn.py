@@ -460,9 +460,9 @@ def test_config_pins_multi_turn_recipe_and_dry_run_never_launches() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     assert config.run_id == "esme_214m_sft_multiturn"
     assert config.artifact_name == "Esme-214M-Instruct"
-    assert config.budgets["max_sequence_tokens"] == 1024
+    assert config.budgets.max_sequence_tokens == 1024
     assert [s.name for s in config.train_sources] == ["smol-smoltalk", "tulu-3-personas"]
-    assert config.runtime["modal_volume"] == "esme-posttrain-esme-sft-multiturn"
+    assert config.runtime.modal_volume == "esme-posttrain-esme-sft-multiturn"
 
     dry_run = build_multi_turn_dry_run(config)
     assert dry_run["will_start_modal_job"] is False
@@ -496,7 +496,7 @@ def test_full_run_refused_without_learning_gate_evidence() -> None:
 
 def test_shipped_config_satisfies_learning_gate() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
-    assert config.payload["learning_gate"]["evidence"] is not None
+    assert config.settings.learning_gate.evidence is not None
     assert full_launch_blockers(config, approved=True, modal_gpu="A100") == []
 
 
@@ -769,8 +769,8 @@ def _write_tiny_chat_bundle(bundle_dir: Path) -> Path:
 def test_config_pins_forty_dollar_full_run_cap() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     assert MULTITURN_FULL_RUN_SPEND_CAP_USD == 40.0
-    assert float(config.runtime["full_run_max_cost_usd"]) == 40.0
-    assert float(config.runtime["full_run_runtime_spend_stop_usd"]) == 40.0
+    assert float(config.runtime.full_run_max_cost_usd) == 40.0
+    assert float(config.runtime.full_run_runtime_spend_stop_usd) == 40.0
 
 
 def test_full_run_cap_above_forty_is_rejected() -> None:

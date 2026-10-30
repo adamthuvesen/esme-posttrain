@@ -145,6 +145,7 @@ flowchart TB
     sft --> shared
     dpo --> shared
     rl --> shared
+    rl --> Export
     Export --> shared
 ```
 
@@ -163,7 +164,7 @@ records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 | [`evals/`](../src/esme_posttrain/evals/) | typed records for the eval contract, shapes pinned by golden fixtures | scoring logic |
 | [`training/`](../src/esme_posttrain/training/) | collate, metrics, checkpointing, seeding/precision, W&B init | stage objectives |
 | [`launch/`](../src/esme_posttrain/launch/) | shared config guards, spend blockers, Modal CLI shell, full-path CPU smoke | stage recipes (each stage's launch module pins its own) |
-| [`export/`](../src/esme_posttrain/export/) | adapted dense-bundle export with manifest and generation smoke payload | serving (that is `llm-infer`) |
+| [`export/`](../src/esme_posttrain/export/) | canonical dense-bundle serialization, DPO export, generation smoke | stage objectives, serving |
 | [`studies/`](../src/esme_posttrain/studies/) | hashed study specs and rebuilt JSON/Markdown reports | running training |
 | [`modeling.py`](../src/esme_posttrain/modeling.py) | the shared `DenseBackbone` model primitives | tokenization, training loop |
 | [`bundle.py`](../src/esme_posttrain/bundle.py) | dense-bundle v1 validation, loading, hashing | the format spec (`esme-pretrain/docs/bundle-format.md`) |
@@ -176,6 +177,7 @@ Dependency direction stays simple:
 cli / tests / full-path smoke -> sft + dpo + rl -> training + modeling + bundle + launch guards
 dpo -> sft        (chat template, sampling)
 rl -> evals       (typed eval records)
+rl -> export     (canonical bundle serialization)
 studies -> rl     (Countdown-Lite spec)
 export -> bundle + training checkpointing
 ```
@@ -195,18 +197,40 @@ Each stage owns an approval-gated launch validator:
 - The validator pins the recipe — run id, volume, output stem, data mix,
   hyperparameters — so config drift fails loudly before any spend.
 
-The validators are the single source of truth for config shape: configs,
-fixtures, and CLI dry-run payloads change together with them.
+Each stage's `config.py` defines its JSON shape through frozen Pydantic models.
+`launch/config_models.py` owns the shared configuration types.
+Stage launch validators parse these models and enforce recipe constraints.
+Their launch results carry typed settings alongside resolved paths and cost projections.
+
+Consumers read typed attributes. Models reject unknown fields and preserve
+immutable nested values. Serialization returns a fresh JSON-compatible value
+at the artifact or CLI boundary. Optional fields retain their original presence.
+There is no separately maintained JSON schema.
+
+Mypy uses Pydantic's plugin to check model constructors and frozen fields.
+It also checks the Modal SDK calls and config consumers in `scripts/modal_*.py`.
+Config shape errors identify the input file and nested field. Recipe errors
+name the failed constraint.
 
 ## Bundle Contract
 
 Dense-bundle v1 is the interchange format everywhere: in from `esme-pretrain`,
 out to `llm-infer`, and between DPO and RLVR inside this repo.
-[`bundle.py`](../src/esme_posttrain/bundle.py) validates, loads, and hashes
-bundles; [`export/dense_bundle.py`](../src/esme_posttrain/export/dense_bundle.py)
-writes them with a manifest and a generation smoke payload. The format spec
-lives in `esme-pretrain/docs/bundle-format.md`; this repo does not keep a
-parallel copy.
+[`bundle.py`](../src/esme_posttrain/bundle.py) validates, loads, and hashes bundles.
+[`export/bundle_writer.py`](../src/esme_posttrain/export/bundle_writer.py) owns
+canonical config, weight headers, file hashes, and common manifest fields.
+The format spec lives in `esme-pretrain/docs/bundle-format.md`.
+
+[`export/dense_bundle.py`](../src/esme_posttrain/export/dense_bundle.py) prepares
+DPO metadata and verifies generation after export.
+[`rl/bundle.py`](../src/esme_posttrain/rl/bundle.py) prepares RL identity and provenance.
+GRPO training and checkpoint conversion both use that RL export path.
+Checkpoint conversion does not import the trainer.
+
+Stages prepare the tokenizer before calling the shared writer. DPO preserves
+the source tokenizer bytes and requires `<eos>`. RL serializes its tokenizer
+and preserves its existing empty-EOS behavior. Stage-specific provenance stays
+with the stage, including the distinction between warm-start and exported checkpoints.
 
 ## Full-Path CPU Smoke
 

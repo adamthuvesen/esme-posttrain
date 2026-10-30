@@ -100,6 +100,18 @@ uv run esme-posttrain study-report --study studies/rlvr-placebo-step240-large.js
 uv run esme-posttrain full-path-cpu-smoke --output-dir runs/full-path-cpu-smoke --json
 ```
 
+## Making Changes
+
+Start with [package-layout.md](docs/package-layout.md) to find the owner of a change.
+Launch loaders return typed configuration. Training and launch code use those
+values directly. Stage exporters share one dense-bundle writer.
+
+Run `make check` before committing. It checks formatting, package and Modal
+entrypoint types, and tests. Pydantic's mypy plugin checks model constructors
+and rejects assignments to frozen config fields. The tests include the full CPU stage chain,
+DPO resume equivalence, and bundle round trips. All checks run locally
+without remote datasets or paid compute. CI runs the same command.
+
 ## Current Artifacts
 
 - `docs/rlvr-research-report.md` is the research report: placebo study, learning

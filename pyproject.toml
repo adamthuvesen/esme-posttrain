@@ -33,12 +33,17 @@ esme-posttrain = "esme_posttrain.cli:main"
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.mypy]
-files = ["src/esme_posttrain"]
+files = ["src/esme_posttrain", "scripts/modal_*.py"]
+plugins = ["pydantic.mypy"]
 disallow_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+
+[tool.pydantic-mypy]
+init_typed = true
 
 [tool.ruff]
 line-length = 100

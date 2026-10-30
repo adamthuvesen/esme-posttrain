@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import time
-from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -146,7 +145,7 @@ def run_full_path_cpu_smoke(
             samples_per_task=config.samples_per_task,
             max_tasks=config.eval_task_budget,
             max_new_tokens=2,
-            seed=int(config.rlvr_config.grpo["seed"]),
+            seed=int(config.rlvr_config.grpo.seed),
             device="cpu",
             eval_profile="full_path_cpu_smoke",
             config_hash=file_sha256(final_bundle.config_path),
@@ -318,20 +317,35 @@ def _write_and_load_rlvr_config(
     output_dir: Path,
     input_bundle_path: Path,
 ) -> RLVRLaunchConfig:
-    payload = deepcopy(config.rlvr_config.payload)
-    payload["input_bundle"]["path"] = str(input_bundle_path)
-    payload["dataset"]["manifest_path"] = str(config.task_manifest_path)
-    payload["grpo"]["max_steps"] = config.rlvr_steps
-    payload["budgets"]["max_rollout_tokens"] = config.rlvr_max_rollout_tokens
-    payload["pipeline_smoke"]["max_steps"] = config.rlvr_steps
-    payload["pipeline_smoke"]["max_rollout_tokens"] = config.rlvr_max_rollout_tokens
-    payload["pipeline_smoke"]["output_dir"] = "runs/full-path-cpu-smoke-rlvr"
-    payload["pipeline_smoke"]["report_path"] = "artifacts/full-path-cpu-smoke-rlvr.json"
-    payload["pipeline_smoke"]["doc_path"] = "docs/full-path-cpu-smoke-rlvr.md"
+    settings = config.rlvr_config.settings
+    settings = settings.model_copy(
+        update={
+            "input_bundle": settings.input_bundle.model_copy(
+                update={"path": str(input_bundle_path)}
+            ),
+            "dataset": settings.dataset.model_copy(
+                update={"manifest_path": str(config.task_manifest_path)}
+            ),
+            "grpo": settings.grpo.model_copy(update={"max_steps": config.rlvr_steps}),
+            "budgets": settings.budgets.model_copy(
+                update={"max_rollout_tokens": config.rlvr_max_rollout_tokens}
+            ),
+            "pipeline_smoke": settings.pipeline_smoke.model_copy(
+                update={
+                    "max_steps": config.rlvr_steps,
+                    "max_rollout_tokens": config.rlvr_max_rollout_tokens,
+                    "output_dir": "runs/full-path-cpu-smoke-rlvr",
+                    "report_path": "artifacts/full-path-cpu-smoke-rlvr.json",
+                    "doc_path": "docs/full-path-cpu-smoke-rlvr.md",
+                }
+            ),
+        }
+    )
+    payload = settings.to_dict()
     config_path = output_dir / "rlvr-config.json"
     config_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     loaded = load_rlvr_config(config_path)
-    if loaded.pipeline_smoke["max_steps"] != config.rlvr_steps:
+    if loaded.pipeline_smoke.max_steps != config.rlvr_steps:
         raise LaunchError("revalidated RLVR smoke config did not preserve the step budget")
     return loaded
 

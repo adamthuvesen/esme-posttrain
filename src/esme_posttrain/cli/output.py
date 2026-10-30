@@ -5,7 +5,7 @@ import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import NoReturn, Protocol
 
 from esme_posttrain.launch.config_guards import LaunchError
 
@@ -26,12 +26,16 @@ def emit_payload(payload: Payload, *, json_output: bool, formatter: PayloadForma
         print(formatter(payload))
 
 
-def run_config_stage(
+class FixtureRunner[ConfigT](Protocol):
+    def __call__(self, config: ConfigT, *, output_dir: Path | None) -> Payload: ...
+
+
+def run_config_stage[ConfigT](
     args: argparse.Namespace,
     *,
-    load_config: Callable[[Path], Any],
-    build_dry_run: Callable[[Any], Payload],
-    run_fixture: Callable[..., Payload],
+    load_config: Callable[[Path], ConfigT],
+    build_dry_run: Callable[[ConfigT], Payload],
+    run_fixture: FixtureRunner[ConfigT],
 ) -> int:
     """Shared dry-run / cpu-fixture command body for the config-gated stages."""
     try:

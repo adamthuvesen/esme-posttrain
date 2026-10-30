@@ -61,7 +61,7 @@ def run_dpo_cpu_fixture(
     interrupt_after_step: int | None = None,
 ) -> dict[str, Any]:
     evidence_dir = _prepare_evidence_dir(config, output_dir)
-    fixture_steps = max(20, int(config.optimizer["smoke_max_steps"]))
+    fixture_steps = max(20, config.optimizer.smoke_max_steps)
     composable_fixture = max_steps is not None
     if max_steps is not None:
         if max_steps <= 0:
@@ -134,18 +134,18 @@ def run_dpo_cpu_fixture(
         micro_batch_size=2,
         gradient_accumulation_steps=1,
         learning_rate=0.02,
-        beta=float(config.payload["dpo"]["beta"]),
-        length_normalized=bool(config.payload["dpo"]["length_normalized"]),
-        scheduler=str(config.optimizer["scheduler"]),
+        beta=config.settings.dpo.beta,
+        length_normalized=config.settings.dpo.length_normalized,
+        scheduler=config.optimizer.scheduler,
         warmup_steps=min(
             fixture_steps,
             3,
-            int(round(float(config.optimizer["warmup_ratio"]) * 10)),
+            int(round(config.optimizer.warmup_ratio * 10)),
         ),
-        weight_decay=float(config.optimizer["weight_decay"]),
+        weight_decay=config.optimizer.weight_decay,
         precision="fp32",
-        pad_to_multiple_of=config.payload["sequence"]["pad_to_multiple_of"],
-        seed=int(config.optimizer["seed"]),
+        pad_to_multiple_of=config.settings.sequence.pad_to_multiple_of,
+        seed=config.optimizer.seed,
         output_dir=evidence_dir,
         artifact_name=config.artifact_name,
         eval_interval=1 if composable_fixture else 5,
@@ -153,9 +153,9 @@ def run_dpo_cpu_fixture(
         log_interval=1 if composable_fixture else 5,
         wandb=WandbConfig(
             enabled=wandb_enabled,
-            project=str(config.payload["monitoring"]["wandb_project"]),
+            project=config.settings.monitoring.wandb_project,
             run_name=f"{config.run_id}-local-cpu-fixture" if wandb_enabled else None,
-            tags=tuple(config.payload["monitoring"]["wandb_tags"]) + ("smoke", "fixture"),
+            tags=tuple(config.settings.monitoring.wandb_tags) + ("smoke", "fixture"),
             group=config.run_id,
             job_type="smoke",
             notes=(
@@ -166,8 +166,8 @@ def run_dpo_cpu_fixture(
                 "model": config.artifact_name,
                 "stage": "dpo",
                 "run_type": "smoke",
-                "beta": float(config.payload["dpo"]["beta"]),
-                "length_normalized": bool(config.payload["dpo"]["length_normalized"]),
+                "beta": config.settings.dpo.beta,
+                "length_normalized": config.settings.dpo.length_normalized,
             },
         ),
     )

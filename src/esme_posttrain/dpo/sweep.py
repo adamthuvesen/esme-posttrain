@@ -110,36 +110,36 @@ def build_dpo_sweep_preflight(
     modal_gpu: str | None = None,
 ) -> dict[str, Any]:
     selected_profile = config.selected_gpu_profile
-    max_length = int(config.budgets["max_length"])
+    max_length = config.budgets.max_length
     projected_tokens = sum(
         arm.planned_token_upper_bound(max_length=max_length) for arm in SWEEP_ARMS
     )
     projected_cost = estimate_cost_usd(
         tokens=projected_tokens,
-        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
-        usd_per_hour=float(selected_profile["usd_per_hour"]),
+        projected_tokens_per_second=selected_profile.projected_tokens_per_second,
+        usd_per_hour=selected_profile.usd_per_hour,
     )
     blockers = dpo_sweep_blockers(
         config,
         timeout_hours=timeout_hours,
-        modal_gpu=modal_gpu or str(config.runtime["selected_gpu"]),
+        modal_gpu=modal_gpu or config.runtime.selected_gpu,
     )
     return {
         "status": "ready_for_modal_sweep" if not blockers else "blocked_by_launch_safety",
         "mode": "dpo_beta_sweep",
         "run_id": config.run_id,
         "artifact_name": config.artifact_name,
-        "starts_from": config.payload["starts_from"],
+        "starts_from": config.settings.starts_from,
         "requires_approval": True,
         "approval_flag": LAUNCH_APPROVAL_FLAG,
         "will_start_modal_job": False,
         "will_download_data": False,
         "modal_run_will_download_real_data": True,
-        "volume": config.runtime["modal_volume"],
+        "volume": config.runtime.modal_volume,
         "volume_output_root": str(DEFAULT_MODAL_SWEEP_ROOT),
         "swept_betas": list(EXPECTED_SWEEP_BETAS),
         "arms": [arm.to_dict(max_length=max_length) for arm in SWEEP_ARMS],
-        "datasets": config.payload["datasets"],
+        "datasets": config.settings.datasets.to_dict(),
         "data_caps": {
             "train_pairs": SWEEP_TRAIN_PAIR_CAP,
             "train_tokens": SWEEP_TRAIN_TOKEN_CAP,
@@ -149,12 +149,12 @@ def build_dpo_sweep_preflight(
         },
         "runtime": {
             "provider": "modal",
-            "selected_gpu": config.runtime["selected_gpu"],
-            "modal_gpu": modal_gpu or config.runtime["selected_gpu"],
-            "precision": config.runtime["precision"],
+            "selected_gpu": config.runtime.selected_gpu,
+            "modal_gpu": modal_gpu or config.runtime.selected_gpu,
+            "precision": config.runtime.precision,
             "timeout_hours": timeout_hours,
             "sweep_spend_cap_usd": SWEEP_SPEND_CAP_USD,
-            "timeout_cost_ceiling_usd": float(selected_profile["usd_per_hour"]) * timeout_hours,
+            "timeout_cost_ceiling_usd": selected_profile.usd_per_hour * timeout_hours,
             "projected_train_token_upper_bound": projected_tokens,
             "projected_cost_usd": round(projected_cost, 4),
         },
@@ -171,14 +171,14 @@ def build_dpo_sweep_preflight(
             ),
         },
         "monitoring": {
-            "wandb_project": config.payload["monitoring"]["wandb_project"],
-            "wandb_tags": config.payload["monitoring"]["wandb_tags"],
+            "wandb_project": config.settings.monitoring.wandb_project,
+            "wandb_tags": list(config.settings.monitoring.wandb_tags),
             "group": SWEEP_GROUP,
         },
         "dependency_pins": {"modal": MODAL_CLIENT_VERSION},
         "launch_blockers": blockers,
         "modal_sweep_command": dpo_sweep_command(
-            config.config_path, timeout_hours=timeout_hours, gpu=str(config.runtime["selected_gpu"])
+            config.config_path, timeout_hours=timeout_hours, gpu=config.runtime.selected_gpu
         ),
     }
 
@@ -188,19 +188,19 @@ def dpo_sweep_blockers(config: DPOLaunchConfig, *, timeout_hours: int, modal_gpu
     runtime = config.runtime
     if timeout_hours <= 0 or timeout_hours > 24:
         blockers.append("DPO_SWEEP_TIMEOUT_HOURS must be between 1 and 24")
-    if modal_gpu != runtime["selected_gpu"]:
+    if modal_gpu != runtime.selected_gpu:
         blockers.append("DPO_MODAL_GPU must match runtime.selected_gpu for sweep cost accounting")
     selected_profile = config.selected_gpu_profile
-    if timeout_hours * float(selected_profile["usd_per_hour"]) > SWEEP_SPEND_CAP_USD:
+    if timeout_hours * selected_profile.usd_per_hour > SWEEP_SPEND_CAP_USD:
         blockers.append("sweep timeout cost ceiling exceeds the approved $8 sweep spend cap")
-    max_length = int(config.budgets["max_length"])
+    max_length = config.budgets.max_length
     projected_tokens = sum(
         arm.planned_token_upper_bound(max_length=max_length) for arm in SWEEP_ARMS
     )
     projected_cost = estimate_cost_usd(
         tokens=projected_tokens,
-        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
-        usd_per_hour=float(selected_profile["usd_per_hour"]),
+        projected_tokens_per_second=selected_profile.projected_tokens_per_second,
+        usd_per_hour=selected_profile.usd_per_hour,
     )
     if projected_cost > SWEEP_SPEND_CAP_USD:
         blockers.append("projected beta sweep cost exceeds the approved $8 sweep spend cap")
@@ -300,7 +300,7 @@ def run_dpo_beta_sweep(
     launch_id = _fresh_launch_id(output_root)
     evidence_dir = output_root / f"{launch_id}-evidence"
     evidence_dir.mkdir()
-    max_length = int(config.budgets["max_length"])
+    max_length = config.budgets.max_length
 
     arm_payloads: list[dict[str, Any]] = []
     for arm in SWEEP_ARMS:
@@ -359,7 +359,7 @@ def run_dpo_beta_sweep(
         "evidence_dir": str(evidence_dir),
         "beta_sweep_path": str(evidence_dir / "beta-sweep.json"),
         "learning_gate_path": str(evidence_dir / "learning-gate.json"),
-        "volume": config.runtime["modal_volume"],
+        "volume": config.runtime.modal_volume,
         "commit": commit,
         "dirty": dirty,
         "device": device.type,
@@ -396,7 +396,7 @@ def _run_sweep_arm(
     dirty: bool,
 ) -> dict[str, Any]:
     optimizer_config = config.optimizer
-    monitoring_config = config.payload["monitoring"]
+    monitoring_config = config.settings.monitoring
     write_environment(output_dir / "environment.txt", device=device)
     arm_started_cost = spend_tracker.estimated_cost_usd()
     result = run_dpo_training(
@@ -409,27 +409,27 @@ def _run_sweep_arm(
             max_steps=arm.max_steps,
             micro_batch_size=arm.micro_batch_size,
             gradient_accumulation_steps=arm.gradient_accumulation_steps,
-            learning_rate=float(optimizer_config["learning_rate"]),
+            learning_rate=optimizer_config.learning_rate,
             beta=arm.beta,
-            length_normalized=bool(config.payload["dpo"]["length_normalized"]),
-            scheduler=str(optimizer_config["scheduler"]),
+            length_normalized=config.settings.dpo.length_normalized,
+            scheduler=optimizer_config.scheduler,
             warmup_steps=arm.warmup_steps,
-            weight_decay=float(optimizer_config["weight_decay"]),
-            precision=str(config.runtime["precision"]),
-            pad_to_multiple_of=config.payload["sequence"]["pad_to_multiple_of"],
-            seed=int(optimizer_config["seed"]),
+            weight_decay=optimizer_config.weight_decay,
+            precision=config.runtime.precision,
+            pad_to_multiple_of=config.settings.sequence.pad_to_multiple_of,
+            seed=optimizer_config.seed,
             output_dir=output_dir,
             artifact_name=config.artifact_name,
-            grad_clip=float(optimizer_config["grad_clip"]),
+            grad_clip=optimizer_config.grad_clip,
             log_interval=arm.log_interval,
             eval_interval=arm.eval_interval,
             checkpoint_interval=arm.checkpoint_interval,
             device=device.type,
             wandb=WandbConfig(
                 enabled=wandb_enabled,
-                project=str(monitoring_config["wandb_project"]),
+                project=monitoring_config.wandb_project,
                 run_name=f"{SWEEP_GROUP}-{arm_id}",
-                tags=tuple(monitoring_config["wandb_tags"]) + ("beta-sweep", f"beta:{arm.beta}"),
+                tags=tuple(monitoring_config.wandb_tags) + ("beta-sweep", f"beta:{arm.beta}"),
                 group=SWEEP_GROUP,
                 job_type="sweep",
                 notes="Bounded DPO beta sweep; no full launch, no SimPO, no RL.",
@@ -438,7 +438,7 @@ def _run_sweep_arm(
                     "stage": "dpo",
                     "run_type": "beta_sweep",
                     "beta": arm.beta,
-                    "length_normalized": bool(config.payload["dpo"]["length_normalized"]),
+                    "length_normalized": config.settings.dpo.length_normalized,
                     "arm_id": arm_id,
                 },
             ),
@@ -455,7 +455,7 @@ def _run_sweep_arm(
     payload = {
         "status": "complete",
         "arm_id": arm_id,
-        "arm": arm.to_dict(max_length=int(config.budgets["max_length"])),
+        "arm": arm.to_dict(max_length=config.budgets.max_length),
         "output_dir": str(output_dir),
         "metrics_path": str(result.metrics_path),
         "wandb_run": result.wandb_run_url,

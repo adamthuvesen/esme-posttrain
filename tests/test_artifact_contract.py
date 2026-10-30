@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import torch
+from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import (
     BUNDLE_FORMAT,
@@ -18,6 +19,7 @@ from esme_posttrain.bundle import (
 )
 from esme_posttrain.export.dense_bundle import ExportRequest, export_dense_bundle
 from esme_posttrain.modeling import DenseBackbone
+from esme_posttrain.rl.bundle import RLVRBundleIdentity, write_rlvr_bundle
 from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import save_training_checkpoint
 
@@ -133,6 +135,59 @@ def test_chat_config_and_weights_keys_are_pinned(exported_chat_bundle: Path) -> 
     assert weights["metadata"]["key_format"] == BUNDLE_FORMAT
     assert weights["model_config"] == config
     assert set(weights["state_dict"]) == EXPECTED_STATE_DICT_KEYS
+
+
+@pytest.mark.parametrize("has_eos", [True, False])
+def test_rlvr_bundle_preserves_stage_metadata_and_optional_eos(
+    tmp_path: Path, has_eos: bool
+) -> None:
+    tokenizer = tiny_chat_tokenizer()
+    if not has_eos:
+        tokenizer = Tokenizer.from_str(tokenizer.to_str().replace('"<eos>"', '"<end>"'))
+    source_manifest = {"model": {"id": "contract-chat"}}
+    output_dir = tmp_path / "rlvr-bundle"
+
+    write_rlvr_bundle(
+        output_dir,
+        model=DenseBackbone(tiny_backbone_config()),
+        tokenizer=tokenizer,
+        identity=RLVRBundleIdentity(
+            artifact_name="Contract RL",
+            reference_artifact_name="Contract Chat",
+            bundle_model_id="contract-rl",
+            source_checkpoint="contract-chat/weights.pt",
+            source_checkpoint_sha256="a" * 64,
+            source_manifest=source_manifest,
+        ),
+        checkpoint_step=7,
+    )
+
+    bundle = validate_bundle_contract(output_dir)
+    loaded = load_dense_backbone_bundle(output_dir)
+    manifest = bundle.manifest
+    weights = torch.load(bundle.weights_path, weights_only=True)
+    eos_token_ids = [1] if has_eos else []
+    assert manifest["model"] == {"id": "contract-rl", "name": "Contract RL", "stage": "rlvr"}
+    assert manifest["provenance"] == {
+        "source": "countdown_lite_grpo",
+        "starts_from": "Contract Chat",
+        "checkpoint_step": 7,
+        "source_manifest": source_manifest,
+    }
+    assert (
+        manifest["source_checkpoint"] == weights["source_checkpoint"] == "contract-chat/weights.pt"
+    )
+    assert manifest["source_checkpoint_sha256"] == weights["source_checkpoint_sha256"] == "a" * 64
+    assert manifest["eos_token_ids"] == manifest["decoding"]["eos_token_ids"] == eos_token_ids
+    assert loaded.tokenizer.to_str() == tokenizer.to_str()
+    assert "chat_template" not in manifest
+    assert (output_dir / "README.md").read_text(encoding="utf-8") == (
+        "# Contract RL DenseBackbone Bundle\n\n"
+        "- Model id: `contract-rl`\n"
+        "- Stage: `rlvr`; checkpoint step: `7`\n"
+        "- Starts from: `Contract Chat`\n\n"
+        "Format contract: `llm_pretrain_dense_v1`.\n"
+    )
 
 
 def test_future_manifest_version_fails_before_tokenizer_or_weights_load(

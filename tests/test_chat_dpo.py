@@ -822,11 +822,11 @@ def test_config_pins_dpo_recipe_and_dry_run_never_launches() -> None:
     config = load_dpo_config(CONFIG_PATH)
     assert config.run_id == "esme_214m_chat_dpo"
     assert config.artifact_name == "Esme-214M-Chat"
-    assert config.payload["dpo"]["loss_type"] == "sigmoid"
-    assert config.payload["dpo"]["beta"] == 0.5
-    assert config.budgets["max_length"] == 1024
-    assert config.budgets["max_prompt_length"] == 512
-    assert config.runtime["modal_volume"] == "esme-posttrain-esme-chat-dpo"
+    assert config.settings.dpo.loss_type == "sigmoid"
+    assert config.settings.dpo.beta == 0.5
+    assert config.budgets.max_length == 1024
+    assert config.budgets.max_prompt_length == 512
+    assert config.runtime.modal_volume == "esme-posttrain-esme-chat-dpo"
 
     dry_run = build_dpo_dry_run(config)
     assert dry_run["will_start_modal_job"] is False
@@ -882,11 +882,25 @@ def _passing_beta_sweep_evidence() -> dict[str, object]:
     }
 
 
-def test_full_run_accepts_passing_beta_sweep_evidence() -> None:
+@pytest.mark.parametrize("swept_betas", [[0.1, 0.3, 0.5], ["0.1", "0.3", "0.5"]])
+def test_full_run_accepts_passing_beta_sweep_evidence(swept_betas: list[float | str]) -> None:
     payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     payload["learning_gate"]["evidence"] = _passing_beta_sweep_evidence()
+    payload["learning_gate"]["evidence"]["bounded_beta_sweep"]["swept_betas"] = swept_betas
     config = validate_dpo_payload(payload, CONFIG_PATH)
     assert full_launch_blockers(config, approved=True, modal_gpu="A100") == []
+
+
+@pytest.mark.parametrize("swept_betas", [[0.1, None, 0.5], [0.1, "invalid", 0.5]])
+def test_malformed_beta_sweep_reports_a_launch_blocker(swept_betas: list[object]) -> None:
+    payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    payload["learning_gate"]["evidence"] = _passing_beta_sweep_evidence()
+    payload["learning_gate"]["evidence"]["bounded_beta_sweep"]["swept_betas"] = swept_betas
+    config = validate_dpo_payload(payload, CONFIG_PATH)
+
+    assert full_launch_blockers(config, approved=True, modal_gpu="A100") == [
+        "learning_gate.evidence.bounded_beta_sweep.swept_betas must be [0.1, 0.3, 0.5]"
+    ]
 
 
 def test_full_run_rejects_sweep_not_beating_reference() -> None:
@@ -919,10 +933,10 @@ def test_config_rejects_non_1024_max_length() -> None:
 def test_config_pins_train_pair_floor_below_cap() -> None:
     config = load_dpo_config(CONFIG_PATH)
     budgets = config.budgets
-    assert budgets["min_train_pairs"] == 8000
-    assert budgets["min_eval_pairs"] == 100
+    assert budgets.min_train_pairs == 8000
+    assert budgets.min_eval_pairs == 100
     # The floor is a sufficiency minimum, well below the cap.
-    assert budgets["min_train_pairs"] < budgets["max_train_pairs"]
+    assert budgets.min_train_pairs < budgets.max_train_pairs
 
 
 def test_config_rejects_train_floor_above_cap() -> None:
