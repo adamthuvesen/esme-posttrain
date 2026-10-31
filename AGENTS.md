@@ -34,12 +34,14 @@ Prove changes with `make verify` (`verify-esme-posttrain` skill at `.agents/skil
 | Import each name from its defining module, not a re-export | `pyproject.toml::reportPrivateLocalImportUsage`, `make type` | 2026-11-06 |
 | A parsed stage config is a valid recipe: run id, volume, data, caps | `src/esme_posttrain/sft/config.py::_check_recipe`, `src/esme_posttrain/dpo/config.py::_check_recipe`, `src/esme_posttrain/rl/config.py::_check_recipe`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_recipe_drift` | 2026-11-06 |
 | Smoke spend cap ($2), per-stage full-run cap, and Modal timeout bound | `src/esme_posttrain/launch/config_models.py::check_stage_runtime`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_over_cap_runtime_without_launch_module` | 2026-11-06 |
+| Process, network, Modal, W&B, and dataset modules are imported only in their owner files | `pyproject.toml::"subprocess".msg`, `pyproject.toml::"socket".msg`, `pyproject.toml::"modal".msg`, `make lint` | 2026-11-07 |
 | Every path to a paid Modal call passes an approval gate first | `tests/test_modal_launch_gates.py::test_modal_launches_pass_an_approval_gate` | 2026-11-06 |
 | Full runs refuse without `--approved` | `src/esme_posttrain/launch/config_guards.py::full_launch_blockers`, `tests/test_sft_multiturn.py::test_full_run_refused_without_approval`, `tests/test_chat_dpo.py::test_full_run_refused_without_approval` | 2026-11-06 |
 | Remote dataset reads need an explicit download flag | `tests/test_sft_multiturn.py::test_remote_dataset_rows_refuse_without_download_approval` | 2026-11-06 |
 | Nothing under `docs/internal/` is committed | `tests/test_enforced_rules.py::test_docs_internal_is_never_tracked` | 2026-11-06 |
 | The verify drives must observe FAIL against a wrong expectation | `.agents/skills/verify-esme-posttrain/verify::control`, `make verify` | 2026-11-06 |
 | No file downgrades strict type checking with a `# pyright:` mode comment | `tests/test_strict_mode.py::test_no_file_downgrades_type_checking_mode` | 2026-11-07 |
+| Every lint or type suppression names its rule: no bare `# ruff: noqa`, no rule-less `# pyright: ignore` | `pyproject.toml::reportIgnoreCommentWithoutRule`, `pyproject.toml::select`, `make check` | 2026-11-07 |
 
 ## Where Things Live
 

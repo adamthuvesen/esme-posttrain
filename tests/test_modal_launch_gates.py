@@ -378,6 +378,21 @@ def test_launchers_with_a_parser_have_one_cli_surface(path: Path) -> None:
         )
 
 
+PAID_MODES = [
+    ("modal_chat_sft", "configs/esme-214m-sft-multiturn.json", "--modal-smoke"),
+    ("modal_chat_sft", "configs/esme-214m-sft-multiturn.json", "--modal-sweep"),
+    ("modal_chat_sft", "configs/esme-214m-sft-multiturn.json", "--throughput-probe"),
+    ("modal_chat_sft", "configs/esme-214m-sft-multiturn.json", "--full-run"),
+    ("modal_chat_dpo", "configs/esme-214m-chat-dpo.json", "--modal-smoke"),
+    ("modal_chat_dpo", "configs/esme-214m-chat-dpo.json", "--beta-sweep"),
+    ("modal_chat_dpo", "configs/esme-214m-chat-dpo.json", "--chat-eval"),
+    ("modal_chat_dpo", "configs/esme-214m-chat-dpo.json", "--full-run"),
+    ("modal_rlvr_grpo", "fixtures/configs/esme-214m-rl.fixture.json", "--full-run"),
+    ("modal_rlvr_grpo", "fixtures/configs/esme-214m-rl.fixture.json", "--debug-before-eval"),
+    ("modal_rlvr_grpo", "fixtures/configs/esme-214m-rl.fixture.json", "--modal-pipeline-smoke"),
+]
+
+
 class _RecordingModalFunction:
     def __init__(self, calls: list[str], name: str) -> None:
         self._calls, self._name = calls, name
@@ -398,6 +413,16 @@ def _record_modal_calls(monkeypatch: pytest.MonkeyPatch, module_name: str) -> li
         monkeypatch.setattr(module, name, _RecordingModalFunction(calls, name))
     monkeypatch.setattr(module, "RLVR_TIMEOUT_HOURS", 1, raising=False)
     return calls
+
+
+@pytest.mark.parametrize(("module_name", "config", "mode"), PAID_MODES)
+def test_paid_modes_refuse_without_approval_and_call_nothing(
+    module_name: str, config: str, mode: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _record_modal_calls(monkeypatch, module_name)
+    launch = importlib.import_module(f"scripts.{module_name}").launch
+    assert launch(["--config", str(REPO_ROOT / config), mode, "--json"]) == 2
+    assert calls == []
 
 
 @pytest.mark.parametrize(

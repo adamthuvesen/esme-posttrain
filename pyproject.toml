@@ -32,6 +32,9 @@ dev = [
 [project.scripts]
 esme-posttrain = "esme_posttrain.cli:main"
 
+[tool.uv]
+required-version = "==0.13.5"
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
@@ -41,6 +44,7 @@ pythonpath = ["."]
 typeCheckingMode = "strict"
 enableTypeIgnoreComments = false
 reportUnnecessaryTypeIgnoreComment = "error"
+reportIgnoreCommentWithoutRule = "error"
 pythonVersion = "3.14"
 include = ["src/esme_posttrain", "scripts", "tests"]
 venvPath = "."
@@ -109,8 +113,39 @@ target-version = "py314"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF", "PGH003"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF", "PGH003", "PGH004", "TID251"]
 ignore = ["E501"]
+
+# Process, network, and paid-service modules live only in their owner files.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"subprocess".msg = "Process calls live in launch/modal_cli.py (git) and the verify script."
+"asyncio.subprocess".msg = "Process calls live in launch/modal_cli.py (git) and the verify script."
+"os.system".msg = "Use launch/modal_cli.py for process calls."
+"os.popen".msg = "Use launch/modal_cli.py for process calls."
+"os.execv".msg = "Use launch/modal_cli.py for process calls."
+"os.execvp".msg = "Use launch/modal_cli.py for process calls."
+"os.spawnv".msg = "Use launch/modal_cli.py for process calls."
+"pty".msg = "No pseudo-terminals in this repo."
+"socket".msg = "No network clients; only the verify script's tripwire wraps socket."
+"http.client".msg = "No network clients in this repo."
+"urllib.request".msg = "No network clients in this repo."
+"requests".msg = "No network clients in this repo."
+"httpx".msg = "No network clients in this repo."
+"modal".msg = "Modal spends: import it only in an approval-gated scripts/modal_*.py launcher."
+"wandb".msg = "W&B is imported only by training/wandb_init.py."
+"datasets".msg = "Remote dataset reads go through sft/data.py behind the download flag."
+"huggingface_hub".msg = "Remote downloads go through sft/data.py behind the download flag."
+"openai".msg = "No paid LLM APIs in this repo."
+"anthropic".msg = "No paid LLM APIs in this repo."
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/modal_*.py" = ["TID251"]
+"src/esme_posttrain/launch/modal_cli.py" = ["TID251"]
+"src/esme_posttrain/training/wandb_init.py" = ["TID251"]
+".agents/skills/verify-esme-posttrain/verify" = ["TID251"]
+"tests/test_enforced_rules.py" = ["TID251"]
+"tests/test_rlvr_launch.py" = ["TID251"]
+"tests/test_strict_mode.py" = ["TID251"]
 
 [tool.ruff.format]
 quote-style = "double"
