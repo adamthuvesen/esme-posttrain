@@ -291,6 +291,7 @@ def launch(argv: list[str] | None = None) -> int:
                 config,
                 full_run_approved=args.approved,
                 full_run_modal_gpu=DPO_MODAL_GPU if args.full_run else None,
+                smoke_modal_gpu=DPO_MODAL_GPU,
             )
             if args.full_run:
                 payload = with_full_output_stem(
@@ -315,7 +316,11 @@ def launch(argv: list[str] | None = None) -> int:
             config, approved=args.approved, json_output=args.json, output_stem=full_output_stem
         )
     if not args.modal_smoke:
-        print(_format_payload(build_dpo_dry_run(config), json_output=args.json))
+        print(
+            _format_payload(
+                build_dpo_dry_run(config, smoke_modal_gpu=DPO_MODAL_GPU), json_output=args.json
+            )
+        )
         return 0
     if not args.approved:
         print(

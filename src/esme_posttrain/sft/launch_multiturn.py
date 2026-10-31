@@ -137,8 +137,9 @@ def build_multi_turn_dry_run(
     *,
     full_run_approved: bool = False,
     full_run_modal_gpu: str | None = None,
+    smoke_modal_gpu: str | None = None,
 ) -> dict[str, Any]:
-    smoke_blockers = smoke_launch_blockers(config, modal_gpu=None)
+    smoke_blockers = smoke_launch_blockers(config, modal_gpu=smoke_modal_gpu)
     full_blockers = full_launch_blockers(
         config, approved=full_run_approved, modal_gpu=full_run_modal_gpu
     )
