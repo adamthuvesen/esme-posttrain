@@ -26,9 +26,12 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from pydantic import StrictBool, StrictFloat, StrictInt, StrictStr, ValidationError, model_validator
 
 from esme_posttrain.launch.config_guards import (
-    IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
+    PYPROJECT_FILE,
+    UV_LOCK_FILE,
+    image_package_pins,
+    image_uv_version,
 )
 from esme_posttrain.launch.config_models import FrozenConfig
 from esme_posttrain.launch.modal_cli import (
@@ -92,10 +95,15 @@ import modal
 
 image = (
     modal.Image.debian_slim(python_version=LOCAL_PYTHON)
-    .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
+    .uv_pip_install(
+        *(f"{name}=={version}" for name, version in image_package_pins().items()),
+        uv_version=image_uv_version(),
+    )
     .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
     .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
     .add_local_file(str(PYTHON_VERSION_FILE), remote_path="/root/.python-version")
+    .add_local_file(str(PYPROJECT_FILE), remote_path="/root/pyproject.toml")
+    .add_local_file(str(UV_LOCK_FILE), remote_path="/root/uv.lock")
     .add_local_dir(str(REPO_ROOT / "data"), remote_path="/root/data")
     .add_local_dir(
         str(REPO_ROOT / "exports" / "esme-214m-chat"),

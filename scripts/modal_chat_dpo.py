@@ -45,7 +45,13 @@ from esme_posttrain.dpo.sweep import (
     dpo_sweep_blockers,
     run_dpo_beta_sweep,
 )
-from esme_posttrain.launch.config_guards import IMAGE_PACKAGE_PINS, LAUNCH_APPROVAL_FLAG
+from esme_posttrain.launch.config_guards import (
+    LAUNCH_APPROVAL_FLAG,
+    PYPROJECT_FILE,
+    UV_LOCK_FILE,
+    image_package_pins,
+    image_uv_version,
+)
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.launch.modal_cli import (
     LOCAL_PYTHON,
@@ -86,10 +92,15 @@ MODAL_SWEEP_OUTPUT_ROOT = DEFAULT_MODAL_SWEEP_ROOT
 
 image = (
     modal.Image.debian_slim(python_version=LOCAL_PYTHON)
-    .pip_install(*(f"{name}=={version}" for name, version in IMAGE_PACKAGE_PINS.items()))
+    .uv_pip_install(
+        *(f"{name}=={version}" for name, version in image_package_pins().items()),
+        uv_version=image_uv_version(),
+    )
     .env({"PYTHONPATH": "/root/src", "TOKENIZERS_PARALLELISM": "false"})
     .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/src")
     .add_local_file(str(PYTHON_VERSION_FILE), remote_path="/root/.python-version")
+    .add_local_file(str(PYPROJECT_FILE), remote_path="/root/pyproject.toml")
+    .add_local_file(str(UV_LOCK_FILE), remote_path="/root/uv.lock")
 )
 posttrain_volume = modal.Volume.from_name(MODAL_VOLUME_NAME, create_if_missing=True)
 # Read-only mount of the accepted SFT foundation; DPO must never write here.

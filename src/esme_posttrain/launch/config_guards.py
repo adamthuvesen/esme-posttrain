@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -9,13 +11,38 @@ from esme_posttrain.launch.errors import LaunchError
 
 LAUNCH_APPROVAL_FLAG = "--approved"
 MODAL_CLIENT_VERSION = "1.5.1"
-IMAGE_PACKAGE_PINS: dict[str, str] = {
-    "torch": "2.12.1",
-    "datasets": "5.0.0",
-    "tokenizers": "0.23.1",
-    "numpy": "2.5.0",
-    "wandb": "0.28.0",
-}
+# parents[3] is the repo root locally and /root in the container. The launchers mount
+# both files there, because Modal re-runs each launcher's image definition in the container.
+PYPROJECT_FILE = Path(__file__).resolve().parents[3] / "pyproject.toml"
+UV_LOCK_FILE = PYPROJECT_FILE.with_name("uv.lock")
+
+
+def image_package_pins() -> dict[str, str]:
+    """Each runtime dependency but modal, at its uv.lock version, for the Modal images."""
+    project = tomllib.loads(PYPROJECT_FILE.read_text(encoding="utf-8"))
+    lock = tomllib.loads(UV_LOCK_FILE.read_text(encoding="utf-8"))
+    names = [
+        re.sub(r"[-_.]+", "-", re.split(r"[\s\[<>=!~;]", dep, maxsplit=1)[0]).lower()
+        for dep in project["project"]["dependencies"]
+    ]
+    pins: dict[str, str] = {}
+    for name in names:
+        if name == "modal":
+            continue
+        versions = {p["version"] for p in lock["package"] if p["name"] == name}
+        if len(versions) != 1:
+            raise LaunchError(
+                f"Modal image pins: {name} must appear in uv.lock exactly once, found "
+                f"{sorted(versions)}. Run `uv lock`."
+            )
+        pins[name] = versions.pop()
+    return pins
+
+
+def image_uv_version() -> str:
+    """The uv version pyproject.toml requires, so images resolve like the checkout."""
+    project = tomllib.loads(PYPROJECT_FILE.read_text(encoding="utf-8"))
+    return project["tool"]["uv"]["required-version"].removeprefix("==")
 
 
 def load_json_object(config_path: Path) -> tuple[Path, dict[str, Any]]:

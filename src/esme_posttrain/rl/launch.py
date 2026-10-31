@@ -18,11 +18,11 @@ from esme_posttrain.bundle import (
     validate_bundle_compatibility,
 )
 from esme_posttrain.launch.config_guards import (
-    IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
     build_modal_launch_command,
     estimate_cost_usd,
+    image_package_pins,
     load_json_object,
     object_field,
 )
@@ -208,7 +208,7 @@ def build_grpo_dry_run(
         "full_launch_blockers": full_blockers,
         "full_launch_command": config.full_launch_command,
         "resume_command": config.full_launch_command,
-        "dependency_pins": {"modal": MODAL_CLIENT_VERSION, **IMAGE_PACKAGE_PINS},
+        "dependency_pins": {"modal": MODAL_CLIENT_VERSION, **image_package_pins()},
         "training_started": False,
         "modal_gpu_or_paid_work_started": False,
         "will_download_data": False,

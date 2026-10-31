@@ -36,7 +36,7 @@ esme-posttrain = "esme_posttrain.cli:main"
 required-version = "==0.13.5"
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q --strict-markers"
 testpaths = ["tests"]
 pythonpath = ["."]
 
@@ -146,6 +146,7 @@ ignore = ["E501"]
 "tests/test_enforced_rules.py" = ["TID251"]
 "tests/test_rlvr_launch.py" = ["TID251"]
 "tests/test_strict_mode.py" = ["TID251"]
+"tests/test_modal_image_pins.py" = ["TID251"]
 
 [tool.ruff.format]
 quote-style = "double"

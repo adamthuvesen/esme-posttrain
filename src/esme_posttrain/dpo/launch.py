@@ -22,11 +22,11 @@ from esme_posttrain.dpo.config import (
     PreferenceSource,
 )
 from esme_posttrain.launch.config_guards import (
-    IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
     build_modal_launch_command,
     estimate_cost_usd,
+    image_package_pins,
     load_json_object,
 )
 from esme_posttrain.launch.config_guards import (
@@ -164,7 +164,7 @@ def build_dpo_dry_run(
             "required_files": list(config.settings.artifacts.required_files),
         },
         "learning_gate": config.settings.learning_gate.to_dict(),
-        "dependency_pins": {"modal": MODAL_CLIENT_VERSION, **IMAGE_PACKAGE_PINS},
+        "dependency_pins": {"modal": MODAL_CLIENT_VERSION, **image_package_pins()},
         "acceptance": config.settings.acceptance.to_dict(),
         "launch_blockers": smoke_blockers,
         "full_launch_blockers": full_blockers,
