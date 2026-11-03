@@ -31,7 +31,7 @@ def start_wandb(
     """
     if not config.enabled:
         return None
-    import wandb
+    import wandb  # noqa: TID251
 
     settings: dict[str, Any] = {}
     if config.mode:

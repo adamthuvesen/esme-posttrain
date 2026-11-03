@@ -2,7 +2,8 @@
 
 A launcher is any repo module that imports ``modal``. A launch is
 ``<modal function or class>...remote/.spawn/.map/...``, including chains such as
-``fn.with_options(gpu=...).spawn()``, and in class methods. A gate is
+``fn.with_options(gpu=...).spawn()`` and ``.aio()``, in sync, async, and class methods
+and in module-level code. A gate is
 ``if not approved:``, or ``if blockers:`` where ``blockers`` came from a call that
 forwards ``approved=``, whose body returns or raises, in a block that encloses the
 launch and before it. A gate in a sibling branch does not count. A helper that launches
@@ -30,6 +31,7 @@ STATE_WRITES = {
     *("save", "commit", "init", "login"),
 }
 UNSCANNED_SPEND = {"Sandbox", "run_function"}
+Function = ast.FunctionDef | ast.AsyncFunctionDef
 
 
 def _imports_modal(path: Path) -> bool:
@@ -54,7 +56,7 @@ def _modal_function_names(tree: ast.Module) -> set[str]:
     return {
         node.name
         for node in tree.body
-        if isinstance(node, ast.FunctionDef | ast.ClassDef)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
         and any(
             isinstance(d, ast.Call)
             and isinstance(d.func, ast.Attribute)
@@ -73,6 +75,8 @@ def _name(node: ast.expr) -> str | None:
 def _launch_root(call: ast.Call) -> str | None:
     """The name a launch chain starts from: `fn` in `fn.with_options(...).spawn()`."""
     func = call.func
+    if isinstance(func, ast.Attribute) and func.attr == "aio":
+        func = func.value
     if not (isinstance(func, ast.Attribute) and func.attr in LAUNCH_METHODS):
         return None
     node: ast.expr = func.value
@@ -81,7 +85,7 @@ def _launch_root(call: ast.Call) -> str | None:
     return node.id if isinstance(node, ast.Name) else None
 
 
-def _approval_blockers(function: ast.FunctionDef) -> frozenset[str]:
+def _approval_blockers(function: Function) -> frozenset[str]:
     """Names assigned from a call that forwards an `approved=` flag, such as stage blockers."""
     return frozenset(
         target.id
@@ -108,7 +112,7 @@ def _is_gate(node: ast.AST, approval_blockers: frozenset[str]) -> bool:
     return stops and (refuses_unapproved or stops_on_blockers)
 
 
-def _gated_calls(function: ast.FunctionDef) -> Iterator[tuple[ast.Call, bool]]:
+def _gated_calls(function: Function) -> Iterator[tuple[ast.Call, bool]]:
     """Each call in `function`, and whether a gate in an enclosing block runs first."""
     approval_blockers = _approval_blockers(function)
 
@@ -140,7 +144,7 @@ def _write_name(call: ast.Call) -> str | None:
     return name if writes else None
 
 
-def _state_writes(function: ast.FunctionDef, label: str) -> list[str]:
+def _state_writes(function: Function, label: str) -> list[str]:
     approval_blockers = _approval_blockers(function)
     gates = [
         n for n in ast.walk(function) if isinstance(n, ast.If) and _is_gate(n, approval_blockers)
@@ -171,7 +175,7 @@ def _state_writes(function: ast.FunctionDef, label: str) -> list[str]:
 def _approval_shortcuts(tree: ast.Module, label: str) -> list[str]:
     found = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             args = node.args
             positional = [*args.posonlyargs, *args.args]
             pairs = [
@@ -210,12 +214,17 @@ def _ungated_paths(path: Path) -> tuple[int, list[str]]:
 def _ungated_source(source: str, label: str) -> tuple[int, list[str]]:
     tree = ast.parse(source)
     modal_functions = _modal_function_names(tree)
-    functions = {
+    functions: dict[str, Function] = {
         n.name: n
         for top in tree.body
-        for n in ([top] if isinstance(top, ast.FunctionDef) else getattr(top, "body", []))
-        if isinstance(n, ast.FunctionDef)
+        for n in ([top] if isinstance(top, Function) else getattr(top, "body", []))
+        if isinstance(n, Function)
     }
+    # Module-level code, such as an `if __name__ == "__main__":` block, runs with no gate.
+    module_code = [s for s in tree.body if not isinstance(s, Function | ast.ClassDef)]
+    functions["<module>"] = ast.FunctionDef(
+        name="<module>", args=ast.arguments(), body=module_code, decorator_list=[]
+    )
     gated = {name: list(_gated_calls(f)) for name, f in functions.items()}
 
     def reaches_ungated(name: str, call_is_gated: bool, seen: frozenset[str]) -> bool:
@@ -356,12 +365,26 @@ def sandbox():
     modal.Sandbox.create(app=app)
 
 image = modal.Image.debian_slim().run_function(train, gpu="H100")
+
+async def launch_async(approved):
+    await train.spawn.aio()
+
+@app.function(gpu="H100")
+async def train_async(): ...
+
+def launch_async_target(approved):
+    if not approved:
+        return 2
+    train_async.remote()
+
+if __name__ == "__main__":
+    train.remote()
 """
 
 
 def test_the_scan_finds_each_ungated_launch() -> None:
     launches, failures = _ungated_source(UNGATED, "bad.py")
-    assert launches == 12
+    assert launches == 15
     assert sorted(failure.split(". ")[0] for failure in failures) == sorted(
         [
             "bad.py:9 launch_early() calls train.remote with no approval gate before it",
@@ -380,6 +403,8 @@ def test_the_scan_finds_each_ungated_launch() -> None:
             "bad.py:76 looks up a deployed Modal Function, which this scan cannot gate",
             "bad.py:79 uses Sandbox, which spends with no gate this scan sees",
             "bad.py:81 uses run_function, which spends with no gate this scan sees",
+            "bad.py:84 launch_async() calls train.spawn.aio with no approval gate before it",
+            "bad.py:95 <module>() calls train.remote with no approval gate before it",
         ]
     )
 

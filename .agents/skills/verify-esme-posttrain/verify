@@ -10,8 +10,8 @@ import math
 import os
 import shutil
 import signal
-import socket
-import subprocess
+import socket  # noqa: TID251
+import subprocess  # noqa: TID251
 import sys
 import tempfile
 import time

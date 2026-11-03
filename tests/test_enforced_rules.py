@@ -8,7 +8,7 @@ module constant; a Makefile target; or a TOML key or Import Linter contract id.
 from __future__ import annotations
 
 import re
-import subprocess
+import subprocess  # noqa: TID251
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

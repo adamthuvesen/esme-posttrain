@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import subprocess
+import subprocess  # noqa: TID251
 from pathlib import Path
 from typing import Any
 

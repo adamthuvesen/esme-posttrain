@@ -2,7 +2,7 @@
 
 import os
 import re
-import subprocess
+import subprocess  # noqa: TID251
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

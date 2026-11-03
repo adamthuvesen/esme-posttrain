@@ -118,7 +118,7 @@ ignore = ["E501"]
 
 # Process, network, and paid-service modules live only in their owner files.
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-"subprocess".msg = "Process calls live in launch/modal_cli.py (git) and the verify script."
+"subprocess".msg = "Process calls live in launch/modal_cli.py (git), the verify script, and git-reading tests."
 "asyncio.subprocess".msg = "Process calls live in launch/modal_cli.py (git) and the verify script."
 "os.system".msg = "Use launch/modal_cli.py for process calls."
 "os.popen".msg = "Use launch/modal_cli.py for process calls."
@@ -143,6 +143,13 @@ ignore = ["E501"]
 "os.fork".msg = "Use launch/modal_cli.py for process calls."
 "os.forkpty".msg = "Use launch/modal_cli.py for process calls."
 "pty".msg = "No pseudo-terminals in this repo."
+"asyncio.create_subprocess_exec".msg = "Process calls live in launch/modal_cli.py (git) and the verify script."
+"asyncio.create_subprocess_shell".msg = "Process calls live in launch/modal_cli.py (git) and the verify script."
+"urllib3".msg = "No network clients in this repo."
+"aiohttp".msg = "No network clients in this repo."
+"ftplib".msg = "No network clients in this repo."
+"torch.hub".msg = "torch.hub downloads remote weights. Load local bundles instead."
+"tokenizers.Tokenizer.from_pretrained".msg = "from_pretrained downloads from the Hub. Use Tokenizer.from_file."
 "socket".msg = "No network clients; only the verify script's tripwire wraps socket."
 "http.client".msg = "No network clients in this repo."
 "urllib.request".msg = "No network clients in this repo."
@@ -154,16 +161,6 @@ ignore = ["E501"]
 "huggingface_hub".msg = "Remote downloads go through sft/data.py behind the download flag."
 "openai".msg = "No paid LLM APIs in this repo."
 "anthropic".msg = "No paid LLM APIs in this repo."
-
-[tool.ruff.lint.per-file-ignores]
-"scripts/modal_*.py" = ["TID251"]
-"src/esme_posttrain/launch/modal_cli.py" = ["TID251"]
-"src/esme_posttrain/training/wandb_init.py" = ["TID251"]
-".agents/skills/verify-esme-posttrain/verify" = ["TID251"]
-"tests/test_enforced_rules.py" = ["TID251"]
-"tests/test_rlvr_launch.py" = ["TID251"]
-"tests/test_strict_mode.py" = ["TID251"]
-"tests/test_modal_image_pins.py" = ["TID251"]
 
 [tool.ruff.format]
 quote-style = "double"

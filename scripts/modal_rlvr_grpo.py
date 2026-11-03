@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-import modal
+import modal  # noqa: TID251
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
