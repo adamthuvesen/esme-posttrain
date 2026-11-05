@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := check
-.PHONY: install fix architecture lint type test check verify
+.PHONY: install fix architecture lint type test check verify slow
 
 install:  ## Sync the dev environment
 	uv sync --locked --extra dev
@@ -27,3 +27,7 @@ check:  ## The gate: architecture, lint, types, and tests in parallel
 
 verify:  ## Drive the real stage chain and launch entrypoints offline (ARGS=all|list|control|<drive>)
 	.agents/skills/verify-esme-posttrain/verify $(ARGS)
+
+slow:  ## The slow lane: every verify drive, then the control that must observe FAIL
+	.agents/skills/verify-esme-posttrain/verify all
+	.agents/skills/verify-esme-posttrain/verify control

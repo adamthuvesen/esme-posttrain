@@ -10,6 +10,7 @@ make check        # the gate: architecture, lint, types, tests; same command as 
 make architecture # dependency boundaries with repair guidance
 make fix          # ruff format + safe lint fixes
 make test         # tests in parallel (pytest -n auto), including the full CPU stage chain
+make slow         # the slow lane: verify all, then verify control; CI's verify job
 ```
 
 Everything runs through `uv` (`uv run …`, never bare `python`/`pip`). Make targets use `uv --locked`, so run `uv lock` after a dependency change. CI runs `make check`.

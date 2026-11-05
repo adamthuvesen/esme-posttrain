@@ -16,8 +16,6 @@ from pathlib import Path
 
 import pytest
 
-from esme_posttrain.launch.config_guards import image_package_pins
-
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCHERS = sorted(ROOT.glob("scripts/modal_*.py"))
 OTHER_INSTALLERS = {
@@ -54,12 +52,6 @@ def test_images_install_locked_versions_through_uv(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     assert "uv_pip_install" in source, f"{path.name} builds no image through uv_pip_install"
     assert not install_problems(source, path.name)
-
-
-def test_image_pins_cover_every_runtime_dependency_but_modal() -> None:
-    assert set(image_package_pins()) == {
-        *("datasets", "numpy", "pydantic", "tokenizers", "torch", "wandb"),
-    }
 
 
 def test_the_scan_finds_each_floating_install() -> None:

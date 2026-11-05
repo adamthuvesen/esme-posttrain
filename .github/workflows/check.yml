@@ -36,8 +36,5 @@ jobs:
       - name: Install dev dependencies
         run: make install
 
-      - name: Drive the stage chain and launch entrypoints offline
-        run: make verify ARGS=all
-
-      - name: Verify control observes FAIL
-        run: make verify ARGS=control
+      - name: Drive the stage chain and launch entrypoints, then verify control observes FAIL
+        run: make slow

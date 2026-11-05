@@ -71,7 +71,7 @@ BASE_BUNDLE_ENV = "ESME_BASE_BUNDLE_LOCAL"
 DEFAULT_BASE_BUNDLE_LOCAL = REPO_ROOT.parent / "esme-pretrain" / "exports" / "esme-214m-base"
 BASE_BUNDLE_REMOTE = Path("/root/esme-214m-base")
 SFT_MODAL_GPU = os.environ.get("SFT_MODAL_GPU", "A100")
-SFT_TIMEOUT_HOURS = int(float(os.environ.get("SFT_TIMEOUT_HOURS", "1")))
+SFT_TIMEOUT_HOURS = float(os.environ.get("SFT_TIMEOUT_HOURS", "1"))
 SFT_SWEEP_TIMEOUT_HOURS = int(float(os.environ.get("SFT_SWEEP_TIMEOUT_HOURS", SWEEP_TIMEOUT_HOURS)))
 SFT_PROBE_TIMEOUT_HOURS = int(float(os.environ.get("SFT_PROBE_TIMEOUT_HOURS", PROBE_TIMEOUT_HOURS)))
 VOLUME_MOUNT = Path("/posttrain")
@@ -127,7 +127,7 @@ app = modal.App(MODAL_APP_NAME)
 @app.function(
     image=image,
     gpu=SFT_MODAL_GPU,
-    timeout=SFT_TIMEOUT_HOURS * 60 * 60,
+    timeout=int(SFT_TIMEOUT_HOURS * 3600),
     volumes={str(VOLUME_MOUNT): posttrain_volume},
     secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
 )
@@ -142,7 +142,7 @@ def run_modal_smoke(config_payload: dict[str, Any], commit: str, dirty: bool) ->
 @app.function(
     image=image,
     gpu=SFT_MODAL_GPU,
-    timeout=SFT_TIMEOUT_HOURS * 60 * 60,
+    timeout=int(SFT_TIMEOUT_HOURS * 3600),
     volumes={str(VOLUME_MOUNT): posttrain_volume},
     secrets=[modal.Secret.from_name("wandb", required_keys=["WANDB_API_KEY"])],
 )
@@ -313,6 +313,7 @@ def launch(argv: list[str] | None = None) -> int:
                 full_run_approved=args.approved,
                 full_run_modal_gpu=SFT_MODAL_GPU if args.full_run else None,
                 smoke_modal_gpu=SFT_MODAL_GPU,
+                smoke_timeout_hours=SFT_TIMEOUT_HOURS,
             )
             if args.full_run:
                 payload = with_full_output_stem(
@@ -341,7 +342,11 @@ def launch(argv: list[str] | None = None) -> int:
     if not args.modal_smoke:
         print(
             _format_payload(
-                build_multi_turn_dry_run(config, smoke_modal_gpu=SFT_MODAL_GPU),
+                build_multi_turn_dry_run(
+                    config,
+                    smoke_modal_gpu=SFT_MODAL_GPU,
+                    smoke_timeout_hours=SFT_TIMEOUT_HOURS,
+                ),
                 json_output=args.json,
             )
         )
@@ -352,7 +357,9 @@ def launch(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    blockers = smoke_launch_blockers(config, modal_gpu=SFT_MODAL_GPU)
+    blockers = smoke_launch_blockers(
+        config, modal_gpu=SFT_MODAL_GPU, timeout_hours=SFT_TIMEOUT_HOURS
+    )
     bundle_blocker = _base_bundle_blocker()
     if bundle_blocker:
         blockers = [*blockers, bundle_blocker]

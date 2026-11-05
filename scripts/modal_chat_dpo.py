@@ -292,6 +292,7 @@ def launch(argv: list[str] | None = None) -> int:
                 full_run_approved=args.approved,
                 full_run_modal_gpu=DPO_MODAL_GPU if args.full_run else None,
                 smoke_modal_gpu=DPO_MODAL_GPU,
+                smoke_timeout_hours=DPO_TIMEOUT_HOURS,
             )
             if args.full_run:
                 payload = with_full_output_stem(
@@ -318,7 +319,12 @@ def launch(argv: list[str] | None = None) -> int:
     if not args.modal_smoke:
         print(
             _format_payload(
-                build_dpo_dry_run(config, smoke_modal_gpu=DPO_MODAL_GPU), json_output=args.json
+                build_dpo_dry_run(
+                    config,
+                    smoke_modal_gpu=DPO_MODAL_GPU,
+                    smoke_timeout_hours=DPO_TIMEOUT_HOURS,
+                ),
+                json_output=args.json,
             )
         )
         return 0
@@ -328,7 +334,9 @@ def launch(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    blockers = smoke_launch_blockers(config, modal_gpu=DPO_MODAL_GPU)
+    blockers = smoke_launch_blockers(
+        config, modal_gpu=DPO_MODAL_GPU, timeout_hours=DPO_TIMEOUT_HOURS
+    )
     if blockers:
         print("DPO Modal smoke refused: " + "; ".join(blockers), file=sys.stderr)
         return 2

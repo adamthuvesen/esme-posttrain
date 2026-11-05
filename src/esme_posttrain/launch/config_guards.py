@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import tomllib
 from pathlib import Path
@@ -72,16 +73,33 @@ def estimate_cost_usd(
     return tokens / projected_tokens_per_second * usd_per_hour / 3600.0
 
 
+def smoke_timeout_hours(runtime: ModalRuntime) -> float:
+    """The longest Modal timeout, in hundredths of an hour, priced within the smoke cap."""
+    usd_per_hour = float(runtime.gpu_profiles[runtime.selected_gpu].usd_per_hour)
+    return math.floor(float(runtime.smoke_max_cost_usd) / usd_per_hour * 100) / 100
+
+
 def smoke_launch_blockers(
     *,
     runtime: ModalRuntime,
     estimated_smoke_cost_usd: float,
     modal_gpu: str | None,
     modal_gpu_env_var: str,
+    timeout_hours: float | None,
+    timeout_env_var: str,
 ) -> list[str]:
     # ModalRuntime already rejects caps and timeouts out of bounds at parse time.
-    # Only the projection and the GPU env var, read at launch, can still block here.
+    # The projection and the GPU and timeout env vars, read at launch, can still block.
     blockers = _modal_gpu_blockers(runtime, modal_gpu, modal_gpu_env_var, "smoke")
+    usd_per_hour = float(runtime.gpu_profiles[runtime.selected_gpu].usd_per_hour)
+    if timeout_hours is not None and timeout_hours * usd_per_hour > float(
+        runtime.smoke_max_cost_usd
+    ):
+        blockers.append(
+            f"{timeout_env_var}={timeout_hours:g} lets the smoke run "
+            f"${timeout_hours * usd_per_hour:.4f} of GPU time, over runtime.smoke_max_cost_usd "
+            f"${runtime.smoke_max_cost_usd}; set {timeout_env_var}={smoke_timeout_hours(runtime):g}"
+        )
     if estimated_smoke_cost_usd > float(runtime.smoke_max_cost_usd):
         blockers.append("projected Modal smoke cost exceeds runtime.smoke_max_cost_usd")
     return blockers
@@ -127,10 +145,11 @@ def build_modal_launch_command(
     timeout_env_var: str,
     script_path: str,
     mode_flag: str,
+    timeout_hours: float | None = None,
 ) -> str:
     selected = runtime.selected_gpu
     modal_gpu = runtime.gpu_profiles[selected].modal_gpu
-    timeout_hours = runtime.timeout_hours
+    timeout_hours = runtime.timeout_hours if timeout_hours is None else timeout_hours
     return (
         f"{gpu_env_var}='{modal_gpu}' {timeout_env_var}={timeout_hours} "
         f"uv run --with modal=={MODAL_CLIENT_VERSION} "

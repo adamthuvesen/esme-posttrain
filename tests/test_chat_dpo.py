@@ -843,7 +843,7 @@ def test_config_pins_dpo_recipe_and_dry_run_never_launches() -> None:
 def test_smoke_cost_under_two_dollars_and_no_blockers() -> None:
     config = load_dpo_config(CONFIG_PATH)
     assert config.estimated_smoke_cost_usd <= 2
-    assert smoke_launch_blockers(config, modal_gpu=None) == []
+    assert smoke_launch_blockers(config, modal_gpu=None, timeout_hours=None) == []
 
 
 def test_full_run_refused_without_approval() -> None:

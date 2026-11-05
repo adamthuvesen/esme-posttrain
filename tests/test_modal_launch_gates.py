@@ -108,7 +108,8 @@ def _is_gate(node: ast.AST, approval_blockers: frozenset[str]) -> bool:
         and _name(test.operand) == "approved"
     )
     stops_on_blockers = isinstance(test, ast.Name) and test.id in approval_blockers
-    stops = any(isinstance(n, ast.Return | ast.Raise) for s in node.body for n in ast.walk(s))
+    # The stop must be a statement of the gate body itself, not inside a nested branch.
+    stops = any(isinstance(statement, ast.Return | ast.Raise) for statement in node.body)
     return stops and (refuses_unapproved or stops_on_blockers)
 
 
@@ -379,12 +380,18 @@ def launch_async_target(approved):
 
 if __name__ == "__main__":
     train.remote()
+
+def launch_json_only_refusal(args):
+    if not args.approved:
+        if args.json:
+            return 2
+    train.spawn()
 """
 
 
 def test_the_scan_finds_each_ungated_launch() -> None:
     launches, failures = _ungated_source(UNGATED, "bad.py")
-    assert launches == 15
+    assert launches == 16
     assert sorted(failure.split(". ")[0] for failure in failures) == sorted(
         [
             "bad.py:9 launch_early() calls train.remote with no approval gate before it",
@@ -405,6 +412,8 @@ def test_the_scan_finds_each_ungated_launch() -> None:
             "bad.py:81 uses run_function, which spends with no gate this scan sees",
             "bad.py:84 launch_async() calls train.spawn.aio with no approval gate before it",
             "bad.py:95 <module>() calls train.remote with no approval gate before it",
+            "bad.py:101 launch_json_only_refusal() calls train.spawn with no approval gate "
+            "before it",
         ]
     )
 
@@ -519,17 +528,19 @@ def _record_modal_calls(monkeypatch: pytest.MonkeyPatch, module_name: str) -> li
     return calls
 
 
+@pytest.mark.parametrize("output_flags", [["--json"], []], ids=["json", "text"])
 @pytest.mark.parametrize(("module_name", "config", "mode"), PAID_MODES)
 def test_paid_modes_refuse_without_approval_and_call_nothing(
     module_name: str,
     config: str,
     mode: str,
+    output_flags: list[str],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     calls = _record_modal_calls(monkeypatch, module_name)
     launch = importlib.import_module(f"scripts.{module_name}").launch
-    assert launch(["--config", str(REPO_ROOT / config), mode, "--json"]) == 2
+    assert launch(["--config", str(REPO_ROOT / config), mode, *output_flags]) == 2
     assert calls == []
     # Other blockers, such as a missing base bundle, also refuse; the approval gate must too.
     output = "".join(capsys.readouterr())
@@ -579,3 +590,44 @@ def test_smoke_dry_run_reports_the_gpu_blocker_the_launch_hits(
     plan = json.loads(capsys.readouterr().out)
     assert plan["status"] == "blocked_by_launch_safety"
     assert any(f"{gpu_constant} must match" in b for b in plan["launch_blockers"])
+
+
+SMOKE_LAUNCHERS = [
+    ("modal_chat_sft", "configs/esme-214m-sft-multiturn.json", "SFT"),
+    ("modal_chat_dpo", "configs/esme-214m-chat-dpo.json", "DPO"),
+]
+
+
+@pytest.mark.parametrize(("module_name", "config", "prefix"), SMOKE_LAUNCHERS)
+def test_approved_smoke_refuses_a_timeout_priced_over_the_smoke_cap(
+    module_name: str,
+    config: str,
+    prefix: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls = _record_modal_calls(monkeypatch, module_name)
+    module = importlib.import_module(f"scripts.{module_name}")
+    monkeypatch.setattr(module, f"{prefix}_TIMEOUT_HOURS", 12.0)
+    argv = ["--config", str(REPO_ROOT / config), "--modal-smoke", "--approved"]
+    assert module.launch(argv) == 2
+    assert calls == []
+    assert "over runtime.smoke_max_cost_usd" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("module_name", "config", "prefix"), SMOKE_LAUNCHERS)
+def test_printed_smoke_command_sets_a_timeout_within_the_smoke_cap(
+    module_name: str,
+    config: str,
+    prefix: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = importlib.import_module(f"scripts.{module_name}")
+    assert module.launch(["--config", str(REPO_ROOT / config), "--dry-run", "--json"]) == 0
+    command = json.loads(capsys.readouterr().out)["modal_smoke_command"]
+    timeout = float(command.split(f"{prefix}_TIMEOUT_HOURS=")[1].split()[0])
+    monkeypatch.setattr(module, f"{prefix}_TIMEOUT_HOURS", timeout)
+    assert module.launch(["--config", str(REPO_ROOT / config), "--dry-run", "--json"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["launch_blockers"] == [], plan["launch_blockers"]

@@ -59,6 +59,8 @@ def test_shared_smoke_launch_blockers_flag_projection_over_budget(
             estimated_smoke_cost_usd=cost,
             modal_gpu=gpu,
             modal_gpu_env_var="SFT_MODAL_GPU",
+            timeout_hours=None,
+            timeout_env_var="SFT_TIMEOUT_HOURS",
         )
 
     assert blockers(4.0) == ["projected Modal smoke cost exceeds runtime.smoke_max_cost_usd"]

@@ -28,6 +28,7 @@ from esme_posttrain.launch.config_guards import (
     estimate_cost_usd,
     image_package_pins,
     load_json_object,
+    smoke_timeout_hours,
 )
 from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
@@ -131,8 +132,11 @@ def build_dpo_dry_run(
     full_run_approved: bool = False,
     full_run_modal_gpu: str | None = None,
     smoke_modal_gpu: str | None = None,
+    smoke_timeout_hours: float | None = None,
 ) -> dict[str, Any]:
-    smoke_blockers = smoke_launch_blockers(config, modal_gpu=smoke_modal_gpu)
+    smoke_blockers = smoke_launch_blockers(
+        config, modal_gpu=smoke_modal_gpu, timeout_hours=smoke_timeout_hours
+    )
     full_blockers = full_launch_blockers(
         config, approved=full_run_approved, modal_gpu=full_run_modal_gpu
     )
@@ -188,12 +192,16 @@ def build_dpo_dry_run(
     }
 
 
-def smoke_launch_blockers(config: DPOLaunchConfig, *, modal_gpu: str | None) -> list[str]:
+def smoke_launch_blockers(
+    config: DPOLaunchConfig, *, modal_gpu: str | None, timeout_hours: float | None
+) -> list[str]:
     return _common_smoke_launch_blockers(
         runtime=config.runtime,
         estimated_smoke_cost_usd=config.estimated_smoke_cost_usd,
         modal_gpu=modal_gpu,
         modal_gpu_env_var="DPO_MODAL_GPU",
+        timeout_hours=timeout_hours,
+        timeout_env_var="DPO_TIMEOUT_HOURS",
     )
 
 
@@ -318,4 +326,5 @@ def _launch_command(config_path: Path, runtime: ModalRuntime, *, mode: str) -> s
         timeout_env_var="DPO_TIMEOUT_HOURS",
         script_path="scripts/modal_chat_dpo.py",
         mode_flag=flag,
+        timeout_hours=None if mode == "full-run" else smoke_timeout_hours(runtime),
     )
