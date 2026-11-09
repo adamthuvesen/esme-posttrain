@@ -251,6 +251,67 @@ def test_modal_launcher_refusal_writes_no_report(
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.parametrize("mode", ["--full-run", "--modal-pipeline-smoke"])
+def test_failed_spawn_writes_evidence_to_the_run_dir_not_the_committed_report(
+    mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    committed = tmp_path / "committed"
+    config = replace(
+        load_rlvr_config(RL_FIXTURE_CONFIG),
+        report_path=committed / "grpo-report.json",
+        doc_path=committed / "grpo-report.md",
+        output_dir=tmp_path / "runs" / "full",
+        pipeline_smoke_output_dir=tmp_path / "runs" / "smoke",
+    )
+
+    class FailingRunner:
+        def spawn(self, *args: object) -> None:
+            raise RuntimeError("Modal function is not hydrated")
+
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_TIMEOUT_HOURS", 1)
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_MODAL_GPU", "A100")
+    monkeypatch.setattr(modal_rlvr_grpo, "modal", object())
+    monkeypatch.setattr(modal_rlvr_grpo, "run_modal_grpo", FailingRunner())
+    monkeypatch.setattr(modal_rlvr_grpo, "load_rlvr_config", lambda _path: config)
+
+    assert modal_rlvr_grpo.launch(["--config", "unused.json", mode, "--approved", "--json"]) == 2
+
+    assert not committed.exists()
+    run_dir = tmp_path / "runs" / ("smoke" if mode == "--modal-pipeline-smoke" else "full")
+    evidence = json.loads((run_dir / "grpo-launch-failure.json").read_text(encoding="utf-8"))
+    assert evidence["grpo_result"] == "blocked-with-evidence"
+    assert "not hydrated" in evidence["blocker"]
+    assert (run_dir / "grpo-launch-failure.md").is_file()
+
+
+@pytest.mark.parametrize("mode", ["--modal-pipeline-smoke", "--debug-before-eval"])
+def test_spawned_probe_keeps_the_committed_report_and_writes_to_the_run_dir(
+    mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    committed = tmp_path / "committed"
+    config = replace(
+        load_rlvr_config(RL_FIXTURE_CONFIG),
+        report_path=committed / "grpo-report.json",
+        doc_path=committed / "grpo-report.md",
+        output_dir=tmp_path / "runs" / "full",
+        pipeline_smoke_output_dir=tmp_path / "runs" / "smoke",
+    )
+
+    class Spawned:
+        object_id = "fc-test"
+
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_TIMEOUT_HOURS", 1)
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_MODAL_GPU", "A100")
+    monkeypatch.setattr(modal_rlvr_grpo, "_spawn_modal_grpo", lambda *args, **kwargs: Spawned())
+    monkeypatch.setattr(modal_rlvr_grpo, "load_rlvr_config", lambda _path: config)
+
+    assert modal_rlvr_grpo.launch(["--config", "unused.json", mode, "--approved", "--json"]) == 0
+
+    assert not committed.exists()
+    run_dir = tmp_path / "runs" / ("smoke" if mode == "--modal-pipeline-smoke" else "full")
+    assert (run_dir / "grpo-launch-in-flight.json").is_file()
+
+
 def test_modal_launcher_debug_before_eval_dry_run_uses_reduced_probe_command(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

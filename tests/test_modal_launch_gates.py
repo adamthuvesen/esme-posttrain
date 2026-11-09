@@ -608,7 +608,7 @@ def test_approved_smoke_refuses_a_timeout_priced_over_the_smoke_cap(
 ) -> None:
     calls = _record_modal_calls(monkeypatch, module_name)
     module = importlib.import_module(f"scripts.{module_name}")
-    monkeypatch.setattr(module, f"{prefix}_TIMEOUT_HOURS", 12.0)
+    monkeypatch.setattr(module, f"{prefix}_SMOKE_TIMEOUT_HOURS", 12.0)
     argv = ["--config", str(REPO_ROOT / config), "--modal-smoke", "--approved"]
     assert module.launch(argv) == 2
     assert calls == []
@@ -627,7 +627,42 @@ def test_printed_smoke_command_sets_a_timeout_within_the_smoke_cap(
     assert module.launch(["--config", str(REPO_ROOT / config), "--dry-run", "--json"]) == 0
     command = json.loads(capsys.readouterr().out)["modal_smoke_command"]
     timeout = float(command.split(f"{prefix}_TIMEOUT_HOURS=")[1].split()[0])
-    monkeypatch.setattr(module, f"{prefix}_TIMEOUT_HOURS", timeout)
+    monkeypatch.setattr(module, f"{prefix}_SMOKE_TIMEOUT_HOURS", timeout)
     assert module.launch(["--config", str(REPO_ROOT / config), "--dry-run", "--json"]) == 0
     plan = json.loads(capsys.readouterr().out)
     assert plan["launch_blockers"] == [], plan["launch_blockers"]
+
+
+@pytest.mark.parametrize(("module_name", "config", "prefix"), SMOKE_LAUNCHERS)
+def test_smoke_without_a_timeout_env_runs_within_the_smoke_cap(
+    module_name: str,
+    config: str,
+    prefix: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = importlib.import_module(f"scripts.{module_name}")
+    monkeypatch.setattr(module, f"{prefix}_SMOKE_TIMEOUT_HOURS", None)
+    monkeypatch.setattr(module, "_base_bundle_blocker", lambda: None, raising=False)
+    timeouts: list[int] = []
+
+    class Spawned(Exception):
+        pass
+
+    class RecordingSmoke:
+        def with_options(self, *, timeout: int) -> RecordingSmoke:
+            timeouts.append(timeout)
+            return self
+
+        def spawn(self, *args: object) -> None:
+            raise Spawned("reached spawn")
+
+    monkeypatch.setattr(module, "run_modal_smoke", RecordingSmoke())
+    argv = ["--config", str(REPO_ROOT / config), "--modal-smoke", "--approved"]
+    assert module.launch(argv) == 2  # the recorder stops the launch at spawn
+    assert len(timeouts) == 1
+    loaded = module.load_multi_turn_config if prefix == "SFT" else module.load_dpo_config
+    runtime = loaded(REPO_ROOT / config).runtime
+    usd_per_hour = runtime.gpu_profiles[runtime.selected_gpu].usd_per_hour
+    assert timeouts[0] / 3600 * usd_per_hour <= runtime.smoke_max_cost_usd
+    assert "reached spawn" in capsys.readouterr().err

@@ -34,7 +34,7 @@ Each run gets a temp HOME and temp XDG, HF, W&B, and inductor dirs. It sets `HF_
 
 - The drives never reach a GPU, Modal, a remote dataset, or W&B. A real GPU run is proven only by an approved launch from its run card.
 - The chain uses `fixtures/tiny_bundle`. It proves the stage lifecycle, resume, and bundle contracts, not model quality. The tiny RL run has zero-variance groups, so its loss is 0 and its weights do not move.
-- The launch-plans drive calls each script's `local_entrypoint` body with the argv `modal run` would pass. It does not prove Modal image builds or volume layout.
+- The launch-plans drive also runs each dry-run launcher file (not emit-completions, which only runs under `modal run`) as a subprocess with `--dry-run`, offline, and checks for a clean plan, because the entrypoint shim skips the file's own `__main__` path. It calls each script's `local_entrypoint` body with the argv `modal run` would pass. It does not prove Modal image builds or volume layout.
 
 ## Gotchas
 

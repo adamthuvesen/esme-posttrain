@@ -38,6 +38,7 @@ Prove changes with `make verify` (`verify-esme-posttrain` skill at `.agents/skil
 | Process, network, Modal, W&B, and dataset modules are imported only in their owner files | `pyproject.toml::"subprocess".msg`, `pyproject.toml::"socket".msg`, `pyproject.toml::"modal".msg`, `make lint` | 2026-11-07 |
 | Every path to a paid Modal call passes an approval gate first | `tests/test_modal_launch_gates.py::test_modal_launches_pass_an_approval_gate` | 2026-11-06 |
 | Full runs refuse without `--approved` | `src/esme_posttrain/launch/config_guards.py::full_launch_blockers`, `tests/test_sft_multiturn.py::test_full_run_refused_without_approval`, `tests/test_chat_dpo.py::test_full_run_refused_without_approval` | 2026-11-06 |
+| Each launcher file runs offline as a script with `--dry-run` and prints a clean plan | `.agents/skills/verify-esme-posttrain/verify::drive_launch_plans` | 2026-11-07 |
 | Remote dataset reads need an explicit download flag | `tests/test_sft_multiturn.py::test_remote_dataset_rows_refuse_without_download_approval` | 2026-11-06 |
 | Nothing under `docs/internal/` is committed | `tests/test_enforced_rules.py::test_docs_internal_is_never_tracked` | 2026-11-06 |
 | The verify drives must observe FAIL against a wrong expectation | `.agents/skills/verify-esme-posttrain/verify::control`, `make verify` | 2026-11-06 |

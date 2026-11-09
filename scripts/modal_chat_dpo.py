@@ -51,6 +51,7 @@ from esme_posttrain.launch.config_guards import (
     UV_LOCK_FILE,
     image_package_pins,
     image_uv_version,
+    smoke_timeout_hours,
 )
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.launch.modal_cli import (
@@ -71,6 +72,10 @@ DPO_MODAL_GPU = os.environ.get("DPO_MODAL_GPU", "A100")
 # Fractional hours must survive (the emitted chat-eval command sets 0.25); Modal
 # wants whole seconds, so hours convert via int(hours * 3600) at the functions.
 DPO_TIMEOUT_HOURS = float(os.environ.get("DPO_TIMEOUT_HOURS", "1"))
+# Unset, the smoke runs for the longest timeout its config prices within the smoke cap.
+DPO_SMOKE_TIMEOUT_HOURS = (
+    float(os.environ["DPO_TIMEOUT_HOURS"]) if "DPO_TIMEOUT_HOURS" in os.environ else None
+)
 # Chat eval is generation-only; without an explicit DPO_TIMEOUT_HOURS it keeps the
 # documented 0.25h ceiling that holds the worst case under the $1 spend cap.
 DPO_CHAT_EVAL_TIMEOUT_HOURS = float(
@@ -250,6 +255,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _smoke_timeout_hours(config: DPOLaunchConfig) -> float:
+    if DPO_SMOKE_TIMEOUT_HOURS is not None:
+        return DPO_SMOKE_TIMEOUT_HOURS
+    return smoke_timeout_hours(config.runtime)
+
+
 def launch(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -292,7 +303,7 @@ def launch(argv: list[str] | None = None) -> int:
                 full_run_approved=args.approved,
                 full_run_modal_gpu=DPO_MODAL_GPU if args.full_run else None,
                 smoke_modal_gpu=DPO_MODAL_GPU,
-                smoke_timeout_hours=DPO_TIMEOUT_HOURS,
+                smoke_timeout_hours=_smoke_timeout_hours(config),
             )
             if args.full_run:
                 payload = with_full_output_stem(
@@ -322,7 +333,7 @@ def launch(argv: list[str] | None = None) -> int:
                 build_dpo_dry_run(
                     config,
                     smoke_modal_gpu=DPO_MODAL_GPU,
-                    smoke_timeout_hours=DPO_TIMEOUT_HOURS,
+                    smoke_timeout_hours=_smoke_timeout_hours(config),
                 ),
                 json_output=args.json,
             )
@@ -335,13 +346,15 @@ def launch(argv: list[str] | None = None) -> int:
         )
         return 2
     blockers = smoke_launch_blockers(
-        config, modal_gpu=DPO_MODAL_GPU, timeout_hours=DPO_TIMEOUT_HOURS
+        config, modal_gpu=DPO_MODAL_GPU, timeout_hours=_smoke_timeout_hours(config)
     )
     if blockers:
         print("DPO Modal smoke refused: " + "; ".join(blockers), file=sys.stderr)
         return 2
     try:
-        function_call = run_modal_smoke.spawn(
+        function_call = run_modal_smoke.with_options(
+            timeout=int(_smoke_timeout_hours(config) * 3600)
+        ).spawn(
             config.settings.to_dict(),
             local_git_commit(REPO_ROOT),
             local_git_dirty(REPO_ROOT),

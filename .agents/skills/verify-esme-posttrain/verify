@@ -279,15 +279,33 @@ def drive_launch_plans(ctx: Context) -> str:
             not (ctx.scratch / "emit-out").exists(), "emit-completions wrote output while refusing"
         )
 
+    def check_script_dry_run(stage: str, script: str, config: list[str]) -> None:
+        # Run the file the way a user does. The import shim above skips the module's
+        # `__main__` path and its top-level code, where a direct run once crashed.
+        plan = json.loads(
+            ctx.python(
+                f"{stage}-direct", f"scripts/{script}.py", *config, "--dry-run", "--json"
+            ).stdout
+        )
+        require(
+            plan["will_start_modal_job"] is False and plan["approval_flag"] == "--approved",
+            f"{stage} direct dry-run would start Modal or lost its approval flag",
+        )
+
     with (
         ThreadPoolExecutor() as pool
     ):  # each launcher is an independent process; run them side by side
-        futures = [pool.submit(check_stage, stage, *spec) for stage, spec in stages.items()] + [
-            pool.submit(check_emit)
-        ]
+        futures = (
+            [pool.submit(check_stage, stage, *spec) for stage, spec in stages.items()]
+            + [
+                pool.submit(check_script_dry_run, stage, *spec[:2])
+                for stage, spec in stages.items()
+            ]
+            + [pool.submit(check_emit)]
+        )
     for future in futures:
         future.result()
-    return "SFT, DPO, and RL plans resolve without Modal; every paid mode and emit-completions refuse without --approved"
+    return "SFT, DPO, and RL plans resolve without Modal, also when run as scripts; every paid mode and emit-completions refuse without --approved"
 
 
 DRIVES = {

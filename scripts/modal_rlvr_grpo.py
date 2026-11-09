@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -312,8 +313,20 @@ def launch(argv: list[str] | None = None) -> int:
                 status_basis="Modal spawn failed before a FunctionCall id was returned",
             ),
         )
-        write_grpo_report(config, report)
-        print(f"RLVR GRPO launch failed: {reason}", file=sys.stderr)
+        # report_path and doc_path hold the committed results; the failure goes to the run dir.
+        run_dir = (
+            config.pipeline_smoke_output_dir if args.modal_pipeline_smoke else config.output_dir
+        )
+        failure = replace(
+            config,
+            report_path=run_dir / "grpo-launch-failure.json",
+            doc_path=run_dir / "grpo-launch-failure.md",
+        )
+        write_grpo_report(failure, report)
+        print(
+            f"RLVR GRPO launch failed: {reason}; evidence in {failure.report_path}",
+            file=sys.stderr,
+        )
         return 2
 
     call_id = modal_call_id(function_call)
@@ -341,7 +354,18 @@ def launch(argv: list[str] | None = None) -> int:
         status=in_flight_status,
         ready_for_hq_inspection=False,
     )
-    write_grpo_report(config, in_flight_report)
+    in_flight_config = config
+    if args.modal_pipeline_smoke or args.debug_before_eval:
+        # Only the full run owns the committed report; a probe keeps its evidence in its run dir.
+        run_dir = (
+            config.pipeline_smoke_output_dir if args.modal_pipeline_smoke else config.output_dir
+        )
+        in_flight_config = replace(
+            config,
+            report_path=run_dir / "grpo-launch-in-flight.json",
+            doc_path=run_dir / "grpo-launch-in-flight.md",
+        )
+    write_grpo_report(in_flight_config, in_flight_report)
     receipt = _launch_receipt(
         config,
         output_stem=output_stem,

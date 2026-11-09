@@ -25,6 +25,7 @@ from esme_posttrain.launch.config_guards import (
     UV_LOCK_FILE,
     image_package_pins,
     image_uv_version,
+    smoke_timeout_hours,
 )
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.launch.modal_cli import (
@@ -72,6 +73,10 @@ DEFAULT_BASE_BUNDLE_LOCAL = REPO_ROOT.parent / "esme-pretrain" / "exports" / "es
 BASE_BUNDLE_REMOTE = Path("/root/esme-214m-base")
 SFT_MODAL_GPU = os.environ.get("SFT_MODAL_GPU", "A100")
 SFT_TIMEOUT_HOURS = float(os.environ.get("SFT_TIMEOUT_HOURS", "1"))
+# Unset, the smoke runs for the longest timeout its config prices within the smoke cap.
+SFT_SMOKE_TIMEOUT_HOURS = (
+    float(os.environ["SFT_TIMEOUT_HOURS"]) if "SFT_TIMEOUT_HOURS" in os.environ else None
+)
 SFT_SWEEP_TIMEOUT_HOURS = int(float(os.environ.get("SFT_SWEEP_TIMEOUT_HOURS", SWEEP_TIMEOUT_HOURS)))
 SFT_PROBE_TIMEOUT_HOURS = int(float(os.environ.get("SFT_PROBE_TIMEOUT_HOURS", PROBE_TIMEOUT_HOURS)))
 VOLUME_MOUNT = Path("/posttrain")
@@ -268,6 +273,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _smoke_timeout_hours(config: MultiTurnLaunchConfig) -> float:
+    if SFT_SMOKE_TIMEOUT_HOURS is not None:
+        return SFT_SMOKE_TIMEOUT_HOURS
+    return smoke_timeout_hours(config.runtime)
+
+
 def launch(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -313,7 +324,7 @@ def launch(argv: list[str] | None = None) -> int:
                 full_run_approved=args.approved,
                 full_run_modal_gpu=SFT_MODAL_GPU if args.full_run else None,
                 smoke_modal_gpu=SFT_MODAL_GPU,
-                smoke_timeout_hours=SFT_TIMEOUT_HOURS,
+                smoke_timeout_hours=_smoke_timeout_hours(config),
             )
             if args.full_run:
                 payload = with_full_output_stem(
@@ -345,7 +356,7 @@ def launch(argv: list[str] | None = None) -> int:
                 build_multi_turn_dry_run(
                     config,
                     smoke_modal_gpu=SFT_MODAL_GPU,
-                    smoke_timeout_hours=SFT_TIMEOUT_HOURS,
+                    smoke_timeout_hours=_smoke_timeout_hours(config),
                 ),
                 json_output=args.json,
             )
@@ -358,7 +369,7 @@ def launch(argv: list[str] | None = None) -> int:
         )
         return 2
     blockers = smoke_launch_blockers(
-        config, modal_gpu=SFT_MODAL_GPU, timeout_hours=SFT_TIMEOUT_HOURS
+        config, modal_gpu=SFT_MODAL_GPU, timeout_hours=_smoke_timeout_hours(config)
     )
     bundle_blocker = _base_bundle_blocker()
     if bundle_blocker:
@@ -367,9 +378,9 @@ def launch(argv: list[str] | None = None) -> int:
         print("multi-turn SFT Modal smoke refused: " + "; ".join(blockers), file=sys.stderr)
         return 2
     try:
-        function_call = run_modal_smoke.spawn(
-            config.settings.to_dict(), local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT)
-        )
+        function_call = run_modal_smoke.with_options(
+            timeout=int(_smoke_timeout_hours(config) * 3600)
+        ).spawn(config.settings.to_dict(), local_git_commit(REPO_ROOT), local_git_dirty(REPO_ROOT))
         call_id = modal_call_id(function_call)
         result = function_call.get()
         result.update({"modal_app": MODAL_APP_NAME, "modal_call_id": call_id})
