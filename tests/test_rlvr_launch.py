@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess  # noqa: TID251
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path

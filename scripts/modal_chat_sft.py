@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-import modal  # noqa: TID251
+import modal
 
 from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,

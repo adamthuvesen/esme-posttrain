@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-import modal  # noqa: TID251
+import modal
 
 from esme_posttrain.dpo.chat_eval_run import (
     CHAT_EVAL_OUTPUT_STEM,

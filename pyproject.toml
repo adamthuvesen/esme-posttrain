@@ -162,6 +162,20 @@ ignore = ["E501"]
 "openai".msg = "No paid LLM APIs in this repo."
 "anthropic".msg = "No paid LLM APIs in this repo."
 
+[tool.ruff.lint.per-file-ignores]
+# Owner files only. tests/test_strict_mode.py::OWNED_BANS holds each file to the modules it owns.
+"tests/test_modal_image_pins.py" = ["TID251"]
+"tests/test_strict_mode.py" = ["TID251"]
+"tests/test_rlvr_launch.py" = ["TID251"]
+"tests/test_enforced_rules.py" = ["TID251"]
+"scripts/modal_rlvr_grpo.py" = ["TID251"]
+".agents/skills/verify-esme-posttrain/verify" = ["TID251"]
+"scripts/modal_chat_sft.py" = ["TID251"]
+"scripts/modal_chat_dpo.py" = ["TID251"]
+"scripts/modal_emit_completions.py" = ["TID251"]
+"src/esme_posttrain/launch/modal_cli.py" = ["TID251"]
+"src/esme_posttrain/training/wandb_init.py" = ["TID251"]
+
 [tool.ruff.format]
 quote-style = "double"
 

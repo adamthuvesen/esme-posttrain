@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import ast
 import shutil
-import subprocess  # noqa: TID251
+import subprocess
 import sys
 from pathlib import Path
 

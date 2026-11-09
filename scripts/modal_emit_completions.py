@@ -91,7 +91,7 @@ def launch_command(jobs: str, out_root: str) -> str:
     )
 
 
-import modal  # noqa: TID251
+import modal
 
 image = (
     modal.Image.debian_slim(python_version=LOCAL_PYTHON)
