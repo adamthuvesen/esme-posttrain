@@ -51,7 +51,8 @@ def install_problems(source: str, label: str) -> list[str]:
 def test_images_install_locked_versions_through_uv(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     assert "uv_pip_install" in source, f"{path.name} builds no image through uv_pip_install"
-    assert not install_problems(source, path.name)
+    problems = install_problems(source, f"scripts/{path.name}")
+    assert not problems, "Modal images must install uv.lock pins:\n  " + "\n  ".join(problems)
 
 
 def test_the_scan_finds_each_floating_install() -> None:

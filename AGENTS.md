@@ -40,6 +40,7 @@ Prove changes with `make verify` (`verify-esme-posttrain` skill at `.agents/skil
 | Each launcher file runs offline as a script with `--dry-run` and prints a clean plan | `.agents/skills/verify-esme-posttrain/verify::drive_launch_plans` |
 | Remote dataset reads need an explicit download flag | `tests/test_sft_multiturn.py::test_remote_dataset_rows_refuse_without_download_approval` |
 | Nothing under `docs/internal/` is committed | `tests/test_enforced_rules.py::test_docs_internal_is_never_tracked` |
+| Tests never sleep or time wall-clock work, and every skip or xfail names a reason | `tests/ruff.toml::"time.sleep".msg`, `tests/test_strict_mode.py::test_every_skip_names_a_reason` |
 | The verify drives must observe FAIL against a wrong expectation | `.agents/skills/verify-esme-posttrain/verify::control`, `make verify` |
 
 ## Where Things Live

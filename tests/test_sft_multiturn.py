@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -327,12 +327,13 @@ def test_multi_turn_modal_smoke_body_refreshes_manifest_with_expected_artifacts(
         fake_run_multi_turn_cpu_fixture,
     )
     monkeypatch.setattr(modal_chat_sft, "refresh_manifest_files", fake_refresh_manifest_files)
+    monkeypatch.setattr(modal_chat_sft, "time", SimpleNamespace(perf_counter=lambda: 11.0))
 
     payload = modal_chat_sft._run_modal_smoke_body(
         json.loads(CONFIG_PATH.read_text(encoding="utf-8")),
         commit="abc123",
         dirty=False,
-        started=time.perf_counter(),
+        started=10.0,
     )
 
     assert refresh_calls == [(output_dir, MULTITURN_EXPECTED_ARTIFACTS)]

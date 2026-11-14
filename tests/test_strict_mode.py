@@ -41,8 +41,9 @@ def test_no_file_downgrades_type_checking_mode() -> None:
         for number, line in enumerate(path.read_text(errors="replace").splitlines(), start=1)
         if DOWNGRADE.match(line)
     ]
-    assert not downgrades, "file-level `# pyright:` comment turns strict mode off: " + ", ".join(
-        downgrades
+    assert not downgrades, (
+        "A file-level `# pyright:` comment turns strict mode off. Remove it and fix the types, "
+        "or use a line-level `# pyright: ignore[rule]  # <reason>`: " + ", ".join(downgrades)
     )
 
 
@@ -124,23 +125,36 @@ def ban_problems(root: Path, owned: dict[str, set[str]]) -> list[str]:
     lint = tomllib.loads((root / "pyproject.toml").read_text())["tool"]["ruff"]["lint"]
     banned = set(lint["flake8-tidy-imports"]["banned-api"])
     lifted = {path for path, codes in lint.get("per-file-ignores", {}).items() if "TID251" in codes}
-    problems = [f"{path}: TID251 ignore has no OWNED_BANS entry" for path in lifted - owned.keys()]
-    problems += [f"{path}: OWNED_BANS entry has no TID251 ignore" for path in owned.keys() - lifted]
+    problems = [
+        f"{path}: TID251 ignore has no OWNED_BANS entry; add one or remove the ignore"
+        for path in lifted - owned.keys()
+    ]
+    problems += [
+        f"{path}: OWNED_BANS entry has no TID251 ignore; remove the stale entry"
+        for path in owned.keys() - lifted
+    ]
     for path in sorted(lifted & owned.keys()):
         extra = banned_uses((root / path).read_text(), banned) - owned[path]
         if extra:
-            problems.append(f"{path}: uses {sorted(extra)}, but owns only {sorted(owned[path])}")
+            problems.append(
+                f"{path}: uses {sorted(extra)}, but owns only {sorted(owned[path])}; "
+                "move the call to its owner file"
+            )
     for path in candidate_python_files():
         for number, line in enumerate(path.read_text(errors="replace").splitlines(), start=1):
             if path.name != Path(__file__).name and silences_a_ban(line):
                 problems.append(
-                    f"{path.relative_to(root)}:{number} silences a module ban with noqa"
+                    f"{path.relative_to(root)}:{number} silences a module ban with noqa; "
+                    "move the call to its owner file"
                 )
     return problems
 
 
 def test_ban_owners_use_only_the_modules_they_own() -> None:
-    assert ban_problems(ROOT, OWNED_BANS) == []
+    problems = ban_problems(ROOT, OWNED_BANS)
+    assert not problems, (
+        "Banned modules must stay in their OWNED_BANS owner files:\n  " + "\n  ".join(problems)
+    )
 
 
 def test_banned_uses_finds_imports_and_attribute_calls() -> None:
@@ -152,3 +166,61 @@ def test_banned_uses_finds_imports_and_attribute_calls() -> None:
     for line in ("import modal  # noqa", "# ruff: noqa: TID251", "import x  # noqa: F401, ALL"):
         assert silences_a_ban(line), line
     assert not silences_a_ban("x = 1  # noqa: E501")
+
+
+SKIP_CALLS = {"pytest.skip", "unittest.skip"}
+SKIP_MARKS = {"pytest.mark.skip", "pytest.mark.xfail"}
+
+
+def has_reason(call: ast.Call, name: str) -> bool:
+    keyword_reason = next((kw.value for kw in call.keywords if kw.arg == "reason"), None)
+    reason = keyword_reason if name in SKIP_MARKS or not call.args else call.args[0]
+    return (
+        isinstance(reason, ast.Constant)
+        and isinstance(reason.value, str)
+        and bool(reason.value.strip())
+    )
+
+
+def skips_without_reason(source: str) -> list[int]:
+    tree = ast.parse(source)
+    called = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    skip_names = SKIP_CALLS | SKIP_MARKS
+    missing: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            name = _dotted(node.func)
+            if name in skip_names and not has_reason(node, name):
+                missing.append(node.lineno)
+        elif (
+            isinstance(node, ast.Attribute | ast.Name)
+            and id(node) not in called
+            and _dotted(node) in skip_names
+        ):
+            missing.append(node.lineno)
+    return sorted(missing)
+
+
+def test_every_skip_names_a_reason() -> None:
+    missing = [
+        f"{path.relative_to(ROOT)}:{line}"
+        for path in candidate_python_files()
+        for line in skips_without_reason(path.read_text(errors="replace"))
+    ]
+    assert not missing, (
+        "a skip or xfail needs a non-empty reason string (positional for pytest.skip and "
+        "unittest.skip, reason= for the pytest marks): " + ", ".join(missing)
+    )
+
+
+def test_the_skip_scan_finds_bare_skips_and_spares_reasoned_ones() -> None:
+    bare = (
+        "import pytest\n@pytest.mark.skip\ndef test_a() -> None: ...\n"
+        "@pytest.mark.xfail()\ndef test_b() -> None: ...\npytest.skip()\n"
+    )
+    reasoned = (
+        'import pytest\n@pytest.mark.skip(reason="needs a GPU")\ndef test_c() -> None: ...\n'
+        'pytest.skip("needs modal")\n'
+    )
+    assert skips_without_reason(bare) == [2, 4, 6]
+    assert skips_without_reason(reasoned) == []
