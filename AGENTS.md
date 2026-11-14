@@ -43,7 +43,7 @@ Prove changes with `make verify` (`verify-esme-posttrain` skill at `.agents/skil
 | Nothing under `docs/internal/` is committed | `tests/test_enforced_rules.py::test_docs_internal_is_never_tracked` | 2026-11-06 |
 | The verify drives must observe FAIL against a wrong expectation | `.agents/skills/verify-esme-posttrain/verify::control`, `make verify` | 2026-11-06 |
 | No file downgrades strict type checking with a `# pyright:` mode comment | `tests/test_strict_mode.py::test_no_file_downgrades_type_checking_mode` | 2026-11-07 |
-| Every lint or type suppression names its rule: no bare `# ruff: noqa`, no rule-less `# pyright: ignore` | `pyproject.toml::reportIgnoreCommentWithoutRule`, `pyproject.toml::select`, `make check` | 2026-11-07 |
+| Every lint or type suppression names its rule: no bare `# ruff: noqa`, no rule-less or reason-less `# pyright: ignore` | `pyproject.toml::reportIgnoreCommentWithoutRule`, `tests/test_strict_mode.py::test_every_pyright_ignore_gives_a_reason`, `pyproject.toml::select`, `make check` | 2026-11-07 |
 
 ## Where Things Live
 

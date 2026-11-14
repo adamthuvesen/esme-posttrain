@@ -739,7 +739,7 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
         margin_increased=True,
         chosen_logp_collapsed=False,
     )
-    _assert_accepted_dpo_result(accepted)  # pyright: ignore[reportArgumentType]
+    _assert_accepted_dpo_result(accepted)  # pyright: ignore[reportArgumentType]  # a namespace stands in for the result type
 
     lower_accuracy = SimpleNamespace(
         base_eval=SimpleNamespace(preference_accuracy=0.6),
@@ -748,7 +748,7 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
         chosen_logp_collapsed=False,
     )
     with pytest.raises(DPOFullRunError, match="preference accuracy"):
-        _assert_accepted_dpo_result(lower_accuracy)  # pyright: ignore[reportArgumentType]
+        _assert_accepted_dpo_result(lower_accuracy)  # pyright: ignore[reportArgumentType]  # a namespace stands in for the result type
 
     collapsed = SimpleNamespace(
         base_eval=SimpleNamespace(preference_accuracy=0.5),
@@ -757,7 +757,7 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
         chosen_logp_collapsed=True,
     )
     with pytest.raises(DPOFullRunError, match="log-prob collapsed"):
-        _assert_accepted_dpo_result(collapsed)  # pyright: ignore[reportArgumentType]
+        _assert_accepted_dpo_result(collapsed)  # pyright: ignore[reportArgumentType]  # a namespace stands in for the result type
 
 
 def test_dpo_full_prompt_masking_check_raises_on_leaked_prompt() -> None:

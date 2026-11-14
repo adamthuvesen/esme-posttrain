@@ -46,6 +46,21 @@ def test_no_file_downgrades_type_checking_mode() -> None:
     )
 
 
+REASONLESS_IGNORE = re.compile(r"#\s*pyright:\s*ignore\[[^\]]*\]\s*$")
+
+
+def test_every_pyright_ignore_gives_a_reason() -> None:
+    bare = [
+        f"{path.relative_to(ROOT)}:{number}"
+        for path in candidate_python_files()
+        for number, line in enumerate(path.read_text(errors="replace").splitlines(), start=1)
+        if REASONLESS_IGNORE.search(line)
+    ]
+    assert not bare, "end each ignore with `  # <reason>`: " + ", ".join(bare)
+    assert REASONLESS_IGNORE.search("x = 1  # pyright: ignore[reportAny]")
+    assert not REASONLESS_IGNORE.search("x = 1  # pyright: ignore[reportAny]  # untyped JSON")
+
+
 def test_the_pattern_finds_each_downgrade_and_spares_rule_ignores() -> None:
     for line in ("# pyright: basic", "#pyright: strict=false", "# pyright: reportX=false, off"):
         assert DOWNGRADE.match(line), line
@@ -93,6 +108,18 @@ def banned_uses(source: str, banned: set[str]) -> set[str]:
     return {ban for ban in banned for name in names if name == ban or name.startswith(ban + ".")}
 
 
+NOQA = re.compile(r"#\s*(?:ruff:\s*)?noqa\b(?::\s*([A-Za-z0-9, ]+))?", re.IGNORECASE)
+
+
+def silences_a_ban(line: str) -> bool:
+    """A bare `noqa`, `noqa: ALL`, or any TID code, in a line or file-wide comment."""
+    found = NOQA.search(line)
+    if not found:
+        return False
+    codes = (found.group(1) or "").upper().replace(",", " ").split()
+    return not codes or any(code == "ALL" or code.startswith("TID") for code in codes)
+
+
 def ban_problems(root: Path, owned: dict[str, set[str]]) -> list[str]:
     lint = tomllib.loads((root / "pyproject.toml").read_text())["tool"]["ruff"]["lint"]
     banned = set(lint["flake8-tidy-imports"]["banned-api"])
@@ -105,10 +132,7 @@ def ban_problems(root: Path, owned: dict[str, set[str]]) -> list[str]:
             problems.append(f"{path}: uses {sorted(extra)}, but owns only {sorted(owned[path])}")
     for path in candidate_python_files():
         for number, line in enumerate(path.read_text(errors="replace").splitlines(), start=1):
-            if (
-                re.search(r"#\s*noqa:[^#]*TID", line, re.IGNORECASE)
-                and path.name != Path(__file__).name
-            ):
+            if path.name != Path(__file__).name and silences_a_ban(line):
                 problems.append(
                     f"{path.relative_to(root)}:{number} silences a module ban with noqa"
                 )
@@ -125,3 +149,6 @@ def test_banned_uses_finds_imports_and_attribute_calls() -> None:
     assert banned_uses("import os\nos.system('x')\n", banned) == {"os.system"}
     assert banned_uses("from urllib import request\n", banned) == {"urllib.request"}
     assert banned_uses("import json\n", banned) == set()
+    for line in ("import modal  # noqa", "# ruff: noqa: TID251", "import x  # noqa: F401, ALL"):
+        assert silences_a_ban(line), line
+    assert not silences_a_ban("x = 1  # noqa: E501")

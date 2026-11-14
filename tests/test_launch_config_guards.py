@@ -188,7 +188,7 @@ def test_launch_settings_preserve_serialized_config_and_isolate_mutation(
     with pytest.raises(ValidationError, match="frozen"):
         config.selected_gpu_profile.usd_per_hour = 999
     with pytest.raises(TypeError):
-        config.settings.runtime.gpu_profiles["A100"] = config.selected_gpu_profile  # pyright: ignore[reportIndexIssue]
+        config.settings.runtime.gpu_profiles["A100"] = config.selected_gpu_profile  # pyright: ignore[reportIndexIssue]  # the test writes to a read-only mapping on purpose
     assert isinstance(config.settings.artifacts.required_files, tuple)
 
 

@@ -51,8 +51,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import plotly.graph_objects as go  # pyright: ignore[reportMissingImports]
-from plotly.subplots import make_subplots  # pyright: ignore[reportMissingImports]
+import plotly.graph_objects as go  # pyright: ignore[reportMissingImports]  # a PEP 723 script dependency, not in the dev env
+from plotly.subplots import make_subplots  # pyright: ignore[reportMissingImports]  # a PEP 723 script dependency, not in the dev env
 
 # Style contract: match esme-pretrain/scripts/plot_run_telemetry.py (which in
 # turn matches grpo-decomp/results/fig-gsm8k-decomposition.svg).

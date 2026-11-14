@@ -50,7 +50,7 @@ def _trainer_config(**overrides: object) -> CountdownGRPOTrainerConfig:
         "stratified_difficulty_sampling": True,
     }
     payload.update(overrides)
-    return CountdownGRPOTrainerConfig(**payload)  # pyright: ignore[reportArgumentType]
+    return CountdownGRPOTrainerConfig(**payload)  # pyright: ignore[reportArgumentType]  # overrides is an untyped dict
 
 
 def _rollout(

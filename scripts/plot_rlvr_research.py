@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import plotly.graph_objects as go  # pyright: ignore[reportMissingImports]
+import plotly.graph_objects as go  # pyright: ignore[reportMissingImports]  # a PEP 723 script dependency, not in the dev env
 from plot_run_telemetry import (
     BLUE,
     CARD_HEIGHT,

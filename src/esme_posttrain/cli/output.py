@@ -10,7 +10,7 @@ from typing import NoReturn, Protocol
 from esme_posttrain.launch.errors import LaunchError
 
 # argparse exposes no public name for the object that add_subparsers() returns.
-type Subparsers = argparse._SubParsersAction[argparse.ArgumentParser]  # pyright: ignore[reportPrivateUsage]
+type Subparsers = argparse._SubParsersAction[argparse.ArgumentParser]  # pyright: ignore[reportPrivateUsage]  # argparse has no public name for the subparsers action
 Payload = dict[str, object]
 PayloadFormatter = Callable[[Payload], str]
 
