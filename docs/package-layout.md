@@ -13,7 +13,7 @@ This repo keeps stage-specific implementation code out of the package root. When
 | RL export provenance or checkpoint conversion | `rl/bundle.py` and `rl/checkpoint_bundle.py` | `tests/test_rlvr_decomp.py` |
 | Training objective | The stage trainer | The stage's trainer tests |
 | Stage handoff | `acceptance/full_path_smoke.py` | `tests/test_full_path_smoke.py` |
-| Shared tiny model or chat tokenizer | `sft/fixtures.py` | SFT and DPO fixture tests |
+| Shared tiny model or chat tokenizer | `chat/fixtures.py` | SFT and DPO fixture tests |
 | CLI command | Its group in `cli/` | The matching CLI or stage tests |
 
 Run test files with `uv run --locked pytest <path>`. Run `make check` before committing.
@@ -50,6 +50,8 @@ Do not add root compatibility aliases.
 - `src/esme_posttrain/evals/`: typed records for the evaluation contract: task rows, per-sample scores, per-task results, resume lines, and aggregate summaries. Serialized shapes are pinned by the golden fixtures under `fixtures/outputs/`.
 - `src/esme_posttrain/studies/`: strict study specifications and generated
   artifact-backed JSON/Markdown reports.
+- `src/esme_posttrain/chat/`: chat rows and their tokenization, sampling, and the tiny CPU model and
+  chat tokenizer fixtures shared by SFT and DPO.
 - `src/esme_posttrain/launch/`: shared frozen config models, spend/blocker helpers,
   command construction, and launch utilities.
 - `src/esme_posttrain/acceptance/`: the full-path CPU smoke that coordinates stage handoffs.
@@ -67,7 +69,8 @@ the shared writer. It serves both training and checkpoint conversion.
 `make architecture` enforces the dependency graph declared in `pyproject.toml`.
 It reports the offending import chain and a repair direction.
 Shared code cannot depend on stages. Stages cannot depend on CLI or acceptance code.
-DPO can reuse `sft.data`, `sft.data_types`, `sft.sampling`, and `sft.fixtures`, but cannot reach the SFT trainer.
+Stages cannot import each other. SFT and DPO share chat code through `chat/`, which sits below the stages.
+A stage's `config.py` cannot import its launch module.
 New modules inside these packages inherit their boundaries.
 For a new top-level package, declare its position in the graph before running the check.
 

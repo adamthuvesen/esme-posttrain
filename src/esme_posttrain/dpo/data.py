@@ -21,8 +21,8 @@ from typing import Any
 
 from tokenizers import Tokenizer
 
-from esme_posttrain.sft.data import clean_text, iter_rows
-from esme_posttrain.sft.data_types import ChatTurn, DataError, DatasetSource
+from esme_posttrain.chat.data import clean_text, iter_rows
+from esme_posttrain.chat.data_types import ChatTurn, DataError, DatasetSource
 from esme_posttrain.training.collate import IGNORE_INDEX
 
 # UltraFeedback-binarized has a handful of rows with an empty/whitespace chosen or

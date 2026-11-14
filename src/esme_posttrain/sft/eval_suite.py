@@ -5,8 +5,8 @@ from typing import Any
 
 import torch
 
+from esme_posttrain.chat.data_types import TokenizedExample
 from esme_posttrain.modeling import DenseBackbone, language_model_loss, perplexity
-from esme_posttrain.sft.data_types import TokenizedExample
 from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch
 from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import eval_suite_metric_payload
@@ -227,3 +227,16 @@ def no_robots_catastrophic_regression(
     if baseline is None or current is None:
         return False
     return current >= baseline * multiplier
+
+
+def sample_prompt_examples(eval_splits: tuple[EvalSplit, ...]) -> tuple[TokenizedExample, ...]:
+    examples: list[TokenizedExample] = []
+    for split in eval_splits:
+        if split.selector_weight <= 0:
+            continue
+        examples.extend(split.examples[: max(0, 3 - len(examples))])
+        if len(examples) >= 3:
+            break
+    if not examples:
+        examples.extend(eval_splits[0].examples[:3])
+    return tuple(examples)

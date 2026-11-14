@@ -44,6 +44,7 @@ from esme_posttrain.rl.countdown_lite import (
     extract_candidate_expression,
     render_chat_prompt,
 )
+from esme_posttrain.rl.countdown_lite_baseline import truncate_at_eos
 
 PROVENANCE_FILE = "provenance.json"
 COMPLETIONS_FILE = "completions.jsonl"
@@ -177,21 +178,11 @@ def _generate_samples(
         )
     samples: list[str] = []
     for generated_row in generated.detach().cpu().tolist():
-        completion_ids = _truncate_at_eos(generated_row[len(prompt_ids) :], eos_token_id)
+        completion_ids = truncate_at_eos(generated_row[len(prompt_ids) :], eos_token_id)
         output = tokenizer.decode(completion_ids, skip_special_tokens=False)
         expression = extract_candidate_expression(output)
         samples.append(f"\\boxed{{{expression if expression is not None else ''}}}")
     return samples
-
-
-def _truncate_at_eos(token_ids: list[int], eos_token_id: int | None) -> list[int]:
-    if eos_token_id is None:
-        return token_ids
-    try:
-        eos_index = token_ids.index(eos_token_id)
-    except ValueError:
-        return token_ids
-    return token_ids[:eos_index]
 
 
 def _load_heldout_problems(manifest_path: Path, set_name: str) -> list[dict[str, str]]:

@@ -5,25 +5,6 @@ import math
 from pathlib import Path
 from typing import Any
 
-TRAIN_METRIC_NAMES = {
-    "train/loss",
-    "train/learning_rate",
-    "train/grad_norm",
-    "train/tokens",
-    "train/supervised_tokens",
-    "train/token_accuracy",
-}
-EVAL_METRIC_NAMES = {
-    "eval/response_loss",
-    "eval/perplexity",
-    "eval/supervised_tokens",
-    "eval/examples",
-    "eval/matched/response_loss",
-    "eval/smol-smoltalk/response_loss",
-    "eval/tulu-3-personas/response_loss",
-    "eval/no_robots/response_loss",
-}
-
 
 def train_metric_payload(
     *,

@@ -78,33 +78,32 @@ layers = [
     "cli",
     "acceptance : studies",
     "sft | dpo | rl",
+    "chat",
     "export",
     "training : launch : run_artifacts : evals : bundle : modeling",
-]
-# DPO shares the SFT chat format, sampling, and CPU fixture builders.
-ignore_imports = [
-    "esme_posttrain.dpo.** -> esme_posttrain.sft.data",
-    "esme_posttrain.dpo.** -> esme_posttrain.sft.data_types",
-    "esme_posttrain.dpo.** -> esme_posttrain.sft.sampling",
-    "esme_posttrain.dpo.** -> esme_posttrain.sft.fixtures",
 ]
 broken_contract_guidance = """
 Import shared behavior from its owner in training/, launch/, bundle.py, or modeling.py.
 For example, import WandbConfig from esme_posttrain.training.wandb_init, not a stage trainer.
 Keep cross-stage coordination in acceptance/ or cli/.
-DPO may reuse sft.data, sft.data_types, sft.sampling, and sft.fixtures.
+SFT and DPO share chat rows, sampling, and CPU fixtures through chat/.
 Place a new top-level module in these layers. See docs/package-layout.md for ownership.
 """
 
 [[tool.importlinter.contracts]]
-id = "dpo-without-sft-trainer"
-name = "DPO reuses SFT chat code without depending on the SFT trainer"
+id = "stage-config-without-launch"
+name = "Each stage config stays below its launch module"
 type = "forbidden"
-source_modules = ["esme_posttrain.dpo"]
-forbidden_modules = ["esme_posttrain.sft.trainer"]
+source_modules = ["esme_posttrain.sft.config", "esme_posttrain.dpo.config", "esme_posttrain.rl.config"]
+forbidden_modules = [
+    "esme_posttrain.sft.launch_multiturn",
+    "esme_posttrain.sft.launch_shared",
+    "esme_posttrain.dpo.launch",
+    "esme_posttrain.rl.launch",
+]
 broken_contract_guidance = """
-Use training.wandb_init.WandbConfig for monitoring and sft.fixtures for tiny models and tokenizers.
-Keep SFT trainer imports out of shared chat and fixture code too. This check follows indirect imports.
+A stage's config.py owns typed settings and recipe checks. Its launch module reads the config,
+checks files on disk, and builds launch plans. Move the shared value into config.py instead.
 """
 
 [tool.ruff]
@@ -157,8 +156,8 @@ ignore = ["E501"]
 "httpx".msg = "No network clients in this repo."
 "modal".msg = "Modal spends: import it only in an approval-gated scripts/modal_*.py launcher."
 "wandb".msg = "W&B is imported only by training/wandb_init.py."
-"datasets".msg = "Remote dataset reads go through sft/data.py behind the download flag."
-"huggingface_hub".msg = "Remote downloads go through sft/data.py behind the download flag."
+"datasets".msg = "Remote dataset reads go through chat/data.py behind the download flag."
+"huggingface_hub".msg = "Remote downloads go through chat/data.py behind the download flag."
 "openai".msg = "No paid LLM APIs in this repo."
 "anthropic".msg = "No paid LLM APIs in this repo."
 

@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.chat.data import sequence_efficiency_report
+from esme_posttrain.chat.data_types import TokenizedExample
 from esme_posttrain.run_artifacts import (
     RuntimeSpendTracker,
     refresh_manifest_files,
@@ -23,8 +25,6 @@ from esme_posttrain.run_artifacts import (
     write_selected_row_manifest,
 )
 from esme_posttrain.sft.config import EXPECTED_ARTIFACTS
-from esme_posttrain.sft.data import sequence_efficiency_report
-from esme_posttrain.sft.data_types import TokenizedExample
 from esme_posttrain.sft.eval_suite import EvalSplit
 from esme_posttrain.sft.full_shared import (
     SFTFullRunError,

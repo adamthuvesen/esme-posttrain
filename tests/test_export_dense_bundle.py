@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from esme_posttrain.bundle import BUNDLE_FORMAT, canonical_model_config, validate_base_bundle
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.export.dense_bundle import (
     CHAT_TEMPLATE_ID,
     ExportError,
@@ -14,7 +15,6 @@ from esme_posttrain.export.dense_bundle import (
     export_dense_bundle,
 )
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import save_training_checkpoint
 
 

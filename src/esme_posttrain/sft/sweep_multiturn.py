@@ -18,6 +18,7 @@ from typing import Any
 import torch
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.chat.data import sequence_efficiency_report
 from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
@@ -30,7 +31,6 @@ from esme_posttrain.run_artifacts import (
     write_json,
     write_selected_row_manifest,
 )
-from esme_posttrain.sft.data import sequence_efficiency_report
 from esme_posttrain.sft.eval_suite import EvalSplit
 from esme_posttrain.sft.launch_multiturn import MultiTurnLaunchConfig
 from esme_posttrain.sft.multiturn_data import (

@@ -462,7 +462,7 @@ def _decode_batch(
     )
     samples: list[CountdownSampleScore] = []
     for generated_row in generated.detach().cpu().tolist():
-        generated_ids = _truncate_at_eos(generated_row[prompt_tokens:], eos_token_id)
+        generated_ids = truncate_at_eos(generated_row[prompt_tokens:], eos_token_id)
         output = tokenizer.decode(generated_ids, skip_special_tokens=False)
         verification = verify_countdown_lite_expression(
             output,
@@ -483,7 +483,7 @@ def _decode_batch(
     return samples
 
 
-def _truncate_at_eos(token_ids: list[int], eos_token_id: int | None) -> list[int]:
+def truncate_at_eos(token_ids: list[int], eos_token_id: int | None) -> list[int]:
     if eos_token_id is None:
         return token_ids
     try:

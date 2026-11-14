@@ -10,8 +10,14 @@ import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import file_sha256
+from esme_posttrain.chat.data_types import TokenizedExample
+from esme_posttrain.chat.sampling import (
+    generate_samples as _generate_samples,
+)
+from esme_posttrain.chat.sampling import (
+    markdown_fenced_text as _markdown_fenced_text,
+)
 from esme_posttrain.modeling import BackboneConfig, DenseBackbone, language_model_loss
-from esme_posttrain.sft.data_types import TokenizedExample
 from esme_posttrain.sft.eval_suite import (
     EvalMetrics,
     EvalSplit,
@@ -26,16 +32,10 @@ from esme_posttrain.sft.eval_suite import (
     normalize_eval_splits as _normalize_eval_splits,
 )
 from esme_posttrain.sft.eval_suite import (
-    split_response_loss as _split_response_loss,
-)
-from esme_posttrain.sft.sampling import (
-    generate_samples as _generate_samples,
-)
-from esme_posttrain.sft.sampling import (
-    markdown_fenced_text as _markdown_fenced_text,
-)
-from esme_posttrain.sft.sampling import (
     sample_prompt_examples as _sample_prompt_examples,
+)
+from esme_posttrain.sft.eval_suite import (
+    split_response_loss as _split_response_loss,
 )
 from esme_posttrain.training.checkpointing import (
     LoadedTrainingCheckpoint,
@@ -212,14 +212,6 @@ class SFTTrainResult:
             "resumed_from_checkpoint": self.resumed_from_checkpoint,
             "wandb_run_url": self.wandb_run_url,
         }
-
-
-@dataclass(frozen=True)
-class LoadedSFTCheckpoint:
-    model: DenseBackbone
-    config: BackboneConfig
-    step: int
-    metrics: dict[str, Any]
 
 
 def run_sft_training(
@@ -742,21 +734,6 @@ def _best_checkpoint_metadata(
             "supervised_tokens": supervised_tokens,
         },
     }
-
-
-def load_sft_checkpoint(
-    path: Path, *, map_location: str | torch.device = "cpu"
-) -> LoadedSFTCheckpoint:
-    try:
-        loaded = load_training_checkpoint(path, map_location=map_location)
-    except ValueError as error:
-        raise TrainerError(str(error)) from error
-    return LoadedSFTCheckpoint(
-        model=loaded.model,
-        config=loaded.config,
-        step=loaded.step,
-        metrics=loaded.metrics,
-    )
 
 
 @dataclass(frozen=True)

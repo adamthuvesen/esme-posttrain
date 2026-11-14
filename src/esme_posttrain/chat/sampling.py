@@ -5,9 +5,8 @@ import re
 import torch
 from tokenizers import Tokenizer
 
+from esme_posttrain.chat.data_types import TokenizedExample
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data_types import TokenizedExample
-from esme_posttrain.sft.eval_suite import EvalSplit
 
 
 def markdown_fenced_text(text: str) -> list[str]:
@@ -66,16 +65,3 @@ def truncate_after_prompt_eos(
     except ValueError:
         return generated_ids
     return generated_ids[:eos_index]
-
-
-def sample_prompt_examples(eval_splits: tuple[EvalSplit, ...]) -> tuple[TokenizedExample, ...]:
-    examples: list[TokenizedExample] = []
-    for split in eval_splits:
-        if split.selector_weight <= 0:
-            continue
-        examples.extend(split.examples[: max(0, 3 - len(examples))])
-        if len(examples) >= 3:
-            break
-    if not examples:
-        examples.extend(eval_splits[0].examples[:3])
-    return tuple(examples)

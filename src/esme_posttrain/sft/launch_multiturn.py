@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from esme_posttrain.chat.data_types import DatasetSource
 from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
@@ -37,7 +38,6 @@ from esme_posttrain.sft.config import (
     MultiTurnSettings,
     SFTBudgets,
 )
-from esme_posttrain.sft.data_types import DatasetSource
 from esme_posttrain.sft.launch_shared import matched_interval_eval_sweep_blockers
 
 LEARNING_GATE_BLOCKER = (

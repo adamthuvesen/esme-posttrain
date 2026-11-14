@@ -9,7 +9,7 @@ from typing import Any
 
 from tokenizers import Tokenizer
 
-from esme_posttrain.sft.data_types import (
+from esme_posttrain.chat.data_types import (
     DataError,
     DatasetSource,
     MultiTurnExample,

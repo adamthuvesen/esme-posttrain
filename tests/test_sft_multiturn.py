@@ -10,14 +10,14 @@ import torch
 from scripts import modal_chat_sft
 
 from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_bundle
+from esme_posttrain.chat.data import iter_rows, measure_multi_turn_lengths, tokenize_multi_turn
+from esme_posttrain.chat.data_types import ChatTurn, DataError, DatasetSource, MultiTurnExample
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.cli import main
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.sft.config import EXPECTED_ARTIFACTS as MULTITURN_EXPECTED_ARTIFACTS
 from esme_posttrain.sft.config import MULTITURN_FULL_RUN_SPEND_CAP_USD
-from esme_posttrain.sft.data import iter_rows, measure_multi_turn_lengths, tokenize_multi_turn
-from esme_posttrain.sft.data_types import ChatTurn, DataError, DatasetSource, MultiTurnExample
-from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.sft.full_multiturn import run_full_multi_turn_sft
 from esme_posttrain.sft.full_shared import SFTFullRunError
 from esme_posttrain.sft.launch_multiturn import (
@@ -46,7 +46,7 @@ from esme_posttrain.sft.sweep_multiturn import (
     build_multi_turn_sweep_preflight,
     multi_turn_sweep_blockers,
 )
-from esme_posttrain.sft.trainer import load_sft_checkpoint
+from esme_posttrain.training.checkpointing import load_training_checkpoint
 from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -562,7 +562,7 @@ def test_cpu_fixture_checkpoint_reload_reproduces_logits(tmp_path: Path) -> None
     out = tmp_path / "fixture"
     run_multi_turn_cpu_fixture(config, output_dir=out)
 
-    checkpoint = load_sft_checkpoint(out / "best-checkpoint.pt")
+    checkpoint = load_training_checkpoint(out / "best-checkpoint.pt")
     tokenizer = tiny_chat_tokenizer()
     example = tokenize_multi_turn(
         tokenizer,

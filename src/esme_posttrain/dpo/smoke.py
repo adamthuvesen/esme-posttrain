@@ -20,6 +20,8 @@ from typing import Any
 import torch
 from tokenizers import Tokenizer
 
+from esme_posttrain.chat.data_types import ChatTurn
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.dpo.config import EXPECTED_ARTIFACTS
 from esme_posttrain.dpo.data import PreferencePair, tokenize_preference_pair
 from esme_posttrain.dpo.decoding_precheck import run_decoding_precheck
@@ -36,8 +38,6 @@ from esme_posttrain.run_artifacts import (
     write_json,
     write_selected_row_manifest,
 )
-from esme_posttrain.sft.data_types import ChatTurn
-from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import (
     latest_checkpoint_path,
     load_training_checkpoint,

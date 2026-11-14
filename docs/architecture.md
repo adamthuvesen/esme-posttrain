@@ -149,9 +149,9 @@ flowchart TB
     Export --> shared
 ```
 
-The deliberate cross-stage imports let `dpo/` reuse the SFT chat template,
-sampling, and tiny fixture builders. This keeps the chat format consistent with SFT.
-The fixture builders live in `sft/fixtures.py` and do not import the SFT trainer.
+`sft/` and `dpo/` share the chat template, sampling, and tiny fixture builders
+through `chat/`, below both stages. This keeps the DPO chat format consistent with SFT,
+and no stage imports another.
 `rl/` writes its eval outputs through the typed
 records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 
@@ -160,7 +160,7 @@ records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 | Module | Owns | Does not own |
 | --- | --- | --- |
 | [`sft/`](../src/esme_posttrain/sft/) | conversation data with all-assistant masking, SFT trainer, launch validation, eval suite, sampling | preference pairs, rewards |
-| [`dpo/`](../src/esme_posttrain/dpo/) | preference pairs, vanilla DPO trainer with frozen SFT reference, decoding precheck, chat eval, launch validation | the chat template (rendered by `sft/data`) |
+| [`dpo/`](../src/esme_posttrain/dpo/) | preference pairs, vanilla DPO trainer with frozen SFT reference, decoding precheck, chat eval, launch validation | the chat template (rendered by `chat/data`) |
 | [`rl/`](../src/esme_posttrain/rl/) | Countdown-Lite task generation and verification, GRPO trainer, baselines, held-out transfer, reports, launch validation | a task registry or plugin framework |
 | [`evals/`](../src/esme_posttrain/evals/) | typed records for the eval contract, shapes pinned by golden fixtures | scoring logic |
 | [`training/`](../src/esme_posttrain/training/) | collate, metrics, checkpointing, seeding/precision, W&B init | stage objectives |

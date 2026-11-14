@@ -11,13 +11,8 @@ from dataclasses import dataclass
 
 from tokenizers import Tokenizer
 
-from esme_posttrain.sft.adapters import (
-    AdapterError,
-    MultiTurnAdapterExample,
-    iter_multi_turn_examples,
-)
-from esme_posttrain.sft.data import iter_rows, measure_multi_turn_lengths, tokenize_multi_turn
-from esme_posttrain.sft.data_types import (
+from esme_posttrain.chat.data import iter_rows, measure_multi_turn_lengths, tokenize_multi_turn
+from esme_posttrain.chat.data_types import (
     ChatTurn,
     DataError,
     DatasetBuildResult,
@@ -25,6 +20,11 @@ from esme_posttrain.sft.data_types import (
     MultiTurnExample,
     SourceSurvivorCounts,
     TokenizedExample,
+)
+from esme_posttrain.sft.adapters import (
+    AdapterError,
+    MultiTurnAdapterExample,
+    iter_multi_turn_examples,
 )
 
 

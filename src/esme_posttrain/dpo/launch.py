@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from pydantic import TypeAdapter, ValidationError
 
+from esme_posttrain.chat.data_types import DatasetSource
 from esme_posttrain.dpo.config import (
     EXPECTED_SWEEP_BETAS,
     DPOBudgets,
@@ -41,7 +42,6 @@ from esme_posttrain.launch.config_models import (
     ModalRuntime,
     parse_config,
 )
-from esme_posttrain.sft.data_types import DatasetSource
 
 LEARNING_GATE_BLOCKER = (
     "full Esme-214M-Chat DPO launch requires learning_gate.evidence with "

@@ -30,7 +30,8 @@ Prove changes with `make verify` (`verify-esme-posttrain` skill at `.agents/skil
 | Rule | Enforced by |
 | --- | --- |
 | Stage boundaries and shared-code dependency direction | `pyproject.toml::dependency-direction`, `make architecture` |
-| DPO must not import the SFT trainer, even indirectly | `pyproject.toml::dpo-without-sft-trainer`, `make architecture` |
+| Stages never import each other; SFT and DPO share chat code through `chat/` | `pyproject.toml::dependency-direction`, `make architecture` |
+| Each stage's `config.py` never imports its launch module | `pyproject.toml::stage-config-without-launch`, `make architecture` |
 | A parsed stage config is a valid recipe: run id, volume, data, caps | `src/esme_posttrain/sft/config.py::_check_recipe`, `src/esme_posttrain/dpo/config.py::_check_recipe`, `src/esme_posttrain/rl/config.py::_check_recipe`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_recipe_drift` |
 | Smoke spend cap ($2), per-stage full-run cap, and Modal timeout bound | `src/esme_posttrain/launch/config_models.py::check_stage_runtime`, `tests/test_launch_cap_enforcement.py::test_settings_model_rejects_over_cap_runtime_without_launch_module` |
 | Process, network, Modal, W&B, and dataset modules are imported only in their owner files, and no `noqa` silences a ban | `pyproject.toml::"subprocess".msg`, `pyproject.toml::"socket".msg`, `pyproject.toml::"modal".msg`, `tests/test_strict_mode.py::test_ban_owners_use_only_the_modules_they_own`, `make lint` |

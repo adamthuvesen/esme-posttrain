@@ -60,24 +60,6 @@ def steps_for_target_tokens(
     return max_steps
 
 
-def trained_tokens_for_steps(
-    examples: tuple[Any, ...],
-    *,
-    steps: int,
-    micro_batch_size: int,
-    gradient_accumulation_steps: int,
-) -> int:
-    return sum(
-        tokens_for_step(
-            examples,
-            step=step,
-            micro_batch_size=micro_batch_size,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-        )
-        for step in range(1, steps + 1)
-    )
-
-
 def tokens_for_step(
     examples: tuple[Any, ...],
     *,

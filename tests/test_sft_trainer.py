@@ -9,27 +9,44 @@ import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_bundle
+from esme_posttrain.chat.data import sequence_efficiency_report, tokenize_multi_turn
+from esme_posttrain.chat.data_types import ChatTurn, MultiTurnExample, TokenizedExample
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
+from esme_posttrain.chat.sampling import generate_samples, markdown_fenced_text
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data import sequence_efficiency_report, tokenize_multi_turn
-from esme_posttrain.sft.data_types import ChatTurn, MultiTurnExample, TokenizedExample
 from esme_posttrain.sft.eval_suite import (
     EvalMetrics,
     EvalSplit,
     EvalSuiteResult,
     no_robots_catastrophic_regression,
 )
-from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
-from esme_posttrain.sft.sampling import generate_samples, markdown_fenced_text
 from esme_posttrain.sft.trainer import (
     SFTTrainerConfig,
-    load_sft_checkpoint,
     run_sft_training,
 )
-from esme_posttrain.training.checkpointing import latest_checkpoint_path
+from esme_posttrain.training.checkpointing import latest_checkpoint_path, load_training_checkpoint
 from esme_posttrain.training.collate import collate_batch
 from esme_posttrain.training.errors import TrainerError
-from esme_posttrain.training.metrics import EVAL_METRIC_NAMES, TRAIN_METRIC_NAMES
 from esme_posttrain.training.runtime import resolve_torch_device
+
+TRAIN_METRIC_NAMES = {
+    "train/loss",
+    "train/learning_rate",
+    "train/grad_norm",
+    "train/tokens",
+    "train/supervised_tokens",
+    "train/token_accuracy",
+}
+EVAL_METRIC_NAMES = {
+    "eval/response_loss",
+    "eval/perplexity",
+    "eval/supervised_tokens",
+    "eval/examples",
+    "eval/matched/response_loss",
+    "eval/smol-smoltalk/response_loss",
+    "eval/tulu-3-personas/response_loss",
+    "eval/no_robots/response_loss",
+}
 
 WEIGHTS_FIELD = "key_format"
 
@@ -246,7 +263,7 @@ def test_cpu_fixture_sft_loss_decreases_and_checkpoint_reloads_logits(tmp_path: 
         ),
     )
     # The trainer leaves the model on the best checkpoint, which need not be the final step.
-    loaded = load_sft_checkpoint(result.best_checkpoint_path)
+    loaded = load_training_checkpoint(result.best_checkpoint_path)
     input_ids, _labels = collate_batch(eval_examples)
 
     assert result.instruct_eval.response_loss < result.base_eval.response_loss
@@ -472,7 +489,7 @@ def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) ->
     assert second.training_mode == "resumed"
     assert second.start_step == 5
     assert second.resumed_from_checkpoint is not None
-    assert load_sft_checkpoint(second.checkpoint_path).step == 8
+    assert load_training_checkpoint(second.checkpoint_path).step == 8
     assert second.selected_metric_value == 0.0
 
     # Resumed runs must not append the pre-resume base-model eval mislabeled as
@@ -530,7 +547,7 @@ def test_sft_failure_saves_latest_checkpoint_and_preserves_error(tmp_path: Path)
     assert failure_report["checkpoint_error"] is None
     assert checkpoint is not None
     assert failure_report["checkpoint_path"] == str(checkpoint)
-    assert load_sft_checkpoint(checkpoint).step == 3
+    assert load_training_checkpoint(checkpoint).step == 3
 
 
 def test_final_eval_regression_writes_failure_report(

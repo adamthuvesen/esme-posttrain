@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 import torch
 
+from esme_posttrain.chat.data_types import ChatTurn
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.cli import main
 from esme_posttrain.dpo.chat_eval import (
     CONVERSATIONAL_PROMPTS,
@@ -69,8 +71,6 @@ from esme_posttrain.dpo.trainer import (
 )
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data_types import ChatTurn
-from esme_posttrain.sft.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
 from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch
 
