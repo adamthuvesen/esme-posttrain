@@ -42,12 +42,14 @@ from esme_posttrain.training.checkpointing import (
     load_training_checkpoint,
     restore_rng_state,
     save_training_checkpoint,
+    write_tokenizer,
 )
 from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch, cyclic_batch
 from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import append_metric
 from esme_posttrain.training.runtime import (
-    lr_lambda_factory,
+    adamw_with_lr_schedule,
+    freeze_reference,
     precision_context,
     resolve_torch_device,
     set_reproducible_seed,
@@ -310,10 +312,7 @@ def run_dpo_training(
     device = resolve_torch_device(config.device)
     validate_precision(config.precision, device)
     policy.to(device)
-    reference.to(device)
-    reference.eval()
-    for param in reference.parameters():
-        param.requires_grad_(False)
+    freeze_reference(reference, device)
 
     base_eval = evaluate_preferences(
         policy,
@@ -324,17 +323,7 @@ def run_dpo_training(
         batch_size=config.micro_batch_size,
         pad_to_multiple_of=config.pad_to_multiple_of,
     )
-    optimizer = torch.optim.AdamW(
-        policy.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
-    )
-    scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer,
-        lr_lambda=lr_lambda_factory(
-            scheduler=config.scheduler,
-            warmup_steps=config.warmup_steps,
-            max_steps=config.max_steps,
-        ),
-    )
+    optimizer, scheduler = adamw_with_lr_schedule(policy, config)
 
     start_step = 0
     resumed_from_checkpoint: Path | None = None
@@ -504,7 +493,7 @@ def run_dpo_training(
     )
     loaded_best = load_training_checkpoint(best_checkpoint_path, map_location=device)
     policy.load_state_dict(loaded_best.model.state_dict())
-    _write_tokenizer(tokenizer, output_dir / "tokenizer.json")
+    write_tokenizer(tokenizer, output_dir / "tokenizer.json")
 
     chosen_logp_collapsed = is_chosen_logp_collapsed(
         base_eval.chosen_logp, selected_eval.chosen_logp
@@ -772,12 +761,6 @@ def _load_best_checkpoint_state(checkpoint_path: Path, metadata_path: Path) -> _
         raise DPOTrainerError(
             f"best checkpoint metadata is malformed and cannot seed resume state: {metadata_path}"
         ) from error
-
-
-def _write_tokenizer(tokenizer: Tokenizer, path: Path) -> None:
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tokenizer.save(str(tmp_path))
-    tmp_path.replace(path)
 
 
 def _write_manifest(

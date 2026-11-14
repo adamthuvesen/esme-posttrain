@@ -7,7 +7,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from esme_posttrain.launch.config_models import ModalRuntime
+from esme_posttrain.launch.config_models import GPUProfile, ModalRuntime
 from esme_posttrain.launch.errors import LaunchError
 
 LAUNCH_APPROVAL_FLAG = "--approved"
@@ -73,6 +73,14 @@ def estimate_cost_usd(
     return tokens / projected_tokens_per_second * usd_per_hour / 3600.0
 
 
+def projected_cost_usd(profile: GPUProfile, tokens: int) -> float:
+    return estimate_cost_usd(
+        tokens=tokens,
+        projected_tokens_per_second=float(profile.projected_tokens_per_second),
+        usd_per_hour=float(profile.usd_per_hour),
+    )
+
+
 def smoke_timeout_hours(runtime: ModalRuntime) -> float:
     """The longest Modal timeout, in hundredths of an hour, priced within the smoke cap."""
     usd_per_hour = float(runtime.gpu_profiles[runtime.selected_gpu].usd_per_hour)
@@ -84,13 +92,13 @@ def smoke_launch_blockers(
     runtime: ModalRuntime,
     estimated_smoke_cost_usd: float,
     modal_gpu: str | None,
-    modal_gpu_env_var: str,
+    env_prefix: str,
     timeout_hours: float | None,
-    timeout_env_var: str,
 ) -> list[str]:
     # ModalRuntime already rejects caps and timeouts out of bounds at parse time.
     # The projection and the GPU and timeout env vars, read at launch, can still block.
-    blockers = _modal_gpu_blockers(runtime, modal_gpu, modal_gpu_env_var, "smoke")
+    timeout_env_var = f"{env_prefix}_TIMEOUT_HOURS"
+    blockers = _modal_gpu_blockers(runtime, modal_gpu, env_prefix, "smoke")
     usd_per_hour = float(runtime.gpu_profiles[runtime.selected_gpu].usd_per_hour)
     if timeout_hours is not None and timeout_hours * usd_per_hour > float(
         runtime.smoke_max_cost_usd
@@ -106,13 +114,13 @@ def smoke_launch_blockers(
 
 
 def _modal_gpu_blockers(
-    runtime: ModalRuntime, modal_gpu: str | None, modal_gpu_env_var: str, run: str
+    runtime: ModalRuntime, modal_gpu: str | None, env_prefix: str, run: str
 ) -> list[str]:
     configured_modal_gpu = runtime.gpu_profiles[runtime.selected_gpu].modal_gpu
     if modal_gpu is None or modal_gpu == configured_modal_gpu:
         return []
     return [
-        f"{modal_gpu_env_var} must match runtime.gpu_profiles[runtime.selected_gpu].modal_gpu "
+        f"{env_prefix}_MODAL_GPU must match runtime.gpu_profiles[runtime.selected_gpu].modal_gpu "
         f"for {run} cost accounting"
     ]
 
@@ -124,14 +132,14 @@ def full_launch_blockers(
     approved: bool,
     modal_gpu: str | None,
     approval_message: str,
-    modal_gpu_env_var: str,
+    env_prefix: str,
 ) -> list[str]:
     # ModalRuntime already rejects caps out of bounds at parse time. Blockers cover
     # only launch-time state: approval, the GPU env var, and the cost projection.
     blockers: list[str] = []
     if not approved:
         blockers.append(approval_message)
-    blockers.extend(_modal_gpu_blockers(runtime, modal_gpu, modal_gpu_env_var, "full-run"))
+    blockers.extend(_modal_gpu_blockers(runtime, modal_gpu, env_prefix, "full-run"))
     if estimated_full_cost_usd > float(runtime.full_run_max_cost_usd):
         blockers.append("projected full-run cost exceeds runtime.full_run_max_cost_usd")
     return blockers
@@ -141,8 +149,7 @@ def build_modal_launch_command(
     *,
     config_path: Path,
     runtime: ModalRuntime,
-    gpu_env_var: str,
-    timeout_env_var: str,
+    env_prefix: str,
     script_path: str,
     mode_flag: str,
     timeout_hours: float | None = None,
@@ -151,11 +158,27 @@ def build_modal_launch_command(
     modal_gpu = runtime.gpu_profiles[selected].modal_gpu
     timeout_hours = runtime.timeout_hours if timeout_hours is None else timeout_hours
     return (
-        f"{gpu_env_var}='{modal_gpu}' {timeout_env_var}={timeout_hours} "
+        f"{env_prefix}_MODAL_GPU='{modal_gpu}' {env_prefix}_TIMEOUT_HOURS={timeout_hours} "
         f"uv run --with modal=={MODAL_CLIENT_VERSION} "
         f"modal run --detach {script_path} "
         f"--config {config_path.as_posix()}{mode_flag} {LAUNCH_APPROVAL_FLAG} --json"
     )
+
+
+def smoke_and_full_launch_commands(
+    config_path: Path, runtime: ModalRuntime, *, env_prefix: str, script_path: str
+) -> tuple[str, str]:
+    def command(mode_flag: str, timeout_hours: float | None = None) -> str:
+        return build_modal_launch_command(
+            config_path=config_path,
+            runtime=runtime,
+            env_prefix=env_prefix,
+            script_path=script_path,
+            mode_flag=mode_flag,
+            timeout_hours=timeout_hours,
+        )
+
+    return command(" --modal-smoke", smoke_timeout_hours(runtime)), command(" --full-run")
 
 
 def require_keys(payload: dict[str, Any], expected: set[str], label: str) -> None:

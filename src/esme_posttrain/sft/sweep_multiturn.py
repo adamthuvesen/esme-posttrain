@@ -21,7 +21,7 @@ from esme_posttrain.bundle import load_dense_backbone_bundle
 from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
-    estimate_cost_usd,
+    projected_cost_usd,
 )
 from esme_posttrain.run_artifacts import (
     RuntimeSpendTracker,
@@ -136,11 +136,7 @@ def build_multi_turn_sweep_preflight(
     projected_tokens = sum(
         arm.planned_token_upper_bound(max_sequence_tokens=max_sequence_tokens) for arm in SWEEP_ARMS
     )
-    projected_cost = estimate_cost_usd(
-        tokens=projected_tokens,
-        projected_tokens_per_second=selected_profile.projected_tokens_per_second,
-        usd_per_hour=selected_profile.usd_per_hour,
-    )
+    projected_cost = projected_cost_usd(selected_profile, projected_tokens)
     blockers = multi_turn_sweep_blockers(
         config,
         timeout_hours=timeout_hours,
@@ -238,11 +234,7 @@ def multi_turn_sweep_blockers(
     projected_tokens = sum(
         arm.planned_token_upper_bound(max_sequence_tokens=max_sequence_tokens) for arm in SWEEP_ARMS
     )
-    projected_cost = estimate_cost_usd(
-        tokens=projected_tokens,
-        projected_tokens_per_second=selected_profile.projected_tokens_per_second,
-        usd_per_hour=selected_profile.usd_per_hour,
-    )
+    projected_cost = projected_cost_usd(selected_profile, projected_tokens)
     if projected_cost > SWEEP_SPEND_CAP_USD:
         blockers.append("projected interval sweep cost exceeds the approved $8 sweep spend cap")
     if "-excellence" in str(DEFAULT_MODAL_SWEEP_ROOT):

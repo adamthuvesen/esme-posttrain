@@ -14,11 +14,10 @@ from typing import Any
 from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
-    build_modal_launch_command,
-    estimate_cost_usd,
     image_package_pins,
     load_json_object,
-    smoke_timeout_hours,
+    projected_cost_usd,
+    smoke_and_full_launch_commands,
 )
 from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
@@ -27,7 +26,6 @@ from esme_posttrain.launch.config_guards import (
     smoke_launch_blockers as _common_smoke_launch_blockers,
 )
 from esme_posttrain.launch.config_models import (
-    ModalRuntime,
     SmokeGPUProfile,
     SmokeModalRuntime,
     parse_config,
@@ -106,15 +104,10 @@ def validate_multi_turn_payload(
     train_steps = int(optimizer.max_steps)
     tokens_per_step = max(1, int(budgets.target_train_tokens) // train_steps)
     selected_profile = runtime.gpu_profiles[runtime.selected_gpu]
-    estimated_full_cost = estimate_cost_usd(
-        tokens=int(budgets.target_train_tokens),
-        projected_tokens_per_second=float(selected_profile.projected_tokens_per_second),
-        usd_per_hour=float(selected_profile.usd_per_hour),
-    )
-    estimated_smoke_cost = estimate_cost_usd(
-        tokens=int(budgets.smoke_train_tokens),
-        projected_tokens_per_second=float(selected_profile.projected_tokens_per_second),
-        usd_per_hour=float(selected_profile.usd_per_hour),
+    estimated_full_cost = projected_cost_usd(selected_profile, int(budgets.target_train_tokens))
+    estimated_smoke_cost = projected_cost_usd(selected_profile, int(budgets.smoke_train_tokens))
+    smoke_command, full_command = smoke_and_full_launch_commands(
+        config_path, runtime, env_prefix="SFT", script_path="scripts/modal_chat_sft.py"
     )
 
     return MultiTurnLaunchConfig(
@@ -128,8 +121,8 @@ def validate_multi_turn_payload(
         tokens_per_step=tokens_per_step,
         estimated_full_cost_usd=estimated_full_cost,
         estimated_smoke_cost_usd=estimated_smoke_cost,
-        smoke_launch_command=_launch_command(config_path, runtime, mode="modal-smoke"),
-        full_launch_command=_launch_command(config_path, runtime, mode="full-run"),
+        smoke_launch_command=smoke_command,
+        full_launch_command=full_command,
     )
 
 
@@ -209,9 +202,8 @@ def smoke_launch_blockers(
         runtime=config.runtime,
         estimated_smoke_cost_usd=config.estimated_smoke_cost_usd,
         modal_gpu=modal_gpu,
-        modal_gpu_env_var="SFT_MODAL_GPU",
+        env_prefix="SFT",
         timeout_hours=timeout_hours,
-        timeout_env_var="SFT_TIMEOUT_HOURS",
     )
 
 
@@ -225,7 +217,7 @@ def full_launch_blockers(
         approved=approved,
         modal_gpu=modal_gpu,
         approval_message="full multi-turn SFT launch requires --approved",
-        modal_gpu_env_var="SFT_MODAL_GPU",
+        env_prefix="SFT",
     )
     blockers.extend(_learning_gate_blockers(config.settings.learning_gate))
     return blockers
@@ -267,16 +259,3 @@ def _learning_gate_blockers(payload: LearningGate) -> list[str]:
     if not isinstance(sweep, Mapping):
         return ["learning_gate.evidence is missing bounded_matched_interval_eval_sweep evidence"]
     return matched_interval_eval_sweep_blockers(sweep)
-
-
-def _launch_command(config_path: Path, runtime: ModalRuntime, *, mode: str) -> str:
-    flag = " --full-run" if mode == "full-run" else " --modal-smoke"
-    return build_modal_launch_command(
-        config_path=config_path,
-        runtime=runtime,
-        gpu_env_var="SFT_MODAL_GPU",
-        timeout_env_var="SFT_TIMEOUT_HOURS",
-        script_path="scripts/modal_chat_sft.py",
-        mode_flag=flag,
-        timeout_hours=None if mode == "full-run" else smoke_timeout_hours(runtime),
-    )

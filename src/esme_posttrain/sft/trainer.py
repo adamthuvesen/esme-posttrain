@@ -46,6 +46,7 @@ from esme_posttrain.training.checkpointing import (
     restore_rng_state,
     retain_last_checkpoints,
     save_training_checkpoint,
+    write_tokenizer,
 )
 from esme_posttrain.training.collate import IGNORE_INDEX
 from esme_posttrain.training.collate import (
@@ -59,9 +60,7 @@ from esme_posttrain.training.collate import (
 )
 from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import append_metric, train_metric_payload
-from esme_posttrain.training.runtime import (
-    lr_lambda_factory as _lr_lambda_factory,
-)
+from esme_posttrain.training.runtime import adamw_with_lr_schedule
 from esme_posttrain.training.runtime import (
     precision_context as _precision_context,
 )
@@ -223,23 +222,6 @@ class LoadedSFTCheckpoint:
     metrics: dict[str, Any]
 
 
-def build_full_finetune_optimizer(
-    model: DenseBackbone, config: SFTTrainerConfig
-) -> tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LRScheduler]:
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
-    )
-    scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer,
-        lr_lambda=_lr_lambda_factory(
-            scheduler=config.scheduler,
-            warmup_steps=config.warmup_steps,
-            max_steps=config.max_steps,
-        ),
-    )
-    return optimizer, scheduler
-
-
 def run_sft_training(
     model: DenseBackbone,
     tokenizer: Tokenizer,
@@ -279,7 +261,7 @@ def run_sft_training(
         sample_examples,
         config.sample_new_tokens,
     )
-    optimizer, scheduler = build_full_finetune_optimizer(model, config)
+    optimizer, scheduler = adamw_with_lr_schedule(model, config)
     start_step = 0
     trained_tokens = 0
     supervised_tokens = 0
@@ -609,7 +591,7 @@ def run_sft_training(
         base_generations=base_generations,
         selected_step=selected_step,
     )
-    _write_tokenizer(tokenizer, output_dir / "tokenizer.json")
+    write_tokenizer(tokenizer, output_dir / "tokenizer.json")
     manifest = _write_manifest(
         manifest_path,
         config,
@@ -956,12 +938,6 @@ def _write_samples(
             ]
         )
     path.write_text("\n".join(lines), encoding="utf-8")
-
-
-def _write_tokenizer(tokenizer: Tokenizer, path: Path) -> None:
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tokenizer.save(str(tmp_path))
-    tmp_path.replace(path)
 
 
 def _write_manifest(

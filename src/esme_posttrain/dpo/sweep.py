@@ -30,7 +30,7 @@ from esme_posttrain.dpo.trainer import (
 from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
-    estimate_cost_usd,
+    projected_cost_usd,
 )
 from esme_posttrain.run_artifacts import RuntimeSpendTracker, write_environment, write_json
 from esme_posttrain.training.wandb_init import WandbConfig
@@ -115,11 +115,7 @@ def build_dpo_sweep_preflight(
     projected_tokens = sum(
         arm.planned_token_upper_bound(max_length=max_length) for arm in SWEEP_ARMS
     )
-    projected_cost = estimate_cost_usd(
-        tokens=projected_tokens,
-        projected_tokens_per_second=selected_profile.projected_tokens_per_second,
-        usd_per_hour=selected_profile.usd_per_hour,
-    )
+    projected_cost = projected_cost_usd(selected_profile, projected_tokens)
     blockers = dpo_sweep_blockers(
         config,
         timeout_hours=timeout_hours,
@@ -198,11 +194,7 @@ def dpo_sweep_blockers(config: DPOLaunchConfig, *, timeout_hours: int, modal_gpu
     projected_tokens = sum(
         arm.planned_token_upper_bound(max_length=max_length) for arm in SWEEP_ARMS
     )
-    projected_cost = estimate_cost_usd(
-        tokens=projected_tokens,
-        projected_tokens_per_second=selected_profile.projected_tokens_per_second,
-        usd_per_hour=selected_profile.usd_per_hour,
-    )
+    projected_cost = projected_cost_usd(selected_profile, projected_tokens)
     if projected_cost > SWEEP_SPEND_CAP_USD:
         blockers.append("projected beta sweep cost exceeds the approved $8 sweep spend cap")
     if tuple(arm.beta for arm in SWEEP_ARMS) != EXPECTED_SWEEP_BETAS:

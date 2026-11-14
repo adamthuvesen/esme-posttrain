@@ -13,8 +13,13 @@ import pytest
 from scripts import modal_rlvr_grpo
 
 from esme_posttrain.cli import main
+from esme_posttrain.launch.config_guards import load_json_object
+from esme_posttrain.launch.config_models import parse_config
 from esme_posttrain.launch.errors import LaunchError
+from esme_posttrain.rl.config import RLVRSettings
 from esme_posttrain.rl.launch import (
+    SEED_OVERRIDE_KEY,
+    _resolve_seed_override,
     build_rlvr_dry_run,
     full_launch_blockers,
     load_rlvr_config,
@@ -25,6 +30,24 @@ from esme_posttrain.rl.launch import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RL_FIXTURE_CONFIG = REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.json"
+SEED_OVERRIDE_CONFIGS = sorted(
+    path
+    for path in (REPO_ROOT / "configs").glob("esme-214m-rl*.json")
+    if SEED_OVERRIDE_KEY in json.loads(path.read_text(encoding="utf-8"))
+)
+
+
+@pytest.mark.parametrize("override_path", SEED_OVERRIDE_CONFIGS, ids=lambda path: path.stem)
+def test_seed_override_resolves_to_a_valid_recipe_on_its_own_seed(override_path: Path) -> None:
+    config_path, override = load_json_object(override_path)
+    settings = parse_config(
+        RLVRSettings, _resolve_seed_override(config_path, override), source=config_path
+    )
+
+    seed = override["seed"]
+    assert settings.grpo.seed == seed
+    assert f"seed={seed}" in settings.monitoring.wandb_tags
+    assert f"seed{seed}" in str(settings.artifacts.output_dir)
 
 
 def test_rlvr_fixture_dry_run_via_api() -> None:

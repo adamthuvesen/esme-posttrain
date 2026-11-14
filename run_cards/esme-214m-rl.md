@@ -107,6 +107,9 @@ exact}, independent of the completion.
   `configs/esme-214m-rl-seed{215..219}.json`; placebo
   `configs/esme-214m-rl-placebo.json` (seed 214) and
   `configs/esme-214m-rl-placebo-seed{215..219}.json`.
+- **Seed overrides:** each seed 216-219 config holds only `seed_override_of` and `seed`.
+  `rl.launch.load_rlvr_config` copies the seed 215 base and moves its seeds and every
+  `seed215`/`seed=215` path or tag to the new seed. The ablation configs use the same form.
 - **Runs:** training only (`skip_acceptance_eval`), 240 steps, 1x A100, about $0.74 to
   $1.12 per run.
 - **Evaluation:** each run's step-240 training checkpoint is rebuilt into a bundle with

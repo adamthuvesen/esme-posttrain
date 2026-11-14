@@ -24,11 +24,10 @@ from esme_posttrain.dpo.config import (
 from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
-    build_modal_launch_command,
-    estimate_cost_usd,
     image_package_pins,
     load_json_object,
-    smoke_timeout_hours,
+    projected_cost_usd,
+    smoke_and_full_launch_commands,
 )
 from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
@@ -102,15 +101,10 @@ def validate_dpo_payload(payload: object, config_path: Path) -> DPOLaunchConfig:
     output_dir = Path(settings.artifacts.output_dir)
 
     selected_profile = runtime.gpu_profiles[runtime.selected_gpu]
-    estimated_full_cost = estimate_cost_usd(
-        tokens=int(budgets.target_train_tokens),
-        projected_tokens_per_second=float(selected_profile.projected_tokens_per_second),
-        usd_per_hour=float(selected_profile.usd_per_hour),
-    )
-    estimated_smoke_cost = estimate_cost_usd(
-        tokens=int(budgets.smoke_train_tokens),
-        projected_tokens_per_second=float(selected_profile.projected_tokens_per_second),
-        usd_per_hour=float(selected_profile.usd_per_hour),
+    estimated_full_cost = projected_cost_usd(selected_profile, int(budgets.target_train_tokens))
+    estimated_smoke_cost = projected_cost_usd(selected_profile, int(budgets.smoke_train_tokens))
+    smoke_command, full_command = smoke_and_full_launch_commands(
+        config_path, runtime, env_prefix="DPO", script_path="scripts/modal_chat_dpo.py"
     )
 
     return DPOLaunchConfig(
@@ -121,8 +115,8 @@ def validate_dpo_payload(payload: object, config_path: Path) -> DPOLaunchConfig:
         output_dir=output_dir,
         estimated_full_cost_usd=estimated_full_cost,
         estimated_smoke_cost_usd=estimated_smoke_cost,
-        smoke_launch_command=_launch_command(config_path, runtime, mode="modal-smoke"),
-        full_launch_command=_launch_command(config_path, runtime, mode="full-run"),
+        smoke_launch_command=smoke_command,
+        full_launch_command=full_command,
     )
 
 
@@ -199,9 +193,8 @@ def smoke_launch_blockers(
         runtime=config.runtime,
         estimated_smoke_cost_usd=config.estimated_smoke_cost_usd,
         modal_gpu=modal_gpu,
-        modal_gpu_env_var="DPO_MODAL_GPU",
+        env_prefix="DPO",
         timeout_hours=timeout_hours,
-        timeout_env_var="DPO_TIMEOUT_HOURS",
     )
 
 
@@ -215,7 +208,7 @@ def full_launch_blockers(
         approved=approved,
         modal_gpu=modal_gpu,
         approval_message="full Esme-214M-Chat DPO launch requires --approved",
-        modal_gpu_env_var="DPO_MODAL_GPU",
+        env_prefix="DPO",
     )
     blockers.extend(_learning_gate_blockers(config.settings.learning_gate))
     return blockers
@@ -315,16 +308,3 @@ def _bounded_beta_sweep_blockers(evidence: Mapping[str, FrozenJSON]) -> list[str
             "learning_gate.evidence.bounded_beta_sweep.evidence_uri must be a non-empty string"
         )
     return blockers
-
-
-def _launch_command(config_path: Path, runtime: ModalRuntime, *, mode: str) -> str:
-    flag = " --full-run" if mode == "full-run" else " --modal-smoke"
-    return build_modal_launch_command(
-        config_path=config_path,
-        runtime=runtime,
-        gpu_env_var="DPO_MODAL_GPU",
-        timeout_env_var="DPO_TIMEOUT_HOURS",
-        script_path="scripts/modal_chat_dpo.py",
-        mode_flag=flag,
-        timeout_hours=None if mode == "full-run" else smoke_timeout_hours(runtime),
-    )

@@ -58,9 +58,8 @@ def test_shared_smoke_launch_blockers_flag_projection_over_budget(
             runtime=runtime,
             estimated_smoke_cost_usd=cost,
             modal_gpu=gpu,
-            modal_gpu_env_var="SFT_MODAL_GPU",
+            env_prefix="SFT",
             timeout_hours=None,
-            timeout_env_var="SFT_TIMEOUT_HOURS",
         )
 
     assert blockers(4.0) == ["projected Modal smoke cost exceeds runtime.smoke_max_cost_usd"]
@@ -80,7 +79,7 @@ def test_shared_full_launch_blockers_keep_pipeline_wording(runtime: SmokeModalRu
         approved=False,
         modal_gpu="H100",
         approval_message="full multi-turn SFT launch requires --approved",
-        modal_gpu_env_var="SFT_MODAL_GPU",
+        env_prefix="SFT",
     ) == [
         "full multi-turn SFT launch requires --approved",
         "SFT_MODAL_GPU must match runtime.gpu_profiles[runtime.selected_gpu].modal_gpu "
@@ -94,7 +93,7 @@ def test_shared_full_launch_blockers_keep_pipeline_wording(runtime: SmokeModalRu
             approved=True,
             modal_gpu="A100",
             approval_message="full multi-turn SFT launch requires --approved",
-            modal_gpu_env_var="SFT_MODAL_GPU",
+            env_prefix="SFT",
         )
         == []
     )
@@ -107,8 +106,7 @@ def test_build_modal_launch_command_preserves_approval_flag(
     command = build_modal_launch_command(
         config_path=tmp_path / "config.json",
         runtime=runtime,
-        gpu_env_var="SFT_MODAL_GPU",
-        timeout_env_var="SFT_TIMEOUT_HOURS",
+        env_prefix="SFT",
         script_path="scripts/modal_chat_sft.py",
         mode_flag=" --full-run",
     )

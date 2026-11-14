@@ -30,7 +30,8 @@ from esme_posttrain.training.collate import IGNORE_INDEX
 from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import append_metric
 from esme_posttrain.training.runtime import (
-    lr_lambda_factory,
+    adamw_with_lr_schedule,
+    freeze_reference,
     precision_context,
     resolve_torch_device,
     set_reproducible_seed,
@@ -306,23 +307,10 @@ def run_countdown_lite_grpo(
     device = resolve_torch_device(config.device)
     validate_precision(config.precision, device)
     policy.to(device)
-    reference.to(device)
-    reference.eval()
-    for param in reference.parameters():
-        param.requires_grad_(False)
+    freeze_reference(reference, device)
 
     eos_id = tokenizer.token_to_id("<eos>")
-    optimizer = torch.optim.AdamW(
-        policy.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
-    )
-    scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer,
-        lr_lambda=lr_lambda_factory(
-            scheduler=config.scheduler,
-            warmup_steps=config.warmup_steps,
-            max_steps=config.max_steps,
-        ),
-    )
+    optimizer, scheduler = adamw_with_lr_schedule(policy, config)
 
     write_json(output_dir / "config.json", _config_payload(config))
     write_json(output_dir / "data-report.json", _data_report(train_rows, config))

@@ -21,10 +21,10 @@ from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
     build_modal_launch_command,
-    estimate_cost_usd,
     image_package_pins,
     load_json_object,
     object_field,
+    projected_cost_usd,
 )
 from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
@@ -122,9 +122,48 @@ class RLVRLaunchConfig:
         return self.runtime.gpu_profiles[self.runtime.selected_gpu]
 
 
+SEED_OVERRIDE_KEY = "seed_override_of"
+SEED_KEYS = frozenset({"seed", "random_reward_seed"})
+
+
 def load_rlvr_config(config_path: Path) -> RLVRLaunchConfig:
     config_path, payload = load_json_object(config_path)
+    if SEED_OVERRIDE_KEY in payload:
+        payload = _resolve_seed_override(config_path, payload)
     return validate_rlvr_payload(payload, config_path)
+
+
+def _resolve_seed_override(config_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """A seed override file names a base config in the same directory and a new seed.
+
+    Every seed key equal to the base seed, and every ``seed<N>``/``seed=<N>`` token in a
+    string, takes the new seed. Nothing else changes.
+    """
+    seed = payload.get("seed")
+    if set(payload) != {SEED_OVERRIDE_KEY, "seed"} or type(seed) is not int:
+        raise LaunchError(
+            f"seed override {config_path} must hold only {SEED_OVERRIDE_KEY} and an int seed"
+        )
+    base_path, base = load_json_object(config_path.parent / str(payload[SEED_OVERRIDE_KEY]))
+    if SEED_OVERRIDE_KEY in base:
+        raise LaunchError(f"seed override base {base_path} must be a full config")
+    base_seed = object_field(base.get("grpo"), "grpo").get("seed")
+    if type(base_seed) is not int:
+        raise LaunchError(f"seed override base {base_path} must set an int grpo.seed")
+    return _reseed(base, base_seed, seed)
+
+
+def _reseed(value: Any, old: int, new: int) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: new if key in SEED_KEYS and item == old else _reseed(item, old, new)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_reseed(item, old, new) for item in value]
+    if isinstance(value, str):
+        return value.replace(f"seed{old}", f"seed{new}").replace(f"seed={old}", f"seed={new}")
+    return value
 
 
 def build_rlvr_dry_run(config_path: Path) -> dict[str, object]:
@@ -297,11 +336,7 @@ def validate_rlvr_payload(payload: object, config_path: Path) -> RLVRLaunchConfi
         )
 
     selected_profile = runtime.gpu_profiles[runtime.selected_gpu]
-    estimated_full_cost = estimate_cost_usd(
-        tokens=estimated_train_tokens,
-        projected_tokens_per_second=float(selected_profile.projected_tokens_per_second),
-        usd_per_hour=float(selected_profile.usd_per_hour),
-    )
+    estimated_full_cost = projected_cost_usd(selected_profile, estimated_train_tokens)
     if estimated_full_cost > float(runtime.full_run_max_cost_usd):
         raise LaunchError("projected GRPO cost exceeds runtime.full_run_max_cost_usd")
 
@@ -342,7 +377,7 @@ def full_launch_blockers(
         approved=approved,
         modal_gpu=modal_gpu,
         approval_message="full Esme-214M-RL GRPO launch requires --approved",
-        modal_gpu_env_var="RLVR_MODAL_GPU",
+        env_prefix="RLVR",
     )
     if config.estimated_train_tokens > config.budgets.max_rollout_tokens:
         blockers.append("estimated rollout tokens exceed budgets.max_rollout_tokens")
@@ -597,8 +632,7 @@ def _launch_command(config_path: Path, runtime: ModalRuntime) -> str:
     return build_modal_launch_command(
         config_path=config_path,
         runtime=runtime,
-        gpu_env_var="RLVR_MODAL_GPU",
-        timeout_env_var="RLVR_TIMEOUT_HOURS",
+        env_prefix="RLVR",
         script_path="scripts/modal_rlvr_grpo.py",
         mode_flag=" --full-run",
     )
@@ -612,8 +646,7 @@ def _modal_pipeline_smoke_command(config_path: Path, runtime: ModalRuntime) -> s
     return build_modal_launch_command(
         config_path=config_path,
         runtime=runtime,
-        gpu_env_var="RLVR_MODAL_GPU",
-        timeout_env_var="RLVR_TIMEOUT_HOURS",
+        env_prefix="RLVR",
         script_path="scripts/modal_rlvr_grpo.py",
         mode_flag=" --modal-pipeline-smoke",
     )
