@@ -200,10 +200,8 @@ def _fixture_eval_splits(eval_examples: tuple[TokenizedExample, ...]) -> tuple[E
 def _assert_multi_turn_masking(examples: tuple[TokenizedExample, ...]) -> bool:
     saw_multi_turn = False
     for example in examples:
-        # Prompt span (system/first user) must be fully masked.
         if not all(label == -100 for label in example.labels[: example.prompt_tokens]):
             raise ValueError(f"{example.row_id}: prompt span leaked into the loss")
-        # Supervised labels must equal their input ids exactly.
         if not all(
             label == token
             for token, label in zip(example.input_ids, example.labels, strict=True)

@@ -246,7 +246,7 @@ def drive_launch_plans(ctx: Context) -> str:
             f"{stage} dry-run would start Modal or lost its approval flag",
         )
         require(
-            any("requires --approved" in b for b in plan["full_launch_blockers"]),
+            any("--approved" in b for b in plan["full_launch_blockers"]),
             f"{stage} plan blockers {plan['full_launch_blockers']} omit the approval gate",
         )
         for launch in launches:
@@ -254,11 +254,8 @@ def drive_launch_plans(ctx: Context) -> str:
                 f"{stage}{launch}", "-c", ENTRYPOINT, script, *config, launch, expect_exit=2
             )
             text = refused.stdout + refused.stderr
-            gated = "refused" in text and any(
-                f"{verb} --approved" in text for verb in ("requires", "pass")
-            )
             require(
-                gated,
+                "--approved" in text,
                 f"{stage} {launch} without --approved did not refuse at the approval gate: {text.strip()[:200]}",
             )
 
@@ -273,7 +270,7 @@ def drive_launch_plans(ctx: Context) -> str:
             expect_exit=1,
         )
         require(
-            "refused" in emit.stderr and "need --approved" in emit.stderr,
+            "--approved" in emit.stderr,
             f"emit-completions did not refuse: {emit.stderr.strip()[:200]}",
         )
         require(

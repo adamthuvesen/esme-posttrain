@@ -78,9 +78,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-chat-dpo.json"
 
 
-# --- DPO loss + logp + frozen reference ---------------------------------------
-
-
 def test_dpo_loss_is_log2_and_zero_margin_at_init() -> None:
     # Identical chosen/rejected/ref logps -> margin 0, loss = -log_sigmoid(0) = log 2.
     z = torch.zeros(3)
@@ -489,9 +486,6 @@ def test_dpo_resume_rejects_model_only_checkpoint_loudly(tmp_path: Path) -> None
         )
 
 
-# --- decoding pre-check -------------------------------------------------------
-
-
 def test_ngram_repetition_rate() -> None:
     assert ngram_repetition_rate([1, 2, 3, 4], n=2) == 0.0
     # [1,1,1,1] -> bigrams all (1,1): one distinct of three -> 2/3 repeats.
@@ -545,9 +539,6 @@ def test_nucleus_sampling_keeps_threshold_crossing_token() -> None:
     keep = _nucleus_keep_mask(torch.tensor([0.6, 0.3, 0.1]), top_p=0.7)
 
     assert keep.tolist() == [True, True, False]
-
-
-# --- SFT-vs-DPO chat eval -----------------------------------------------------
 
 
 def test_chat_eval_prompts_include_fixed_and_conversational() -> None:
@@ -681,9 +672,6 @@ def test_modal_chat_dpo_parses_fractional_timeout_hours(
         importlib.reload(modal_chat_dpo)
 
 
-# --- CPU fixture: margin up, logp tracked, checkpoint round-trip ---------------
-
-
 def test_cpu_fixture_margin_increases_and_no_collapse(tmp_path: Path) -> None:
     config = load_dpo_config(CONFIG_PATH)
     out = tmp_path / "fixture"
@@ -814,9 +802,6 @@ def test_dpo_full_rejects_eval_shortfalls_and_eval_cap_overruns() -> None:
             {"selected_pairs": 10, "selected_tokens": 101, "shortfalls": []},
             caps,
         )
-
-
-# --- config + dry-run + guards ------------------------------------------------
 
 
 def test_config_pins_dpo_recipe_and_dry_run_never_launches() -> None:
@@ -1003,9 +988,6 @@ def test_full_run_cap_above_limit_is_rejected() -> None:
         validate_dpo_payload(payload, CONFIG_PATH)
 
 
-# --- beta sweep ---------------------------------------------------------------
-
-
 def test_beta_sweep_arms_cover_exactly_the_swept_betas() -> None:
     assert tuple(arm.beta for arm in SWEEP_ARMS) == EXPECTED_SWEEP_BETAS
     for arm in SWEEP_ARMS:
@@ -1083,9 +1065,6 @@ def test_beta_sweep_fails_when_no_arm_beats_reference() -> None:
     gate = learning_gate_payload(best_arm=None, evidence_uri="x")
     assert gate["status"] == "fail"
     assert "blocker" in gate
-
-
-# --- CLI ----------------------------------------------------------------------
 
 
 def test_cli_dpo_dry_run_proves_no_modal_job(capsys: pytest.CaptureFixture[str]) -> None:

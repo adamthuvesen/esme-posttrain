@@ -54,9 +54,6 @@ CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-sft-multiturn.json"
 WEIGHTS_FIELD = "key_format"
 
 
-# --- chat template + multi-turn masking ---------------------------------------
-
-
 def test_multi_turn_masking_supervises_every_assistant_turn_and_masks_others() -> None:
     tokenizer = tiny_chat_tokenizer()
     example = MultiTurnExample(
@@ -82,7 +79,6 @@ def test_multi_turn_masking_supervises_every_assistant_turn_and_masks_others() -
     assistant_marker = tokenizer.token_to_id("assistant")
     user_marker = tokenizer.token_to_id("user")
 
-    # Supervised labels must equal their input ids; every other position is masked.
     for token, label in zip(tokenized.input_ids, tokenized.labels, strict=True):
         if label != IGNORE_INDEX:
             assert label == token
@@ -96,12 +92,10 @@ def test_multi_turn_masking_supervises_every_assistant_turn_and_masks_others() -
     assert eos_id is not None
     assert supervised_ids.count(eos_id) == 3
 
-    # Role markers and user/system content never enter the loss.
     for token, label in zip(tokenized.input_ids, tokenized.labels, strict=True):
         if token in {assistant_marker, user_marker}:
             assert label == IGNORE_INDEX
 
-    # The leading system/user prompt span is fully masked.
     assert all(label == IGNORE_INDEX for label in tokenized.labels[: tokenized.prompt_tokens])
     assert tokenized.prompt_tokens > 0
 
@@ -164,9 +158,6 @@ def test_multi_turn_length_measurement_flags_truncation() -> None:
     assert lengths["input_tokens"] > 4
     assert lengths["prompt_truncated"] is False
     assert lengths["assistant_target_truncated"] is True
-
-
-# --- parsing, capacity filtering, mixing --------------------------------------
 
 
 def test_multi_turn_parsing_capacity_filtering_and_turn_distribution(tmp_path: Path) -> None:
@@ -349,9 +340,6 @@ def test_multi_turn_modal_smoke_body_refreshes_manifest_with_expected_artifacts(
     assert payload["status"] == "modal_smoke_complete"
 
 
-# --- matched eval split -------------------------------------------------------
-
-
 def test_matched_eval_splits_are_disjoint_from_train(tmp_path: Path) -> None:
     smol_path = tmp_path / "smol.jsonl"
     _write_jsonl(
@@ -440,9 +428,6 @@ def test_multi_turn_eval_set_rejects_train_allowed_source(tmp_path: Path) -> Non
         build_multi_turn_eval_set(
             bad, tiny_chat_tokenizer(), max_samples=1, max_tokens=50, max_sequence_tokens=24
         )
-
-
-# --- config + dry-run + guards ------------------------------------------------
 
 
 def test_config_pins_multi_turn_recipe_and_dry_run_never_launches() -> None:
@@ -545,9 +530,6 @@ def test_config_rejects_noncommercial_training_flag() -> None:
         validate_multi_turn_payload(payload, CONFIG_PATH, require_base_bundle_exists=False)
 
 
-# --- base bundle hash validation ----------------------------------------------
-
-
 def test_base_bundle_hash_validation_and_dense_load(tmp_path: Path) -> None:
     bundle_dir = _write_tiny_chat_bundle(tmp_path / "bundle")
     loaded = load_dense_backbone_bundle(bundle_dir)
@@ -559,9 +541,6 @@ def test_base_bundle_hash_validation_and_dense_load(tmp_path: Path) -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     with pytest.raises(BundleError, match="hash mismatch"):
         load_dense_backbone_bundle(bundle_dir)
-
-
-# --- CPU fixture: loss decrease, masking, checkpoint round-trip ----------------
 
 
 def test_cpu_fixture_multi_turn_loss_decreases_and_masking_asserted(tmp_path: Path) -> None:
@@ -615,9 +594,6 @@ def test_full_run_requires_cuda_when_required(tmp_path: Path) -> None:
             require_cuda=True,
             wandb_enabled=False,
         )
-
-
-# --- CLI ----------------------------------------------------------------------
 
 
 def test_cli_multi_turn_dry_run_proves_no_modal_job(
@@ -704,9 +680,6 @@ def test_training_launches_block_when_base_bundle_missing(
     )
 
 
-# --- helpers ------------------------------------------------------------------
-
-
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
@@ -752,9 +725,6 @@ def _write_tiny_chat_bundle(bundle_dir: Path) -> Path:
     return bundle_dir
 
 
-# --- raised $40 full-run cap (multi-turn only) --------------------------------
-
-
 def test_config_pins_forty_dollar_full_run_cap() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     assert MULTITURN_FULL_RUN_SPEND_CAP_USD == 40.0
@@ -789,9 +759,6 @@ def test_full_run_blocks_projected_cost_over_cap() -> None:
     assert any("exceeds runtime.full_run_max_cost_usd" in b for b in blockers)
 
 
-# --- multi-turn throughput probe ----------------------------------------------
-
-
 def test_multi_turn_probe_preflight_never_launches_and_is_bounded() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     preflight = build_multi_turn_probe_preflight(config, modal_gpu="A100", timeout_hours=1)
@@ -813,9 +780,6 @@ def test_multi_turn_probe_blocks_unknown_gpu_and_long_timeout() -> None:
         "SFT_PROBE_TIMEOUT_HOURS" in b
         for b in multi_turn_probe_blockers(modal_gpu="A100", timeout_hours=5)
     )
-
-
-# --- multi-turn matched-eval LR sweep -----------------------------------------
 
 
 def test_multi_turn_sweep_preflight_never_launches_and_fits_cap() -> None:

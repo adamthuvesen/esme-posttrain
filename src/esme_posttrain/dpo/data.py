@@ -281,9 +281,6 @@ def measure_preference_lengths(
     }
 
 
-# --- UltraFeedback parsing ----------------------------------------------------
-
-
 def parse_ultrafeedback_row(source: DatasetSource, row_id: str, row: Any) -> PreferencePair | None:
     """Parse one UltraFeedback-binarized row into a :class:`PreferencePair`.
 

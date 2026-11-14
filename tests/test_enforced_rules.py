@@ -76,17 +76,17 @@ def test_docs_internal_is_never_tracked() -> None:
 
 
 def test_table_check_fails_closed() -> None:
-    header = "## Enforced Rules\n\n| Rule | Enforced by | Added |\n| --- | --- | --- |\n"
+    header = "## Enforced Rules\n\n| Rule | Enforced by |\n| --- | --- |\n"
     assert table_problems("# AGENTS.md\n\n## Rules\n") == [
         "AGENTS.md has no `## Enforced Rules` section"
     ]
-    assert table_problems(f"x\n{header}| A rule | prose only | 2026 |\n") == [
+    assert table_problems(f"x\n{header}| A rule | prose only |\n") == [
         "row 'A rule' cites no enforcer"
     ]
     # Each name appears in its file's text but is not defined there.
-    assert table_problems(f"x\n{header}| A rule | `Makefile::uv` | 2026 |\n") == [
+    assert table_problems(f"x\n{header}| A rule | `Makefile::uv` |\n") == [
         "`Makefile::uv`: Makefile does not define uv"
     ]
-    assert table_problems(f"x\n{header}| A rule | `pyproject.toml::esme_posttrain` | 2026 |\n") == [
+    assert table_problems(f"x\n{header}| A rule | `pyproject.toml::esme_posttrain` |\n") == [
         "`pyproject.toml::esme_posttrain`: pyproject.toml does not define esme_posttrain"
     ]

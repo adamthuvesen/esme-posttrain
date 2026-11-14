@@ -21,9 +21,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-chat-dpo.json"
 
 
-# --- preference-pair templating + prompt masking ------------------------------
-
-
 def test_preference_pair_tokenization_masks_prompt_in_both_completions() -> None:
     tokenizer = tiny_chat_tokenizer()
     pair = PreferencePair(
@@ -41,7 +38,6 @@ def test_preference_pair_tokenization_masks_prompt_in_both_completions() -> None
 
     eos_id = tokenizer.token_to_id("<eos>")
     for completion in (tokenized.chosen, tokenized.rejected):
-        # The whole prompt span is masked; only response tokens score.
         assert all(label == IGNORE_INDEX for label in completion.labels[: completion.prompt_tokens])
         supervised = [
             (token, label)
@@ -49,9 +45,7 @@ def test_preference_pair_tokenization_masks_prompt_in_both_completions() -> None
             if label != IGNORE_INDEX
         ]
         assert supervised, "completion must have supervised response tokens"
-        # Supervised labels equal their input ids.
         assert all(token == label for token, label in supervised)
-        # Exactly one trailing <eos> per response.
         assert completion.input_ids[-1] == eos_id
         assert completion.response_supervised_tokens == completion.response_tokens
 
@@ -99,9 +93,6 @@ def test_preference_length_measurement_flags_truncation() -> None:
     lengths = measure_preference_lengths(tokenizer, pair, max_length=6, max_prompt_length=24)
     assert lengths["prompt_truncated"] is False
     assert lengths["response_truncated"] is True
-
-
-# --- UltraFeedback parsing + filtering ----------------------------------------
 
 
 def _ultrafeedback_source(path: Path | None = None) -> DatasetSource:
