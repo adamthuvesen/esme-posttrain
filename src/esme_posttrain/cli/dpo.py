@@ -3,12 +3,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from esme_posttrain.cli.output import run_config_stage
+from esme_posttrain.cli.output import Subparsers, run_config_stage
 from esme_posttrain.dpo.launch import build_dpo_dry_run, load_dpo_config
 from esme_posttrain.dpo.smoke import run_dpo_cpu_fixture
 
 
-def add_dpo_parsers(subparsers: argparse._SubParsersAction) -> None:
+def add_dpo_parsers(subparsers: Subparsers) -> None:
     dpo_dry_run = subparsers.add_parser(
         "chat-dpo-dry-run",
         help="Validate the approval-gated Esme-214M-Chat DPO config.",

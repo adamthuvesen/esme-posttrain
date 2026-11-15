@@ -9,8 +9,9 @@ of samples per problem.
 This module builds those artifacts from an Esme Countdown-Lite held-out set and a local
 Esme bundle, reusing the same generation path the acceptance eval uses (``model.generate``
 + ``extract_candidate_expression``). The repos exchange artifacts, never code, so the
-schema is reproduced here rather than imported from grpo-decomp; the two sides agree on
-the contract by construction (and a fixture test pins it).
+schema is reproduced here rather than imported from grpo-decomp. Tests check the emitted
+files against a copy of grpo-decomp's published JSON Schema
+(``fixtures/contracts/grpo-decomp-completion-set.schema.json``) and pin the problem set.
 
 Contract with the grpo-decomp ``esme-countdown`` task-set (see grpo-decomp
 ``llm_grpo_gains/esme_countdown.py``):
@@ -44,6 +45,7 @@ from esme_posttrain.rl.countdown_lite import (
     extract_candidate_expression,
     render_chat_prompt,
 )
+from esme_posttrain.rl.countdown_lite_baseline import truncate_at_eos
 
 PROVENANCE_FILE = "provenance.json"
 COMPLETIONS_FILE = "completions.jsonl"
@@ -177,21 +179,11 @@ def _generate_samples(
         )
     samples: list[str] = []
     for generated_row in generated.detach().cpu().tolist():
-        completion_ids = _truncate_at_eos(generated_row[len(prompt_ids) :], eos_token_id)
+        completion_ids = truncate_at_eos(generated_row[len(prompt_ids) :], eos_token_id)
         output = tokenizer.decode(completion_ids, skip_special_tokens=False)
         expression = extract_candidate_expression(output)
         samples.append(f"\\boxed{{{expression if expression is not None else ''}}}")
     return samples
-
-
-def _truncate_at_eos(token_ids: list[int], eos_token_id: int | None) -> list[int]:
-    if eos_token_id is None:
-        return token_ids
-    try:
-        eos_index = token_ids.index(eos_token_id)
-    except ValueError:
-        return token_ids
-    return token_ids[:eos_index]
 
 
 def _load_heldout_problems(manifest_path: Path, set_name: str) -> list[dict[str, str]]:

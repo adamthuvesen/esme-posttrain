@@ -7,13 +7,19 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from scripts import modal_rlvr_grpo
 
 from esme_posttrain.cli import main
-from esme_posttrain.launch.config_guards import LaunchError
+from esme_posttrain.launch.config_guards import load_json_object
+from esme_posttrain.launch.config_models import parse_config
+from esme_posttrain.launch.errors import LaunchError
+from esme_posttrain.rl.config import RLVRSettings
 from esme_posttrain.rl.launch import (
+    SEED_OVERRIDE_KEY,
+    _resolve_seed_override,
     build_rlvr_dry_run,
     full_launch_blockers,
     load_rlvr_config,
@@ -23,17 +29,29 @@ from esme_posttrain.rl.launch import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RL_CONFIG = REPO_ROOT / "configs" / "esme-214m-rl.json"
 RL_FIXTURE_CONFIG = REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.json"
-BASE_BUNDLE_MANIFEST = REPO_ROOT / "exports" / "esme-214m-chat" / "manifest.json"
-requires_base_bundle = pytest.mark.skipif(
-    not BASE_BUNDLE_MANIFEST.is_file(),
-    reason="requires local exports/esme-214m-chat bundle (gitignored, absent in CI)",
+SEED_OVERRIDE_CONFIGS = sorted(
+    path
+    for path in (REPO_ROOT / "configs").glob("esme-214m-rl*.json")
+    if SEED_OVERRIDE_KEY in json.loads(path.read_text(encoding="utf-8"))
 )
 
 
+@pytest.mark.parametrize("override_path", SEED_OVERRIDE_CONFIGS, ids=lambda path: path.stem)
+def test_seed_override_resolves_to_a_valid_recipe_on_its_own_seed(override_path: Path) -> None:
+    config_path, override = load_json_object(override_path)
+    settings = parse_config(
+        RLVRSettings, _resolve_seed_override(config_path, override), source=config_path
+    )
+
+    seed = override["seed"]
+    assert settings.grpo.seed == seed
+    assert f"seed={seed}" in settings.monitoring.wandb_tags
+    assert f"seed{seed}" in str(settings.artifacts.output_dir)
+
+
 def test_rlvr_fixture_dry_run_via_api() -> None:
-    payload = build_rlvr_dry_run(RL_FIXTURE_CONFIG)
+    payload: dict[str, Any] = build_rlvr_dry_run(RL_FIXTURE_CONFIG)
 
     assert payload["command"] == "rlvr-dry-run"
     assert payload["artifact_name"] == "Esme-214M-RL"
@@ -113,14 +131,12 @@ def test_timeout_cost_ceiling_must_stay_under_runtime_hard_stop(
         main(["rlvr-dry-run", "--config", str(config_path)])
 
     assert exc.value.code == 2
-    assert (
-        "runtime timeout cost ceiling exceeds runtime.full_run_runtime_spend_stop_usd"
-        in capsys.readouterr().err
-    )
+    assert "runtime.full_run_runtime_spend_stop_usd" in capsys.readouterr().err
 
 
-@requires_base_bundle
-def test_modal_launcher_dry_run_rejects_timeout_env_config_mismatch() -> None:
+def test_modal_launcher_dry_run_rejects_timeout_env_config_mismatch(
+    full_rl_recipe_path: Path,
+) -> None:
     env = {
         **os.environ,
         "PYTHONPATH": "src",
@@ -132,7 +148,7 @@ def test_modal_launcher_dry_run_rejects_timeout_env_config_mismatch() -> None:
             sys.executable,
             "scripts/modal_rlvr_grpo.py",
             "--config",
-            "configs/esme-214m-rl.json",
+            str(full_rl_recipe_path),
             "--dry-run",
             "--json",
         ],
@@ -144,9 +160,7 @@ def test_modal_launcher_dry_run_rejects_timeout_env_config_mismatch() -> None:
     )
 
     assert result.returncode == 2
-    assert "RLVR_TIMEOUT_HOURS must match runtime.timeout_hours" in result.stderr
-    assert "env=4, config=8" in result.stderr
-    assert "effective timeout cost ceiling $8.3952" in result.stderr
+    assert "RLVR_TIMEOUT_HOURS" in result.stderr
 
 
 def test_modal_launcher_full_run_returns_receipt_without_get(
@@ -159,13 +173,13 @@ def test_modal_launcher_full_run_returns_receipt_without_get(
         report_path=tmp_path / "grpo-report.json",
         doc_path=tmp_path / "grpo-report.md",
     )
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class FakeCall:
         object_id = "fc-rlvr-test"
         app_id = "ap-rlvr-test"
 
-        def get(self) -> dict[str, object]:
+        def get(self) -> dict[str, Any]:
             raise AssertionError("launcher must not wait for the remote GRPO result")
 
     class FakeRunner:
@@ -185,7 +199,7 @@ def test_modal_launcher_full_run_returns_receipt_without_get(
     )
 
     receipt = json.loads(capsys.readouterr().out)
-    assert captured["args"][0] == config.payload
+    assert captured["args"][0] == config.settings.to_dict()
     assert captured["args"][3] == "esme-214m-rlvr-countdown-grpo"
     assert captured["args"][4] is False
     assert captured["args"][5] is False
@@ -223,6 +237,97 @@ def test_modal_launcher_full_run_returns_receipt_without_get(
     assert report["ready_for_hq_inspection"] is False
     assert report["wandb"]["required_for_modal"] is True
     assert report["eval_profile"] == "full_eval_1x1"
+
+
+@pytest.mark.parametrize("mode", ["--full-run", "--debug-before-eval", "--modal-pipeline-smoke"])
+def test_modal_launcher_refusal_writes_no_report(
+    mode: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = replace(
+        load_rlvr_config(RL_FIXTURE_CONFIG),
+        report_path=tmp_path / "grpo-report.json",
+        doc_path=tmp_path / "grpo-report.md",
+    )
+
+    class NoSpawn:
+        def spawn(self, *args: object) -> None:
+            raise AssertionError("refused launch reached run_modal_grpo.spawn")
+
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_TIMEOUT_HOURS", 1)
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_MODAL_GPU", "A100")
+    monkeypatch.setattr(modal_rlvr_grpo, "run_modal_grpo", NoSpawn())
+    monkeypatch.setattr(modal_rlvr_grpo, "load_rlvr_config", lambda _path: config)
+
+    assert modal_rlvr_grpo.launch(["--config", "unused.json", mode, "--json"]) == 2
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["will_start_modal_job"] is False
+    assert any("requires --approved" in b for b in payload["full_launch_blockers"])
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("mode", ["--full-run", "--modal-pipeline-smoke"])
+def test_failed_spawn_writes_evidence_to_the_run_dir_not_the_committed_report(
+    mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    committed = tmp_path / "committed"
+    config = replace(
+        load_rlvr_config(RL_FIXTURE_CONFIG),
+        report_path=committed / "grpo-report.json",
+        doc_path=committed / "grpo-report.md",
+        output_dir=tmp_path / "runs" / "full",
+        pipeline_smoke_output_dir=tmp_path / "runs" / "smoke",
+    )
+
+    class FailingRunner:
+        def spawn(self, *args: object) -> None:
+            raise RuntimeError("Modal function is not hydrated")
+
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_TIMEOUT_HOURS", 1)
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_MODAL_GPU", "A100")
+    monkeypatch.setattr(modal_rlvr_grpo, "modal", object())
+    monkeypatch.setattr(modal_rlvr_grpo, "run_modal_grpo", FailingRunner())
+    monkeypatch.setattr(modal_rlvr_grpo, "load_rlvr_config", lambda _path: config)
+
+    assert modal_rlvr_grpo.launch(["--config", "unused.json", mode, "--approved", "--json"]) == 2
+
+    assert not committed.exists()
+    run_dir = tmp_path / "runs" / ("smoke" if mode == "--modal-pipeline-smoke" else "full")
+    evidence = json.loads((run_dir / "grpo-launch-failure.json").read_text(encoding="utf-8"))
+    assert evidence["grpo_result"] == "blocked-with-evidence"
+    assert "not hydrated" in evidence["blocker"]
+    assert (run_dir / "grpo-launch-failure.md").is_file()
+
+
+@pytest.mark.parametrize("mode", ["--modal-pipeline-smoke", "--debug-before-eval"])
+def test_spawned_probe_keeps_the_committed_report_and_writes_to_the_run_dir(
+    mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    committed = tmp_path / "committed"
+    config = replace(
+        load_rlvr_config(RL_FIXTURE_CONFIG),
+        report_path=committed / "grpo-report.json",
+        doc_path=committed / "grpo-report.md",
+        output_dir=tmp_path / "runs" / "full",
+        pipeline_smoke_output_dir=tmp_path / "runs" / "smoke",
+    )
+
+    class Spawned:
+        object_id = "fc-test"
+
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_TIMEOUT_HOURS", 1)
+    monkeypatch.setattr(modal_rlvr_grpo, "RLVR_MODAL_GPU", "A100")
+    monkeypatch.setattr(modal_rlvr_grpo, "_spawn_modal_grpo", lambda *args, **kwargs: Spawned())
+    monkeypatch.setattr(modal_rlvr_grpo, "load_rlvr_config", lambda _path: config)
+
+    assert modal_rlvr_grpo.launch(["--config", "unused.json", mode, "--approved", "--json"]) == 0
+
+    assert not committed.exists()
+    run_dir = tmp_path / "runs" / ("smoke" if mode == "--modal-pipeline-smoke" else "full")
+    assert (run_dir / "grpo-launch-in-flight.json").is_file()
 
 
 def test_modal_launcher_debug_before_eval_dry_run_uses_reduced_probe_command(
@@ -291,9 +396,8 @@ def test_modal_launcher_pipeline_smoke_dry_run_uses_dedicated_command(
     )
 
 
-@requires_base_bundle
-def test_full_acceptance_eval_stays_30x32_with_scaled_timeout() -> None:
-    payload = build_rlvr_dry_run(RL_CONFIG)
+def test_full_acceptance_eval_stays_30x32_with_scaled_timeout(full_rl_recipe_path: Path) -> None:
+    payload: dict[str, Any] = build_rlvr_dry_run(full_rl_recipe_path)
 
     assert payload["eval_profile"] == "full_acceptance_30x32"
     assert payload["eval_task_budget"] == 30
@@ -305,8 +409,8 @@ def test_full_acceptance_eval_stays_30x32_with_scaled_timeout() -> None:
     assert payload["acceptance_preflight"]["full_acceptance_preserved"] is True
     assert payload["acceptance_preflight"]["total_samples"] == 960
     assert payload["acceptance_preflight"]["timeout_margin_seconds"] == 0.0
-    config = load_rlvr_config(RL_CONFIG)
-    assert pipeline_smoke_grpo_settings(config)["warmup_steps"] == 0
+    config = load_rlvr_config(full_rl_recipe_path)
+    assert pipeline_smoke_grpo_settings(config).warmup_steps == 0
 
 
 def test_modal_launcher_mounts_wandb_secret() -> None:
@@ -332,7 +436,7 @@ def test_modal_launcher_unhydrated_spawn_fails_loudly_without_app_run(
     monkeypatch.setattr(modal_rlvr_grpo, "run_modal_grpo", FakeRunner())
     monkeypatch.setattr(modal_rlvr_grpo, "app", FakeApp())
 
-    with pytest.raises(RuntimeError, match="Refusing the unsupported app.run\\(\\) fallback"):
+    with pytest.raises(RuntimeError, match=r"Refusing the unsupported app.run\(\) fallback"):
         modal_rlvr_grpo._spawn_modal_grpo(config, "esme-214m-rlvr-countdown-grpo")
 
 
@@ -442,7 +546,7 @@ def test_output_dir_must_stay_under_runs(
         main(["rlvr-dry-run", "--config", str(config_path)])
 
     assert exc.value.code == 2
-    assert "artifacts.output_dir must be a relative path under runs/" in capsys.readouterr().err
+    assert "artifacts.output_dir" in capsys.readouterr().err
 
 
 def test_gsm8k_lite_must_remain_eval_only(
@@ -457,7 +561,7 @@ def test_gsm8k_lite_must_remain_eval_only(
         main(["rlvr-dry-run", "--config", str(config_path)])
 
     assert exc.value.code == 2
-    assert "dataset.train_on_gsm8k_lite must be false" in capsys.readouterr().err
+    assert "dataset.train_on_gsm8k_lite" in capsys.readouterr().err
 
 
 def test_config_requires_modal_wandb() -> None:
@@ -488,7 +592,7 @@ def test_eval_rollouts_must_fit_configured_budget() -> None:
     config = _load_absolute_fixture_config()
     _as_object(config["monitoring"])["samples_per_eval_task"] = 2
 
-    with pytest.raises(LaunchError, match="exceeds budgets.max_eval_rollouts"):
+    with pytest.raises(LaunchError, match=r"exceeds budgets.max_eval_rollouts"):
         validate_rlvr_payload(config, RL_FIXTURE_CONFIG)
 
 
@@ -500,7 +604,7 @@ def test_build_rlvr_dry_run_raises_launch_error_for_bad_config(tmp_path: Path) -
         build_rlvr_dry_run(config_path)
 
 
-def _load_absolute_fixture_config() -> dict[str, object]:
+def _load_absolute_fixture_config() -> dict[str, Any]:
     config = _load_json(RL_FIXTURE_CONFIG)
     config_dir = RL_FIXTURE_CONFIG.parent
     input_bundle = _as_object(config["input_bundle"])
@@ -510,16 +614,16 @@ def _load_absolute_fixture_config() -> dict[str, object]:
     return config
 
 
-def _load_json(path: Path) -> dict[str, object]:
+def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, data: dict[str, object]) -> Path:
+def _write_json(path: Path, data: dict[str, Any]) -> Path:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return path
 
 
-def _as_object(value: object) -> dict[str, object]:
+def _as_object(value: object) -> dict[str, Any]:
     assert isinstance(value, dict)
     return value
 

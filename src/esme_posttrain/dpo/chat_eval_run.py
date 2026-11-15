@@ -47,9 +47,9 @@ def build_chat_eval_preflight(
     config: DPOLaunchConfig, *, modal_gpu: str, timeout_hours: float = CHAT_EVAL_TIMEOUT_HOURS
 ) -> dict[str, Any]:
     selected_profile = config.selected_gpu_profile
-    timeout_cost_ceiling = float(selected_profile["usd_per_hour"]) * timeout_hours
+    timeout_cost_ceiling = selected_profile.usd_per_hour * timeout_hours
     blockers = chat_eval_blockers(config, modal_gpu=modal_gpu, timeout_hours=timeout_hours)
-    sft_reference = config.payload["sft_reference"]
+    sft_reference = config.settings.sft_reference
     return {
         "status": "ready_for_chat_eval" if not blockers else "blocked_by_launch_safety",
         "mode": "dpo_chat_eval",
@@ -60,11 +60,11 @@ def build_chat_eval_preflight(
         "will_start_modal_job": False,
         "will_download_data": False,
         "generation_only": True,
-        "volume": config.runtime["modal_volume"],
-        "sft_reference_volume": sft_reference["volume"],
+        "volume": config.runtime.modal_volume,
+        "sft_reference_volume": sft_reference.volume,
         "checkpoints": {
             "dpo_best": DPO_BEST_CHECKPOINT_REL,
-            "sft_reference": sft_reference["checkpoint_path"],
+            "sft_reference": sft_reference.checkpoint_path,
         },
         "outputs": {
             "markdown": f"{CHAT_EVAL_OUTPUT_STEM}/{CHAT_EVAL_MARKDOWN}",
@@ -72,7 +72,7 @@ def build_chat_eval_preflight(
         },
         "runtime": {
             "provider": "modal",
-            "selected_gpu": config.runtime["selected_gpu"],
+            "selected_gpu": config.runtime.selected_gpu,
             "modal_gpu": modal_gpu,
             "timeout_hours": timeout_hours,
             "spend_cap_usd": CHAT_EVAL_SPEND_CAP_USD,
@@ -93,12 +93,12 @@ def chat_eval_blockers(
     blockers: list[str] = []
     if timeout_hours <= 0 or timeout_hours > 24:
         blockers.append("chat-eval timeout_hours must be between 0 and 24")
-    if modal_gpu != config.runtime["selected_gpu"]:
+    if modal_gpu != config.runtime.selected_gpu:
         blockers.append(
             "DPO_MODAL_GPU must match runtime.selected_gpu for chat-eval cost accounting"
         )
     selected_profile = config.selected_gpu_profile
-    if timeout_hours * float(selected_profile["usd_per_hour"]) > CHAT_EVAL_SPEND_CAP_USD:
+    if timeout_hours * selected_profile.usd_per_hour > CHAT_EVAL_SPEND_CAP_USD:
         blockers.append("chat-eval timeout cost ceiling exceeds the $1 chat-eval spend cap")
     return blockers
 

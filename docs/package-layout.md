@@ -2,6 +2,30 @@
 
 This repo keeps stage-specific implementation code out of the package root. When adding or moving code, prefer the canonical package below instead of creating another root-level module.
 
+## Find the Owner
+
+| Change | Start here | Verify with |
+| --- | --- | --- |
+| Launch config field or recipe constraint | The stage's `config.py`, then typed consumers | `make type`, stage launch tests |
+| Budget or launch condition | The matching run card, the stage's `config.py` for caps, and its launch module for blockers | `tests/test_launch_cap_enforcement.py` and stage launch tests |
+| Dense-bundle field shared by stages | `export/bundle_writer.py` and `bundle.py` | `tests/test_artifact_contract.py` |
+| Chat template: training render and exported `chat_template` | `export/chat_template.py` | `tests/test_export_dense_bundle.py`, `tests/test_sft_multiturn.py` |
+| Upgrade a v1 bundle's `chat_template` | `export/chat_template_upgrade.py`, `cli/export.py` | `tests/test_export_dense_bundle.py` |
+| DPO export provenance | `export/dense_bundle.py` | `tests/test_export_dense_bundle.py` |
+| RL export provenance or checkpoint conversion | `rl/bundle.py` and `rl/checkpoint_bundle.py` | `tests/test_rlvr_decomp.py` |
+| Training objective | The stage trainer | The stage's trainer tests |
+| Stage handoff | `acceptance/full_path_smoke.py` | `tests/test_full_path_smoke.py` |
+| Shared tiny model or chat tokenizer | `chat/fixtures.py` | SFT and DPO fixture tests |
+| CLI command | Its group in `cli/` | The matching CLI or stage tests |
+
+Run test files with `uv run --locked pytest <path>`. Run `make check` before committing.
+It includes dependency boundaries, the full CPU stage chain, and type checking for Modal entrypoints.
+
+Config shape errors identify the input file and nested field. Recipe errors
+name the failed constraint. Basedpyright reports the
+consumer that uses a missing field, assigns to frozen settings, or passes
+the wrong stage config. Fix the owning model or consumer shown by the error.
+
 ## Root Package
 
 `src/esme_posttrain/` should stay small:
@@ -28,14 +52,31 @@ Do not add root compatibility aliases.
 - `src/esme_posttrain/evals/`: typed records for the evaluation contract: task rows, per-sample scores, per-task results, resume lines, and aggregate summaries. Serialized shapes are pinned by the golden fixtures under `fixtures/outputs/`.
 - `src/esme_posttrain/studies/`: strict study specifications and generated
   artifact-backed JSON/Markdown reports.
-- `src/esme_posttrain/launch/`: shared config validation, spend/blocker helpers,
-  command construction, launch utilities, and the full-path CPU smoke.
+- `src/esme_posttrain/chat/`: chat rows and their tokenization, sampling, and the tiny CPU model and
+  chat tokenizer fixtures shared by SFT and DPO.
+- `src/esme_posttrain/launch/`: shared frozen config models, spend/blocker helpers,
+  command construction, and launch utilities.
+- `src/esme_posttrain/acceptance/`: the full-path CPU smoke that coordinates stage handoffs.
 - `src/esme_posttrain/training/`: shared training runtime used by the stage packages: collation, metrics, checkpointing, seeding/precision, and W&B setup.
-- `src/esme_posttrain/export/`: export code for adapted dense bundles handed to downstream inference repos.
+- `src/esme_posttrain/export/`: one canonical dense-bundle writer, the chat template owner, plus DPO export and generation verification.
+
+Each stage's `config.py` owns its typed settings and recipe checks, so a parsed
+settings object is always a valid recipe. Its launch module checks files on disk,
+resolves paths, and projects cost. Consumers use typed attributes, then serialize
+settings only when writing JSON. `rl/bundle.py` owns RL export identity and calls
+the shared writer. It serves both training and checkpoint conversion.
 
 ## Import Rules
 
-- Internal imports should use canonical package paths such as `esme_posttrain.sft.trainer`, `esme_posttrain.dpo.launch`, `esme_posttrain.rl.launch`, `esme_posttrain.launch.config_guards`, and `esme_posttrain.export.dense_bundle`.
+`make architecture` enforces the dependency graph declared in `pyproject.toml`.
+It reports the offending import chain and a repair direction.
+Shared code cannot depend on stages. Stages cannot depend on CLI or acceptance code.
+Stages cannot import each other. SFT and DPO share chat code through `chat/`, which sits below the stages.
+A stage's `config.py` cannot import its launch module.
+New modules inside these packages inherit their boundaries.
+For a new top-level package, declare its position in the graph before running the check.
+
+- Import each name from the module that defines it. `make type` rejects imports through a re-export (`reportPrivateLocalImportUsage`).
 - Keep package `__init__.py` files boring. Avoid broad re-export barrels; they hide ownership and can create import cycles.
 - If a module grows large, split by responsibility inside the stage package before adding a new top-level package.
 

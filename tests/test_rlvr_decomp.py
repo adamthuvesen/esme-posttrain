@@ -12,6 +12,7 @@ import json
 import re
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, Literal
 
 import pytest
 import torch
@@ -44,10 +45,14 @@ TINY_BUNDLE = REPO_ROOT / "fixtures" / "tiny_bundle"
 TINY_MANIFEST = REPO_ROOT / "fixtures" / "manifests" / "rl_tasks_tiny.json"
 HELDOUT_MANIFEST = REPO_ROOT / "data" / "manifests" / "esme-214m-rl-heldout.tasks.json"
 RL_FIXTURE_CONFIG = REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.json"
+# A verbatim copy of grpo-decomp docs/schemas/completion-set.schema.json.
+COMPLETION_SET_SCHEMA = (
+    REPO_ROOT / "fixtures" / "contracts" / "grpo-decomp-completion-set.schema.json"
+)
 
 
 def _tiny_config(
-    output_dir: Path, *, reward_mode: str, random_reward_seed: int = 214
+    output_dir: Path, *, reward_mode: Literal["verifier", "random"], random_reward_seed: int = 214
 ) -> CountdownGRPOTrainerConfig:
     return CountdownGRPOTrainerConfig(
         max_steps=2,
@@ -73,7 +78,7 @@ def _tiny_config(
     )
 
 
-def _run_tiny_grpo(output_dir: Path, *, reward_mode: str) -> Path:
+def _run_tiny_grpo(output_dir: Path, *, reward_mode: Literal["verifier", "random"]) -> Path:
     loaded = load_dense_backbone_bundle(TINY_BUNDLE)
     reference = load_dense_backbone_bundle(TINY_BUNDLE).model
     train_rows = load_countdown_lite_rows(TINY_MANIFEST, split="train")
@@ -111,8 +116,20 @@ def test_checkpoint_bundle_carries_the_checkpoint_weights_and_step(tmp_path: Pat
 
     rebuilt = load_dense_backbone_bundle(Path(summary["bundle_dir"]))
     checkpoint = load_training_checkpoint(checkpoint_path)
+    template_manifest = json.loads(
+        (result.bundle_dir / "manifest.json").read_text(encoding="utf-8")
+    )
     assert rebuilt.bundle.manifest["checkpoint_step"] == 1
-    assert rebuilt.bundle.manifest["provenance"]["training_checkpoint"]["step"] == 1
+    assert rebuilt.bundle.manifest["source_checkpoint"] == template_manifest["source_checkpoint"]
+    assert (
+        rebuilt.bundle.manifest["source_checkpoint_sha256"]
+        == (template_manifest["source_checkpoint_sha256"])
+    )
+    assert rebuilt.bundle.manifest["provenance"]["training_checkpoint"] == {
+        "path": str(checkpoint_path),
+        "sha256": file_sha256(checkpoint_path),
+        "step": 1,
+    }
     for name, tensor in checkpoint.model.state_dict().items():
         assert torch.equal(rebuilt.model.state_dict()[name], tensor)
 
@@ -245,6 +262,112 @@ def test_emitter_writes_valid_completion_set_schema(tmp_path: Path) -> None:
         assert len(item["samples"]) == 2
         assert all(sample.startswith("\\boxed{") for sample in item["samples"])
     assert len(ids) == 30
+
+
+def test_emitter_output_conforms_to_the_grpo_decomp_completion_set_schema(
+    tmp_path: Path,
+) -> None:
+    """Checks the emitted files against grpo-decomp's published CompletionSet schema.
+
+    When grpo-decomp changes its models, copy its regenerated schema over the fixture.
+    This test then shows what the emitter must change.
+    """
+    schema = json.loads(COMPLETION_SET_SCHEMA.read_text(encoding="utf-8"))
+    out = tmp_path / "base__esme-countdown"
+    emit_completion_set(
+        EmitRequest(
+            bundle_path=TINY_BUNDLE,
+            heldout_manifest_path=HELDOUT_MANIFEST,
+            output_dir=out,
+            max_new_tokens=2,
+        )
+    )
+
+    provenance = json.loads((out / "provenance.json").read_text(encoding="utf-8"))
+    errors = _schema_errors(provenance, schema["files"]["provenance.json"], schema, "provenance")
+    lines = (out / "completions.jsonl").read_text(encoding="utf-8").splitlines()
+    for number, line in enumerate(lines, start=1):
+        record_schema = schema["files"]["completions.jsonl"]
+        errors += _schema_errors(json.loads(line), record_schema, schema, f"line {number}")
+
+    assert errors == []
+    assert len(lines) == provenance["n_problems"]
+
+
+_JSON_TYPES: dict[str, type | tuple[type, ...]] = {
+    "string": str,
+    "integer": int,
+    "number": (int, float),
+    "boolean": bool,
+    "object": dict,
+    "array": list,
+    "null": type(None),
+}
+_CHECKED_KEYWORDS = {
+    "type",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "pattern",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+}
+_ANNOTATION_KEYWORDS = {"title", "description", "default"}
+
+
+def _has_json_type(value: object, expected: str) -> bool:
+    if isinstance(value, bool) and expected in {"integer", "number"}:
+        return False
+    return isinstance(value, _JSON_TYPES[expected])
+
+
+def _schema_errors(
+    value: Any, schema: dict[str, Any], root: dict[str, Any], path: str
+) -> list[str]:
+    """Field and type check for the JSON Schema subset that pydantic emits.
+
+    An unknown keyword is an error, so a new kind of constraint cannot pass unchecked.
+    """
+    if "$ref" in schema:
+        name = schema["$ref"].removeprefix("#/$defs/")
+        return _schema_errors(value, root["$defs"][name], root, path)
+    if "anyOf" in schema:
+        branches = [_schema_errors(value, branch, root, path) for branch in schema["anyOf"]]
+        return [] if any(not errors for errors in branches) else [f"{path}: matches no anyOf"]
+    unknown = set(schema) - _CHECKED_KEYWORDS - _ANNOTATION_KEYWORDS
+    if unknown:
+        return [f"{path}: the checker does not handle {sorted(unknown)}"]
+    expected = schema["type"]
+    if not _has_json_type(value, expected):
+        return [f"{path}: expected {expected}, got {type(value).__name__}"]
+    errors: list[str] = []
+    if expected == "object":
+        properties = schema.get("properties", {})
+        errors += [
+            f"{path}.{key}: missing" for key in schema.get("required", ()) if key not in value
+        ]
+        extra = schema.get("additionalProperties", True)
+        for key, item in value.items():
+            if key in properties:
+                errors += _schema_errors(item, properties[key], root, f"{path}.{key}")
+            elif extra is False:
+                errors.append(f"{path}.{key}: not in the schema")
+            elif isinstance(extra, dict):
+                errors += _schema_errors(item, extra, root, f"{path}.{key}")
+    if expected == "array":
+        for index, item in enumerate(value):
+            errors += _schema_errors(item, schema["items"], root, f"{path}[{index}]")
+    if "pattern" in schema and not re.search(schema["pattern"], value):
+        errors.append(f"{path}: does not match {schema['pattern']}")
+    if "minimum" in schema and value < schema["minimum"]:
+        errors.append(f"{path}: below {schema['minimum']}")
+    if "maximum" in schema and value > schema["maximum"]:
+        errors.append(f"{path}: above {schema['maximum']}")
+    if "exclusiveMinimum" in schema and value <= schema["exclusiveMinimum"]:
+        errors.append(f"{path}: not above {schema['exclusiveMinimum']}")
+    return errors
 
 
 def test_emitter_gold_answer_matches_countdown_key() -> None:

@@ -5,6 +5,10 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+# parents[3] is the repo root locally and /root in the container, where the file is mounted.
+PYTHON_VERSION_FILE = Path(__file__).resolve().parents[3] / ".python-version"
+LOCAL_PYTHON = PYTHON_VERSION_FILE.read_text(encoding="utf-8").strip()
+
 
 def format_payload(payload: dict[str, Any], *, json_output: bool, keys: tuple[str, ...]) -> str:
     if json_output:
@@ -35,7 +39,7 @@ def local_git_commit(repo_root: Path) -> str:
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
-    except (OSError, subprocess.CalledProcessError):
+    except OSError, subprocess.CalledProcessError:
         return "unknown"
 
 
@@ -47,7 +51,7 @@ def local_git_dirty(repo_root: Path) -> bool:
             text=True,
             stderr=subprocess.DEVNULL,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except OSError, subprocess.CalledProcessError:
         return True
     return bool(output.strip())
 
@@ -96,12 +100,12 @@ def with_full_output_stem(
     full_launch_command: str,
     volume_output_dir: str,
 ) -> dict[str, Any]:
-    updated = {
+    updated: dict[str, Any] = {
         **payload,
         "full_launch_command": full_launch_command,
         "volume_output_dir": volume_output_dir,
     }
-    preflight = dict(updated.get("preflight", {}))
+    preflight: dict[str, Any] = dict(updated.get("preflight", {}))
     preflight["exact_launch_command"] = full_launch_command
     preflight["volume_output_dir"] = volume_output_dir
     updated["preflight"] = preflight

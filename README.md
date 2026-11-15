@@ -1,6 +1,6 @@
 # esme-posttrain
 
-![License](https://img.shields.io/github/license/adamthuvesen/esme-posttrain) ![Python](https://img.shields.io/badge/python-3.13%2B-blue)
+![License](https://img.shields.io/github/license/adamthuvesen/esme-posttrain) ![Python](https://img.shields.io/badge/python-3.14%2B-blue)
 
 Esme is a 214M-parameter language model built from scratch in [`esme-pretrain`](https://github.com/adamthuvesen/esme-pretrain). `esme-posttrain` adapts an `Esme-214M-Base` checkpoint into instruction-following, preference-tuned, and verifier-trained model artifacts.
 
@@ -83,7 +83,7 @@ Esme-214M is small enough to make the full LLM lifecycle practical to build and 
 ## Quickstart
 
 ```bash
-uv sync --extra dev
+make install
 uv run esme-posttrain --version
 make check
 ```
@@ -99,6 +99,14 @@ uv run esme-posttrain bundle-check --bundle-dir fixtures/tiny_bundle --json
 uv run esme-posttrain study-report --study studies/rlvr-placebo-step240-large.json
 uv run esme-posttrain full-path-cpu-smoke --output-dir runs/full-path-cpu-smoke --json
 ```
+
+## Making Changes
+
+Start with [package-layout.md](docs/package-layout.md) to find the owner of a change.
+Launch loaders return typed configuration. Training and launch code use those
+values directly. Stage exporters share one dense-bundle writer.
+
+See [AGENTS.md](AGENTS.md) for the commands, the `make check` gate, and the enforced rules.
 
 ## Current Artifacts
 
@@ -126,7 +134,8 @@ src/esme_posttrain/
   sft/                supervised fine-tuning stage
   dpo/                preference-tuning stage
   rl/                 verifier-reward RL stage
-  launch/             shared launch validation and cross-stage CPU acceptance
+  launch/             shared launch validation and spend guards
+  acceptance/         cross-stage CPU acceptance
   training/           shared training runtime (collate, metrics, checkpointing)
   export/             dense bundle export
 ```

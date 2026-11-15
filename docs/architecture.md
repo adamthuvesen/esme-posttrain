@@ -145,12 +145,14 @@ flowchart TB
     sft --> shared
     dpo --> shared
     rl --> shared
+    rl --> Export
     Export --> shared
 ```
 
-There is one deliberate cross-stage import: `dpo/` reuses the SFT chat
-template and sampling so the DPO policy sees exactly the format the SFT
-foundation was trained on. `rl/` writes its eval outputs through the typed
+`sft/` and `dpo/` share the chat template, sampling, and tiny fixture builders
+through `chat/`, below both stages. This keeps the DPO chat format consistent with SFT,
+and no stage imports another.
+`rl/` writes its eval outputs through the typed
 records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 
 ## Module Ownership
@@ -158,12 +160,13 @@ records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 | Module | Owns | Does not own |
 | --- | --- | --- |
 | [`sft/`](../src/esme_posttrain/sft/) | conversation data with all-assistant masking, SFT trainer, launch validation, eval suite, sampling | preference pairs, rewards |
-| [`dpo/`](../src/esme_posttrain/dpo/) | preference pairs, vanilla DPO trainer with frozen SFT reference, decoding precheck, chat eval, launch validation | the chat template (rendered by `sft/data`) |
+| [`dpo/`](../src/esme_posttrain/dpo/) | preference pairs, vanilla DPO trainer with frozen SFT reference, decoding precheck, chat eval, launch validation | the chat template (rendered by `chat/data`) |
 | [`rl/`](../src/esme_posttrain/rl/) | Countdown-Lite task generation and verification, GRPO trainer, baselines, held-out transfer, reports, launch validation | a task registry or plugin framework |
 | [`evals/`](../src/esme_posttrain/evals/) | typed records for the eval contract, shapes pinned by golden fixtures | scoring logic |
 | [`training/`](../src/esme_posttrain/training/) | collate, metrics, checkpointing, seeding/precision, W&B init | stage objectives |
-| [`launch/`](../src/esme_posttrain/launch/) | shared config guards, spend blockers, Modal CLI shell, full-path CPU smoke | stage recipes (each stage's launch module pins its own) |
-| [`export/`](../src/esme_posttrain/export/) | adapted dense-bundle export with manifest and generation smoke payload | serving (that is `llm-infer`) |
+| [`launch/`](../src/esme_posttrain/launch/) | shared config models and runtime caps, spend blockers, Modal CLI shell | stage recipes and cross-stage coordination |
+| [`acceptance/`](../src/esme_posttrain/acceptance/) | full-path CPU smoke and stage handoff checks | stage implementation |
+| [`export/`](../src/esme_posttrain/export/) | canonical dense-bundle serialization, DPO export, generation smoke | stage objectives, serving |
 | [`studies/`](../src/esme_posttrain/studies/) | hashed study specs and rebuilt JSON/Markdown reports | running training |
 | [`modeling.py`](../src/esme_posttrain/modeling.py) | the shared `DenseBackbone` model primitives | tokenization, training loop |
 | [`bundle.py`](../src/esme_posttrain/bundle.py) | dense-bundle v1 validation, loading, hashing | the format spec (`esme-pretrain/docs/bundle-format.md`) |
@@ -173,16 +176,23 @@ records in `evals/`, whose serialized shapes are pinned by golden fixtures.
 Dependency direction stays simple:
 
 ```text
-cli / tests / full-path smoke -> sft + dpo + rl -> training + modeling + bundle + launch guards
-dpo -> sft        (chat template, sampling)
+cli / tests / acceptance -> sft + dpo + rl -> training + modeling + bundle + launch guards
+dpo -> sft        (chat template, sampling, tiny fixture builders)
 rl -> evals       (typed eval records)
+rl -> export     (canonical bundle serialization)
 studies -> rl     (Countdown-Lite spec)
 export -> bundle + training checkpointing
 ```
 
+Import Linter enforces these boundaries through `make architecture`, also included in `make check`.
+Its contracts live in `pyproject.toml`. A failure shows the import chain and the supported owner.
+The graph covers every top-level module and all package descendants.
+The three permitted DPO imports are supported interfaces, not temporary rule exemptions.
+A separate contract rejects indirect DPO dependencies on the SFT trainer through those interfaces.
+
 ## Launch Contract
 
-Each stage owns an approval-gated launch validator:
+Each stage owns an approval-gated launch module:
 [`sft/launch_multiturn.py`](../src/esme_posttrain/sft/launch_multiturn.py),
 [`dpo/launch.py`](../src/esme_posttrain/dpo/launch.py),
 [`rl/launch.py`](../src/esme_posttrain/rl/launch.py). They share one contract:
@@ -192,27 +202,74 @@ Each stage owns an approval-gated launch validator:
   bypass).
 - A full run refuses while unapproved or while any launch blocker is
   outstanding, and carries a hard per-stage spend cap.
-- The validator pins the recipe — run id, volume, output stem, data mix,
-  hyperparameters — so config drift fails loudly before any spend.
+- The stage's `config.py` pins the recipe (run id, volume, output stem, data mix,
+  hyperparameters) at parse time, so config drift fails loudly before any spend.
 
-The validators are the single source of truth for config shape: configs,
-fixtures, and CLI dry-run payloads change together with them.
+Each stage's `config.py` defines its JSON shape and recipe constraints through
+frozen Pydantic models with model validators.
+`launch/config_models.py` owns the shared configuration types and runtime caps.
+Stage launch modules parse these models, then check files on disk.
+Their launch results carry typed settings alongside resolved paths and cost projections.
+
+Consumers read typed attributes. Models reject unknown fields and preserve
+immutable nested values. Serialization returns a fresh JSON-compatible value
+at the artifact or CLI boundary. Optional fields retain their original presence.
+There is no separately maintained JSON schema.
+
+Basedpyright checks model constructors and frozen fields through Pydantic's dataclass transform.
+It also checks the Modal SDK calls and config consumers in `scripts/modal_*.py`.
+Config shape errors identify the input file and nested field. Recipe errors
+name the failed constraint.
 
 ## Bundle Contract
 
 Dense-bundle v1 is the interchange format everywhere: in from `esme-pretrain`,
 out to `llm-infer`, and between DPO and RLVR inside this repo.
-[`bundle.py`](../src/esme_posttrain/bundle.py) validates, loads, and hashes
-bundles; [`export/dense_bundle.py`](../src/esme_posttrain/export/dense_bundle.py)
-writes them with a manifest and a generation smoke payload. The format spec
-lives in `esme-pretrain/docs/bundle-format.md`; this repo does not keep a
-parallel copy.
+[`bundle.py`](../src/esme_posttrain/bundle.py) validates, loads, and hashes bundles.
+[`export/bundle_writer.py`](../src/esme_posttrain/export/bundle_writer.py) owns
+canonical config, weight headers, file hashes, and common manifest fields.
+The format spec lives in `esme-pretrain/docs/bundle-format.md`.
+
+[`export/dense_bundle.py`](../src/esme_posttrain/export/dense_bundle.py) prepares
+DPO metadata and verifies generation after export.
+[`rl/bundle.py`](../src/esme_posttrain/rl/bundle.py) prepares RL identity and provenance.
+GRPO training and checkpoint conversion both use that RL export path.
+Checkpoint conversion does not import the trainer.
+
+Stages prepare the tokenizer before calling the shared writer. DPO preserves
+the source tokenizer bytes and requires `<eos>`.
+
+DPO export writes the `esme_newline_v2` `chat_template`
+([`export/chat_template.py`](../src/esme_posttrain/export/chat_template.py)).
+Its assistant pattern ends with the literal text `<eos>`, so served history
+tokenizes to the same ids as training. Export refuses a tokenizer that does not
+encode `<eos>` as the single `<eos>` id. To fix it, register `<eos>` as a special
+token in `tokenizer.json` `added_tokens`.
+
+A bundle exported before v2 carries `esme_newline_v1`. It still loads, but its
+served history ends assistant turns with a newline. Upgrade it in place:
+
+```bash
+uv run esme-posttrain upgrade-chat-template --bundle-dir exports/esme-214m-chat --dry-run
+uv run esme-posttrain upgrade-chat-template --bundle-dir exports/esme-214m-chat
+```
+
+The command rewrites only `manifest.json`, atomically. The manifest hashes do not
+cover `manifest.json`, so the bundle still verifies. It accepts bundles exported
+before the canonical v1 contract (no `README.md`, no `readme` files entry): before
+and after the rewrite it checks the sha256 of every file `manifest.files` lists. It
+also rewrites a v1 copy nested under `tokenizer.chat_template`. It refuses a bundle with no
+`chat_template` (RL bundles omit it), a template that is not the exact v1 object,
+and a tokenizer that fails the `<eos>` check. A v2 bundle is reported and left
+unchanged. `--dry-run` prints the manifest diff and writes nothing. RL serializes its tokenizer
+and preserves its existing empty-EOS behavior. Stage-specific provenance stays
+with the stage, including the distinction between warm-start and exported checkpoints.
 
 ## Full-Path CPU Smoke
 
 `esme-posttrain full-path-cpu-smoke` runs the whole chain locally with no
 spend and records every artifact handoff
-([`launch/full_path_smoke.py`](../src/esme_posttrain/launch/full_path_smoke.py)):
+([`acceptance/full_path_smoke.py`](../src/esme_posttrain/acceptance/full_path_smoke.py)):
 
 1. Validate the base bundle contract.
 2. Run a tiny SFT fixture.

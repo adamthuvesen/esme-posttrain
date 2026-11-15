@@ -71,6 +71,8 @@ reference (`esme-214m-sft-multiturn-full`, step `6300`). Both models were
 evaluated with the same tokenizer, the same 8 fixed conversational prompts,
 and the same two decoders, at `96` max new tokens. The results were left on
 the Modal volume until 2026-07-10, when they were downloaded and pinned here.
+These prompts were rendered with `esme_newline_v1`, so the multi-turn numbers
+are not comparable with `esme_newline_v2` runs.
 
 | Decoder | Metric | SFT | DPO |
 | --- | --- | --- | --- |

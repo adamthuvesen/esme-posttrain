@@ -18,11 +18,13 @@ from typing import Any
 import torch
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.chat.data import sequence_efficiency_report
 from esme_posttrain.launch.config_guards import (
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
-    estimate_cost_usd,
+    projected_cost_usd,
 )
+from esme_posttrain.launch.config_models import SWEEP_SPEND_CAP_USD
 from esme_posttrain.run_artifacts import (
     RuntimeSpendTracker,
     write_environment,
@@ -30,7 +32,7 @@ from esme_posttrain.run_artifacts import (
     write_json,
     write_selected_row_manifest,
 )
-from esme_posttrain.sft.data import sequence_efficiency_report
+from esme_posttrain.sft.eval_suite import EvalSplit
 from esme_posttrain.sft.launch_multiturn import MultiTurnLaunchConfig
 from esme_posttrain.sft.multiturn_data import (
     build_multi_turn_eval_set,
@@ -62,12 +64,11 @@ from esme_posttrain.sft.sweep_shared import (
 from esme_posttrain.sft.sweep_shared import (
     train_sanity as _train_sanity,
 )
-from esme_posttrain.sft.trainer import EvalSplit, SFTTrainerConfig, run_sft_training
+from esme_posttrain.sft.trainer import SFTTrainerConfig, run_sft_training
 from esme_posttrain.training.wandb_init import WandbConfig
 
 SWEEP_OUTPUT_STEM = "esme-multiturn-sft-interval-sweep"
 SWEEP_GROUP = "esme_214m_sft_multiturn_interval_sweep"
-SWEEP_SPEND_CAP_USD = 8.0
 SWEEP_TIMEOUT_HOURS = 3
 SWEEP_TRAIN_SAMPLE_CAP = 512
 SWEEP_TRAIN_TOKEN_CAP = 1_572_864
@@ -131,26 +132,22 @@ def build_multi_turn_sweep_preflight(
     modal_gpu: str | None = None,
 ) -> dict[str, Any]:
     selected_profile = config.selected_gpu_profile
-    max_sequence_tokens = int(config.budgets["max_sequence_tokens"])
+    max_sequence_tokens = config.budgets.max_sequence_tokens
     projected_tokens = sum(
         arm.planned_token_upper_bound(max_sequence_tokens=max_sequence_tokens) for arm in SWEEP_ARMS
     )
-    projected_cost = estimate_cost_usd(
-        tokens=projected_tokens,
-        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
-        usd_per_hour=float(selected_profile["usd_per_hour"]),
-    )
+    projected_cost = projected_cost_usd(selected_profile, projected_tokens)
     blockers = multi_turn_sweep_blockers(
         config,
         timeout_hours=timeout_hours,
-        modal_gpu=modal_gpu or str(config.runtime["selected_gpu"]),
+        modal_gpu=modal_gpu or config.runtime.selected_gpu,
     )
     return {
         "status": "ready_for_modal_sweep" if not blockers else "blocked_by_launch_safety",
         "mode": "multi_turn_interval_eval_sweep",
         "run_id": config.run_id,
         "artifact_name": config.artifact_name,
-        "starts_from": config.payload["starts_from"],
+        "starts_from": config.settings.starts_from,
         "requires_approval": True,
         "approval_flag": LAUNCH_APPROVAL_FLAG,
         "will_start_modal_job": False,
@@ -158,11 +155,11 @@ def build_multi_turn_sweep_preflight(
         "modal_run_will_download_real_data": True,
         "uses_cpu_fixture_path": False,
         "uses_full_run_output_dir": False,
-        "volume": config.runtime["modal_volume"],
+        "volume": config.runtime.modal_volume,
         "volume_output_root": str(DEFAULT_MODAL_SWEEP_ROOT),
         "arm_id_pattern": "sweep-<UTC>-<arm-name>",
         "arms": [arm.to_dict(max_sequence_tokens=max_sequence_tokens) for arm in SWEEP_ARMS],
-        "datasets": config.payload["datasets"],
+        "datasets": config.settings.datasets.to_dict(),
         "data_caps": {
             "train_samples": SWEEP_TRAIN_SAMPLE_CAP,
             "train_tokens": SWEEP_TRAIN_TOKEN_CAP,
@@ -175,17 +172,17 @@ def build_multi_turn_sweep_preflight(
         },
         "runtime": {
             "provider": "modal",
-            "selected_gpu": config.runtime["selected_gpu"],
-            "modal_gpu": modal_gpu or config.runtime["selected_gpu"],
-            "precision": config.runtime["precision"],
+            "selected_gpu": config.runtime.selected_gpu,
+            "modal_gpu": modal_gpu or config.runtime.selected_gpu,
+            "precision": config.runtime.precision,
             "timeout_hours": timeout_hours,
             "sweep_spend_cap_usd": SWEEP_SPEND_CAP_USD,
-            "timeout_cost_ceiling_usd": float(selected_profile["usd_per_hour"]) * timeout_hours,
+            "timeout_cost_ceiling_usd": selected_profile.usd_per_hour * timeout_hours,
             "projected_train_token_upper_bound": projected_tokens,
             "projected_cost_usd": round(projected_cost, 4),
         },
         "monitoring": {
-            "wandb_project": config.payload["monitoring"]["wandb_project"],
+            "wandb_project": config.settings.monitoring.wandb_project,
             "job_type": "sweep",
             "group": SWEEP_GROUP,
             "required_eval_metrics": [
@@ -215,7 +212,7 @@ def build_multi_turn_sweep_preflight(
         "dependency_pins": {"modal": MODAL_CLIENT_VERSION},
         "launch_blockers": blockers,
         "modal_sweep_command": multi_turn_sweep_command(
-            config.config_path, timeout_hours=timeout_hours, gpu=str(config.runtime["selected_gpu"])
+            config.config_path, timeout_hours=timeout_hours, gpu=config.runtime.selected_gpu
         ),
     }
 
@@ -227,21 +224,17 @@ def multi_turn_sweep_blockers(
     runtime = config.runtime
     if timeout_hours <= 0 or timeout_hours > 24:
         blockers.append("SFT_SWEEP_TIMEOUT_HOURS must be between 1 and 24")
-    if modal_gpu != runtime["selected_gpu"]:
+    if modal_gpu != runtime.selected_gpu:
         blockers.append("SFT_MODAL_GPU must match runtime.selected_gpu for sweep cost accounting")
     selected_profile = config.selected_gpu_profile
-    timeout_cost = timeout_hours * float(selected_profile["usd_per_hour"])
+    timeout_cost = timeout_hours * selected_profile.usd_per_hour
     if timeout_cost > SWEEP_SPEND_CAP_USD:
         blockers.append("sweep timeout cost ceiling exceeds the approved $8 sweep spend cap")
-    max_sequence_tokens = int(config.budgets["max_sequence_tokens"])
+    max_sequence_tokens = config.budgets.max_sequence_tokens
     projected_tokens = sum(
         arm.planned_token_upper_bound(max_sequence_tokens=max_sequence_tokens) for arm in SWEEP_ARMS
     )
-    projected_cost = estimate_cost_usd(
-        tokens=projected_tokens,
-        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
-        usd_per_hour=float(selected_profile["usd_per_hour"]),
-    )
+    projected_cost = projected_cost_usd(selected_profile, projected_tokens)
     if projected_cost > SWEEP_SPEND_CAP_USD:
         blockers.append("projected interval sweep cost exceeds the approved $8 sweep spend cap")
     if "-excellence" in str(DEFAULT_MODAL_SWEEP_ROOT):
@@ -289,14 +282,14 @@ def run_multi_turn_interval_eval_sweep(
     profile = config.selected_gpu_profile
     sweep_spend = RuntimeSpendTracker(
         started=started,
-        usd_per_hour=float(profile["usd_per_hour"]),
+        usd_per_hour=profile.usd_per_hour,
         stop_usd=SWEEP_SPEND_CAP_USD,
         output_dir=output_root,
     )
     bundle_path = (base_bundle_path or config.base_bundle_path).expanduser().resolve()
     loaded = load_dense_backbone_bundle(bundle_path, map_location="cpu")
     budgets = config.budgets
-    max_sequence_tokens = int(budgets["max_sequence_tokens"])
+    max_sequence_tokens = budgets.max_sequence_tokens
     train_report = build_multi_turn_mix(
         config.train_sources,
         loaded.tokenizer,
@@ -398,7 +391,7 @@ def run_multi_turn_interval_eval_sweep(
                 )
             )
             break
-        except Exception as error:  # noqa: BLE001 - record the failure and continue to next arm.
+        except Exception as error:  # record the failure and continue to next arm.
             arm_payloads.append(
                 _arm_failure_payload(
                     arm,
@@ -447,7 +440,7 @@ def run_multi_turn_interval_eval_sweep(
         "evidence_dir": str(evidence_dir),
         "interval_eval_sweep_path": str(evidence_dir / "interval-eval-sweep.json"),
         "learning_gate_path": str(evidence_dir / "learning-gate.json"),
-        "volume": config.runtime["modal_volume"],
+        "volume": config.runtime.modal_volume,
         "commit": commit,
         "dirty": dirty,
         "device": device.type,
@@ -485,16 +478,16 @@ def _run_sweep_arm(
     dirty: bool,
 ) -> dict[str, Any]:
     loaded = load_dense_backbone_bundle(base_bundle_path, map_location="cpu")
-    optimizer_config = config.payload["optimizer"]
-    monitoring_config = config.payload["monitoring"]
-    sequence_config = config.payload["sequence"]
-    max_sequence_tokens = int(config.budgets["max_sequence_tokens"])
+    optimizer_config = config.settings.optimizer
+    monitoring_config = config.settings.monitoring
+    sequence_config = config.settings.sequence
+    max_sequence_tokens = config.budgets.max_sequence_tokens
     write_json(
         output_dir / "config.json",
         {
             "mode": "bounded_matched_interval_eval_sweep_arm",
             "arm": arm.to_dict(max_sequence_tokens=max_sequence_tokens),
-            "source_config": config.payload,
+            "source_config": config.settings.to_dict(),
             "commit": commit,
             "dirty": dirty,
             "output_dir": str(output_dir),
@@ -520,31 +513,29 @@ def _run_sweep_arm(
             micro_batch_size=arm.micro_batch_size,
             gradient_accumulation_steps=arm.gradient_accumulation_steps,
             learning_rate=arm.learning_rate,
-            scheduler=str(optimizer_config["scheduler"]),
+            scheduler=optimizer_config.scheduler,
             warmup_steps=arm.warmup_steps,
-            weight_decay=float(optimizer_config["weight_decay"]),
-            precision=str(config.runtime["precision"]),
-            pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-            seed=int(optimizer_config["seed"]),
+            weight_decay=optimizer_config.weight_decay,
+            precision=config.runtime.precision,
+            pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+            seed=optimizer_config.seed,
             output_dir=output_dir,
             artifact_name=config.artifact_name,
-            assistant_only_loss=bool(config.payload["loss"]["assistant_only_loss"]),
-            completion_only_loss=bool(config.payload["loss"]["completion_only_loss"]),
-            tuning_mode=str(config.payload["tuning"]["mode"]),
-            grad_clip=float(optimizer_config["grad_clip"]),
+            assistant_only_loss=config.settings.loss.assistant_only_loss,
+            completion_only_loss=config.settings.loss.completion_only_loss,
+            tuning_mode=config.settings.tuning.mode,
+            grad_clip=optimizer_config.grad_clip,
             log_interval=arm.log_interval,
             eval_interval=arm.eval_interval,
             checkpoint_interval=arm.checkpoint_interval,
             retain_last_checkpoints=1,
-            early_stopping_patience=int(monitoring_config["early_stopping_patience"]),
-            no_robots_catastrophic_regression_multiplier=float(
-                monitoring_config["no_robots_catastrophic_regression_multiplier"]
-            ),
-            sample_new_tokens=min(40, int(monitoring_config["sample_new_tokens"])),
+            early_stopping_patience=monitoring_config.early_stopping_patience,
+            no_robots_catastrophic_regression_multiplier=monitoring_config.no_robots_catastrophic_regression_multiplier,
+            sample_new_tokens=min(40, monitoring_config.sample_new_tokens),
             device=device.type,
             wandb=WandbConfig(
                 enabled=wandb_enabled,
-                project=str(monitoring_config["wandb_project"]),
+                project=monitoring_config.wandb_project,
                 run_name=f"{SWEEP_GROUP}-{arm_id}",
                 tags=(
                     f"model:{config.artifact_name}",
@@ -552,8 +543,8 @@ def _run_sweep_arm(
                     "run-type:multi-turn-interval-sweep",
                     "dataset-mix:smol-smoltalk-85-tulu-personas-15",
                     "eval-holdout:no-robots",
-                    f"gpu:{config.runtime['selected_gpu']}",
-                    f"tuning-mode:{config.payload['tuning']['mode']}",
+                    f"gpu:{config.runtime.selected_gpu}",
+                    f"tuning-mode:{config.settings.tuning.mode}",
                     f"arm:{arm_id}",
                 ),
                 group=SWEEP_GROUP,
@@ -571,9 +562,9 @@ def _run_sweep_arm(
                     },
                     "eval_holdout": config.eval_source.source,
                     "eval_holdout_revision": config.eval_source.revision,
-                    "gpu": config.runtime["selected_gpu"],
-                    "precision": config.runtime["precision"],
-                    "tuning_mode": config.payload["tuning"]["mode"],
+                    "gpu": config.runtime.selected_gpu,
+                    "precision": config.runtime.precision,
+                    "tuning_mode": config.settings.tuning.mode,
                     "max_sequence_tokens": max_sequence_tokens,
                     "arm_id": arm_id,
                     "sweep_group": SWEEP_GROUP,
@@ -615,9 +606,9 @@ def _run_sweep_arm(
                     train_examples,
                     max_sequence_tokens=max_sequence_tokens,
                     micro_batch_size=arm.micro_batch_size,
-                    sequence_packing=bool(sequence_config["sequence_packing"]),
-                    pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-                    no_packing_rationale=str(sequence_config["no_packing_rationale"]),
+                    sequence_packing=sequence_config.sequence_packing,
+                    pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+                    no_packing_rationale=sequence_config.no_packing_rationale,
                 ),
             },
             "no_robots_training": False,

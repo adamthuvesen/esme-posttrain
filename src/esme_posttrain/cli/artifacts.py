@@ -4,10 +4,16 @@ import argparse
 from pathlib import Path
 
 from esme_posttrain.bundle import BundleError, validate_bundle_contract
-from esme_posttrain.cli.output import emit_payload, exit_with_error, format_stage_payload
+from esme_posttrain.cli.output import (
+    Payload,
+    Subparsers,
+    emit_payload,
+    exit_with_error,
+    format_stage_payload,
+)
 
 
-def add_artifact_parsers(subparsers: argparse._SubParsersAction) -> None:
+def add_artifact_parsers(subparsers: Subparsers) -> None:
     bundle_check = subparsers.add_parser(
         "bundle-check",
         help="Check bundle versions, hashes, and weights metadata without creating a model.",
@@ -22,7 +28,7 @@ def _handle_bundle_check(args: argparse.Namespace) -> int:
         bundle = validate_bundle_contract(args.bundle_dir)
     except BundleError as exc:
         exit_with_error(str(exc))
-    payload = {
+    payload: Payload = {
         "status": "ok",
         "bundle_dir": str(bundle.bundle_dir),
         "manifest_path": str(bundle.manifest_path),

@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 import torch
 
+from esme_posttrain.chat.fixtures import tiny_backbone_config
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config
 from esme_posttrain.training.checkpointing import (
     CheckpointError,
     capture_rng_state,

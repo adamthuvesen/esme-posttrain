@@ -6,8 +6,8 @@ from typing import Any
 import torch
 from tokenizers import Tokenizer
 
+from esme_posttrain.chat.sampling import markdown_fenced_text
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.sampling import markdown_fenced_text
 
 
 def write_chat_samples(

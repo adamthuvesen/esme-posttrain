@@ -11,34 +11,25 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from tokenizers import Tokenizer
-from tokenizers.models import WordLevel
-from tokenizers.pre_tokenizers import Whitespace
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
-from esme_posttrain.modeling import BackboneConfig, DenseBackbone
+from esme_posttrain.chat.data import sequence_efficiency_report, tokenize_multi_turn
+from esme_posttrain.chat.data_types import ChatTurn, MultiTurnExample, TokenizedExample
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
+from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.run_artifacts import (
     refresh_manifest_files,
     write_environment,
     write_json,
     write_selected_row_manifest,
 )
-from esme_posttrain.sft.data import (
-    ChatTurn,
-    MultiTurnExample,
-    TokenizedExample,
-    sequence_efficiency_report,
-    tokenize_multi_turn,
-)
-from esme_posttrain.sft.launch_multiturn import EXPECTED_ARTIFACTS, MultiTurnLaunchConfig
+from esme_posttrain.sft.config import EXPECTED_ARTIFACTS
+from esme_posttrain.sft.eval_suite import EvalSplit
+from esme_posttrain.sft.launch_multiturn import MultiTurnLaunchConfig
 from esme_posttrain.sft.launch_shared import prepare_evidence_dir as _prepare_evidence_dir
 from esme_posttrain.sft.multiturn_data import turn_distribution
 from esme_posttrain.sft.sample_artifacts import write_multi_turn_samples
-from esme_posttrain.sft.trainer import (
-    EvalSplit,
-    SFTTrainerConfig,
-    run_sft_training,
-)
+from esme_posttrain.sft.trainer import SFTTrainerConfig, run_sft_training
 from esme_posttrain.training.wandb_init import WandbConfig
 
 
@@ -51,7 +42,7 @@ def run_multi_turn_cpu_fixture(
     max_steps: int | None = None,
 ) -> dict[str, Any]:
     evidence_dir = _prepare_evidence_dir(config.output_dir, output_dir)
-    fixture_steps = int(config.payload["optimizer"]["smoke_max_steps"])
+    fixture_steps = config.settings.optimizer.smoke_max_steps
     if max_steps is not None:
         if max_steps <= 0:
             raise ValueError("max_steps must be positive")
@@ -74,7 +65,7 @@ def run_multi_turn_cpu_fixture(
         tokenize_multi_turn(tokenizer, example, max_sequence_tokens=model.config.context_length)
         for example in _tiny_eval_examples()
     )
-    sequence_config = config.payload["sequence"]
+    sequence_config = config.settings.sequence
 
     multi_turn_masking = _assert_multi_turn_masking(train_examples)
     distribution = turn_distribution(train_examples)
@@ -99,17 +90,17 @@ def run_multi_turn_cpu_fixture(
                     train_examples,
                     max_sequence_tokens=model.config.context_length,
                     micro_batch_size=1,
-                    sequence_packing=bool(sequence_config["sequence_packing"]),
-                    pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-                    no_packing_rationale=str(sequence_config["no_packing_rationale"]),
+                    sequence_packing=sequence_config.sequence_packing,
+                    pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+                    no_packing_rationale=sequence_config.no_packing_rationale,
                 ),
                 "eval": sequence_efficiency_report(
                     eval_examples,
                     max_sequence_tokens=model.config.context_length,
                     micro_batch_size=1,
-                    sequence_packing=bool(sequence_config["sequence_packing"]),
-                    pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-                    no_packing_rationale=str(sequence_config["no_packing_rationale"]),
+                    sequence_packing=sequence_config.sequence_packing,
+                    pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+                    no_packing_rationale=sequence_config.no_packing_rationale,
                 ),
             },
         },
@@ -129,16 +120,16 @@ def run_multi_turn_cpu_fixture(
             micro_batch_size=1,
             gradient_accumulation_steps=2,
             learning_rate=0.05,
-            scheduler=str(config.payload["optimizer"]["scheduler"]),
+            scheduler=config.settings.optimizer.scheduler,
             warmup_steps=min(
                 fixture_steps,
                 2,
-                int(config.payload["optimizer"]["warmup_steps"]),
+                config.settings.optimizer.warmup_steps,
             ),
-            weight_decay=float(config.payload["optimizer"]["weight_decay"]),
+            weight_decay=config.settings.optimizer.weight_decay,
             precision="fp32",
-            pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-            seed=int(config.payload["optimizer"]["seed"]),
+            pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+            seed=config.settings.optimizer.seed,
             output_dir=evidence_dir,
             artifact_name=config.artifact_name,
             eval_interval=min(10, fixture_steps),
@@ -147,7 +138,7 @@ def run_multi_turn_cpu_fixture(
             sample_new_tokens=6,
             wandb=WandbConfig(
                 enabled=wandb_enabled,
-                project=str(config.payload["monitoring"]["wandb_project"]),
+                project=config.settings.monitoring.wandb_project,
                 run_name=f"{config.run_id}-modal-smoke" if wandb_enabled else None,
                 tags=("Esme-214M-Instruct", "sft", "multi-turn", "smoke", "fixture"),
                 group=config.run_id,
@@ -159,7 +150,7 @@ def run_multi_turn_cpu_fixture(
                     "run_type": "smoke",
                     "dataset_mix": "fixture",
                     "eval_holdout": "fixture",
-                    "gpu": config.runtime["selected_gpu"] if wandb_enabled else "cpu",
+                    "gpu": config.runtime.selected_gpu if wandb_enabled else "cpu",
                     "tuning_mode": "full",
                     "resume": False,
                 },
@@ -209,10 +200,8 @@ def _fixture_eval_splits(eval_examples: tuple[TokenizedExample, ...]) -> tuple[E
 def _assert_multi_turn_masking(examples: tuple[TokenizedExample, ...]) -> bool:
     saw_multi_turn = False
     for example in examples:
-        # Prompt span (system/first user) must be fully masked.
         if not all(label == -100 for label in example.labels[: example.prompt_tokens]):
             raise ValueError(f"{example.row_id}: prompt span leaked into the loss")
-        # Supervised labels must equal their input ids exactly.
         if not all(
             label == token
             for token, label in zip(example.input_ids, example.labels, strict=True)
@@ -228,42 +217,6 @@ def _assert_multi_turn_masking(examples: tuple[TokenizedExample, ...]) -> bool:
             "multi-turn fixture must include at least one example with >1 assistant turn"
         )
     return True
-
-
-def tiny_backbone_config() -> BackboneConfig:
-    return BackboneConfig(
-        name="tiny-multi-turn-sft-fixture",
-        vocab_size=32,
-        context_length=48,
-        embedding_dim=16,
-        layers=1,
-        heads=2,
-        kv_heads=1,
-        feedforward_dim=32,
-        z_loss_weight=0.0,
-    )
-
-
-def tiny_chat_tokenizer() -> Tokenizer:
-    vocab = {
-        "<unk>": 0,
-        "<eos>": 1,
-        "user": 2,
-        "assistant": 3,
-        "system": 4,
-        "say": 5,
-        "red": 6,
-        "blue": 7,
-        "green": 8,
-        "repeat": 9,
-        "one": 10,
-        "two": 11,
-        "again": 12,
-        "helpful": 13,
-    }
-    tokenizer = Tokenizer(WordLevel(vocab=vocab, unk_token="<unk>"))
-    tokenizer.pre_tokenizer = Whitespace()
-    return tokenizer
 
 
 def _tiny_train_examples() -> tuple[MultiTurnExample, ...]:

@@ -159,6 +159,19 @@ def validate_bundle_contract(bundle_dir: Path) -> ValidatedBundle:
     return bundle
 
 
+def validate_listed_files(bundle_dir: Path) -> ValidatedBundle:
+    """Check the manifest basics and the sha256 of every file that manifest.files lists.
+
+    Unlike `validate_bundle_contract`, this accepts bundles exported before the
+    canonical v1 contract (no README.md, no `readme` entry, older manifest fields).
+    """
+    bundle = validate_base_bundle(bundle_dir)
+    files = bundle.manifest["files"]
+    for key in sorted(files.keys() - {"config", "tokenizer", "weights"}):
+        _verified_file(bundle.bundle_dir, files, key)
+    return bundle
+
+
 def validate_bundle_compatibility(bundle_dir: Path) -> ValidatedBundle:
     """Reject missing or unsupported versions before expensive consumer setup."""
     bundle = validate_base_bundle(bundle_dir)

@@ -7,7 +7,7 @@ name = "esme-posttrain"
 version = "0.0.0"
 description = "Post-training: SFT -> DPO -> RLVR for Esme-214M."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 license = { text = "MIT" }
 authors = [{ name = "Adam Thuvesen" }]
 dependencies = [
@@ -22,31 +22,158 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "mypy>=2.2.0",
+  "basedpyright==1.40.2",
+  "import-linter>=2.15",
   "pytest>=8.2",
-  "ruff>=0.5",
+  "pytest-xdist>=3.8.0",
+  "ruff==0.17.4",
 ]
 
 [project.scripts]
 esme-posttrain = "esme_posttrain.cli:main"
 
-[tool.pytest.ini_options]
-addopts = "-q"
-testpaths = ["tests"]
+[tool.uv]
+required-version = "==0.13.5"
 
-[tool.mypy]
-files = ["src/esme_posttrain"]
-disallow_untyped_defs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.basedpyright]
+typeCheckingMode = "strict"
+enableTypeIgnoreComments = false
+reportUnnecessaryTypeIgnoreComment = "error"
+reportIgnoreCommentWithoutRule = "error"
+pythonVersion = "3.14"
+include = ["src/esme_posttrain", "scripts", "tests"]
+venvPath = "."
+venv = ".venv"
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportUnknownParameterType = false
+reportUnknownLambdaType = false
+reportMissingTypeStubs = false
+# Importing a name through a module that only re-exports it is an error.
+reportPrivateLocalImportUsage = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+reportMissingParameterType = false
+reportPrivateUsage = false
+extraPaths = [".", "src"]
+
+[tool.importlinter]
+root_package = "esme_posttrain"
+
+[[tool.importlinter.contracts]]
+id = "dependency-direction"
+name = "Modules import only lower layers (cli > acceptance > stages > chat > export > shared); import shared code from its owner"
+type = "layers"
+containers = ["esme_posttrain"]
+exhaustive = true
+layers = [
+    "__main__",
+    "cli",
+    "acceptance : studies",
+    "sft | dpo | rl",
+    "chat",
+    "export",
+    "training : launch : run_artifacts : evals : bundle : modeling",
+]
+broken_contract_guidance = """
+Import shared behavior from its owner in training/, launch/, bundle.py, or modeling.py.
+For example, import WandbConfig from esme_posttrain.training.wandb_init, not a stage trainer.
+Keep cross-stage coordination in acceptance/ or cli/.
+SFT and DPO share chat rows, sampling, and CPU fixtures through chat/.
+Place a new top-level module in these layers. See docs/package-layout.md for ownership.
+"""
+
+[[tool.importlinter.contracts]]
+id = "stage-config-without-launch"
+name = "A stage config.py must not import its launch module; move the shared value into config.py"
+type = "forbidden"
+source_modules = ["esme_posttrain.sft.config", "esme_posttrain.dpo.config", "esme_posttrain.rl.config"]
+forbidden_modules = [
+    "esme_posttrain.sft.launch_multiturn",
+    "esme_posttrain.sft.launch_shared",
+    "esme_posttrain.dpo.launch",
+    "esme_posttrain.rl.launch",
+]
+broken_contract_guidance = """
+A stage's config.py owns typed settings and recipe checks. Its launch module reads the config,
+checks files on disk, and builds launch plans. Move the shared value into config.py instead.
+"""
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py314"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF", "PGH003", "PGH004", "TID251"]
+ignore = ["E501"]
+
+# Process, network, and paid-service modules live only in their owner files.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"subprocess".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"asyncio.subprocess".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.system".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.popen".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.execl".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.execle".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.execlp".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.execlpe".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.execv".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.execve".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.execvp".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.execvpe".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.spawnl".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.spawnle".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.spawnlp".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.spawnlpe".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.spawnv".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.spawnve".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.spawnvp".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.spawnvpe".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.posix_spawn".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.posix_spawnp".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.fork".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"os.forkpty".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"pty".msg = "Do not open a pseudo-terminal. Run git through launch/modal_cli.py; no module owns a pty."
+"asyncio.create_subprocess_exec".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"asyncio.create_subprocess_shell".msg = "Run git through launch/modal_cli.py. Other process calls belong only to the verify script and the git-reading tests in tests/test_strict_mode.py OWNED_BANS."
+"urllib3".msg = "No module owns a network client. Read local files, or load remote data through chat/data.py behind allow_remote_download."
+"aiohttp".msg = "No module owns a network client. Read local files, or load remote data through chat/data.py behind allow_remote_download."
+"ftplib".msg = "No module owns a network client. Read local files, or load remote data through chat/data.py behind allow_remote_download."
+"torch.hub".msg = "torch.hub downloads remote weights. Load a local bundle with esme_posttrain.bundle.load_dense_backbone_bundle()."
+"tokenizers.Tokenizer.from_pretrained".msg = "from_pretrained downloads from the Hub. Use Tokenizer.from_file() on a local tokenizer.json."
+"socket".msg = "No module owns a network client. Only the verify script imports socket, to block the network in drives."
+"http.client".msg = "No module owns a network client. Read local files, or load remote data through chat/data.py behind allow_remote_download."
+"urllib.request".msg = "No module owns a network client. Read local files, or load remote data through chat/data.py behind allow_remote_download."
+"requests".msg = "No module owns a network client. Read local files, or load remote data through chat/data.py behind allow_remote_download."
+"httpx".msg = "No module owns a network client. Read local files, or load remote data through chat/data.py behind allow_remote_download."
+"modal".msg = "Modal spends money. Import it only in an approval-gated scripts/modal_*.py launcher listed in tests/test_strict_mode.py OWNED_BANS."
+"wandb".msg = "Start W&B through esme_posttrain.training.wandb_init.start_wandb(); only that file imports wandb."
+"datasets".msg = "Read datasets through esme_posttrain.chat.data.iter_rows(); remote reads need allow_remote_download=True."
+"huggingface_hub".msg = "Download through esme_posttrain.chat.data.iter_rows(); remote reads need allow_remote_download=True."
+"openai".msg = "This repo calls no paid LLM API. Score outputs with the local verifiers in esme_posttrain.sft.eval_suite and esme_posttrain.rl.countdown_lite instead."
+"anthropic".msg = "This repo calls no paid LLM API. Score outputs with the local verifiers in esme_posttrain.sft.eval_suite and esme_posttrain.rl.countdown_lite instead."
+
+[tool.ruff.lint.per-file-ignores]
+# Owner files only. tests/test_strict_mode.py::OWNED_BANS holds each file to the modules it owns.
+"tests/test_modal_image_pins.py" = ["TID251"]
+"tests/test_strict_mode.py" = ["TID251"]
+"tests/test_rlvr_launch.py" = ["TID251"]
+"tests/test_enforced_rules.py" = ["TID251"]
+"scripts/modal_rlvr_grpo.py" = ["TID251"]
+".agents/skills/verify-esme-posttrain/verify" = ["TID251"]
+"scripts/modal_chat_sft.py" = ["TID251"]
+"scripts/modal_chat_dpo.py" = ["TID251"]
+"scripts/modal_emit_completions.py" = ["TID251"]
+"src/esme_posttrain/launch/modal_cli.py" = ["TID251"]
+"src/esme_posttrain/training/wandb_init.py" = ["TID251"]
 
 [tool.ruff.format]
 quote-style = "double"

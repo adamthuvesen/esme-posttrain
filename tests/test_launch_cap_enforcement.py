@@ -16,10 +16,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
+from esme_posttrain.dpo.config import DPOSettings
 from esme_posttrain.dpo.launch import validate_dpo_payload
+from esme_posttrain.launch.config_models import FrozenConfig
 from esme_posttrain.launch.errors import LaunchError
+from esme_posttrain.rl.config import RLVRSettings
 from esme_posttrain.rl.launch import validate_rlvr_payload
+from esme_posttrain.sft.config import MultiTurnSettings
 from esme_posttrain.sft.launch_multiturn import validate_multi_turn_payload
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -94,3 +99,72 @@ def test_timeout_over_modal_maximum_fails_validation(
 
     with pytest.raises(LaunchError, match="timeout_hours"):
         validate(payload, config_path)
+
+
+@pytest.mark.parametrize(
+    ("config_path", "settings_model"),
+    [
+        (REPO_ROOT / "configs" / "esme-214m-sft-multiturn.json", MultiTurnSettings),
+        (REPO_ROOT / "configs" / "esme-214m-chat-dpo.json", DPOSettings),
+        (REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.json", RLVRSettings),
+    ],
+    ids=["sft-multiturn", "chat-dpo", "rlvr-grpo"],
+)
+def test_settings_model_rejects_over_cap_runtime_without_launch_module(
+    config_path: Path, settings_model: type[FrozenConfig]
+) -> None:
+    payload = _load_payload(config_path)
+    settings_model.model_validate(payload)
+    payload["runtime"]["full_run_max_cost_usd"] = 1_000.0
+
+    with pytest.raises(ValidationError, match="full_run_max_cost_usd must be <="):
+        settings_model.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    ("config_path", "settings_model", "section", "key", "value", "message"),
+    [
+        (
+            REPO_ROOT / "configs" / "esme-214m-sft-multiturn.json",
+            MultiTurnSettings,
+            "datasets",
+            "non_commercial_training_approved",
+            True,
+            "datasets.non_commercial_training_approved must stay false",
+        ),
+        (
+            REPO_ROOT / "configs" / "esme-214m-chat-dpo.json",
+            DPOSettings,
+            "datasets",
+            "non_commercial_training_approved",
+            True,
+            "datasets.non_commercial_training_approved must stay false",
+        ),
+        (
+            REPO_ROOT / "fixtures" / "configs" / "esme-214m-rl.fixture.json",
+            RLVRSettings,
+            "dataset",
+            "remote_download_allowed",
+            True,
+            "dataset.remote_download_allowed must stay false",
+        ),
+    ],
+    ids=["sft-multiturn", "chat-dpo", "rlvr-grpo"],
+)
+def test_settings_model_rejects_recipe_drift(
+    config_path: Path,
+    settings_model: type[FrozenConfig],
+    section: str,
+    key: str,
+    value: object,
+    message: str,
+) -> None:
+    run_id_drift = _load_payload(config_path)
+    run_id_drift["run_id"] = "unreviewed_run"
+    with pytest.raises(ValidationError, match="run_id must be"):
+        settings_model.model_validate(run_id_drift)
+
+    data_drift = _load_payload(config_path)
+    data_drift[section][key] = value
+    with pytest.raises(ValidationError, match=message):
+        settings_model.model_validate(data_drift)

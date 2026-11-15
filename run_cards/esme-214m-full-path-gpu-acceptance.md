@@ -1,8 +1,7 @@
 # Run Card: Esme-214M Full-Path GPU Acceptance
 
-The full SFT -> DPO -> RLVR -> export handoff chain is proven on real CUDA by
-one tiny paid run. This is the GPU tier of the acceptance path; the CPU tier
-is the committed `full-path-cpu-smoke` CLI.
+This card plans one small paid run to verify the full SFT -> DPO -> RLVR -> export
+handoff chain on CUDA. The CPU tier is the committed `full-path-cpu-smoke` CLI.
 
 **Status: written ahead of approval, not run.** Trigger: to be run right
 before the next release or paid training campaign, and no earlier. Chat

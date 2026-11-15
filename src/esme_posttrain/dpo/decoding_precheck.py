@@ -22,6 +22,7 @@ from typing import Any
 
 import torch
 
+from esme_posttrain.export.chat_template import CHAT_TEMPLATE_ID
 from esme_posttrain.modeling import DenseBackbone, soft_cap_logits
 
 F = torch.nn.functional
@@ -167,11 +168,13 @@ class DecodingPrecheckReport:
     note: str
     per_decoding: dict[str, dict[str, Any]]
     per_prompt: tuple[PromptDecodingResult, ...]
+    chat_template_id: str = CHAT_TEMPLATE_ID
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "is_real_checkpoint": self.is_real_checkpoint,
             "note": self.note,
+            "chat_template_id": self.chat_template_id,
             "per_decoding_summary": self.per_decoding,
             "per_prompt": [result.to_dict() for result in self.per_prompt],
         }

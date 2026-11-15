@@ -9,31 +9,44 @@ import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_bundle
+from esme_posttrain.chat.data import sequence_efficiency_report, tokenize_multi_turn
+from esme_posttrain.chat.data_types import ChatTurn, MultiTurnExample, TokenizedExample
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
+from esme_posttrain.chat.sampling import generate_samples, markdown_fenced_text
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data import (
-    ChatTurn,
-    MultiTurnExample,
-    TokenizedExample,
-    sequence_efficiency_report,
-    tokenize_multi_turn,
-)
-from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
-from esme_posttrain.sft.trainer import (
+from esme_posttrain.sft.eval_suite import (
     EvalMetrics,
     EvalSplit,
     EvalSuiteResult,
+    no_robots_catastrophic_regression,
+)
+from esme_posttrain.sft.trainer import (
     SFTTrainerConfig,
-    _generate_samples,
-    _markdown_fenced_text,
-    _no_robots_catastrophic_regression,
-    load_sft_checkpoint,
     run_sft_training,
 )
-from esme_posttrain.training.checkpointing import latest_checkpoint_path
+from esme_posttrain.training.checkpointing import latest_checkpoint_path, load_training_checkpoint
 from esme_posttrain.training.collate import collate_batch
 from esme_posttrain.training.errors import TrainerError
-from esme_posttrain.training.metrics import EVAL_METRIC_NAMES, TRAIN_METRIC_NAMES
 from esme_posttrain.training.runtime import resolve_torch_device
+
+TRAIN_METRIC_NAMES = {
+    "train/loss",
+    "train/learning_rate",
+    "train/grad_norm",
+    "train/tokens",
+    "train/supervised_tokens",
+    "train/token_accuracy",
+}
+EVAL_METRIC_NAMES = {
+    "eval/response_loss",
+    "eval/perplexity",
+    "eval/supervised_tokens",
+    "eval/examples",
+    "eval/matched/response_loss",
+    "eval/smol-smoltalk/response_loss",
+    "eval/tulu-3-personas/response_loss",
+    "eval/no_robots/response_loss",
+}
 
 WEIGHTS_FIELD = "key_format"
 
@@ -192,11 +205,11 @@ def test_sample_generation_trims_eos_marker_and_trailing_tokens(
     ) -> torch.Tensor:
         assert max_new_tokens == 4
         assert eos_token_id == 1
-        return torch.tensor([input_ids[0].tolist() + [6, 1, 7]], dtype=torch.long)
+        return torch.tensor([[*input_ids[0].tolist(), 6, 1, 7]], dtype=torch.long)
 
     monkeypatch.setattr(model, "generate", fake_generate)
 
-    (sample,) = _generate_samples(model, tokenizer, (example,), sample_new_tokens=4)
+    (sample,) = generate_samples(model, tokenizer, (example,), sample_new_tokens=4)
 
     assert sample.endswith("assistant red")
     assert "<eos>" not in sample
@@ -204,7 +217,7 @@ def test_sample_generation_trims_eos_marker_and_trailing_tokens(
 
 
 def test_markdown_sample_fence_handles_generated_code_blocks() -> None:
-    lines = _markdown_fenced_text("```python\nprint('hi')\n```")
+    lines = markdown_fenced_text("```python\nprint('hi')\n```")
 
     assert lines[0] == "````text"
     assert lines[-1] == "````"
@@ -249,7 +262,8 @@ def test_cpu_fixture_sft_loss_decreases_and_checkpoint_reloads_logits(tmp_path: 
             sample_new_tokens=4,
         ),
     )
-    loaded = load_sft_checkpoint(result.checkpoint_path)
+    # The trainer leaves the model on the best checkpoint, which need not be the final step.
+    loaded = load_training_checkpoint(result.best_checkpoint_path)
     input_ids, _labels = collate_batch(eval_examples)
 
     assert result.instruct_eval.response_loss < result.base_eval.response_loss
@@ -381,8 +395,8 @@ def test_matched_eval_selector_best_checkpoint_and_no_robots_guardrail(
             "no_robots": EvalMetrics(1.6, 5.0, 10, 1),
         },
     )
-    assert not _no_robots_catastrophic_regression(safe_suite, baseline=1.0, multiplier=1.5)
-    assert _no_robots_catastrophic_regression(bad_suite, baseline=1.0, multiplier=1.5)
+    assert not no_robots_catastrophic_regression(safe_suite, baseline=1.0, multiplier=1.5)
+    assert no_robots_catastrophic_regression(bad_suite, baseline=1.0, multiplier=1.5)
 
 
 def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) -> None:
@@ -475,7 +489,7 @@ def test_sft_resume_from_latest_checkpoint_continues_training(tmp_path: Path) ->
     assert second.training_mode == "resumed"
     assert second.start_step == 5
     assert second.resumed_from_checkpoint is not None
-    assert load_sft_checkpoint(second.checkpoint_path).step == 8
+    assert load_training_checkpoint(second.checkpoint_path).step == 8
     assert second.selected_metric_value == 0.0
 
     # Resumed runs must not append the pre-resume base-model eval mislabeled as
@@ -533,7 +547,7 @@ def test_sft_failure_saves_latest_checkpoint_and_preserves_error(tmp_path: Path)
     assert failure_report["checkpoint_error"] is None
     assert checkpoint is not None
     assert failure_report["checkpoint_path"] == str(checkpoint)
-    assert load_sft_checkpoint(checkpoint).step == 3
+    assert load_training_checkpoint(checkpoint).step == 3
 
 
 def test_final_eval_regression_writes_failure_report(

@@ -17,7 +17,7 @@ from typing import Any
 from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import canonical_model_config, file_sha256, validate_bundle_contract
-from esme_posttrain.rl.grpo import RLVRBundleIdentity, write_rlvr_bundle
+from esme_posttrain.rl.bundle import RLVRBundleIdentity, write_rlvr_bundle
 from esme_posttrain.training.checkpointing import load_training_checkpoint
 
 

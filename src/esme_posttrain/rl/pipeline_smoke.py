@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from esme_posttrain.launch.modal_cli import local_git_commit, local_git_dirty
+from esme_posttrain.rl.config import PIPELINE_SMOKE_PROFILE
 from esme_posttrain.rl.full import CountdownGRPOFullRunError, run_countdown_lite_grpo_job
-from esme_posttrain.rl.launch import PIPELINE_SMOKE_PROFILE, RLVRLaunchConfig
+from esme_posttrain.rl.launch import RLVRLaunchConfig
 from esme_posttrain.rl.report import write_grpo_report_artifacts
 
 REQUIRED_PIPELINE_SMOKE_STAGES = (

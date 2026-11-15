@@ -27,10 +27,10 @@ from esme_posttrain.rl.countdown_lite import (
     COUNTDOWN_REWARD_NAME,
     CountdownLiteError,
     CountdownTask,
-    _candidate_pools,
-    _difficulty_for,
-    _solutions_for_numbers,
     build_countdown_lite_tasks,
+    candidate_pools,
+    difficulty_for,
+    solutions_for_numbers,
     stable_task_score,
 )
 
@@ -75,7 +75,7 @@ def _select_unused_tasks(
     seed: int,
     used_keys: frozenset[TaskKey],
 ) -> tuple[CountdownTask, ...]:
-    pools = _candidate_pools()
+    pools = candidate_pools()
     tasks: list[CountdownTask] = []
     for difficulty, count in counts:
         unused = [item for item in pools[difficulty] if (item[0], item[1]) not in used_keys]
@@ -113,7 +113,7 @@ def build_heldout_shift_tasks() -> tuple[CountdownTask, ...]:
     for width in (2, 3):
         for numbers in product(range(1, 10), repeat=width):
             sorted_numbers = tuple(sorted(numbers))
-            for target, solution in sorted(_solutions_for_numbers(sorted_numbers).items()):
+            for target, solution in sorted(solutions_for_numbers(sorted_numbers).items()):
                 if not SHIFT_TARGET_MIN <= target <= SHIFT_TARGET_MAX:
                     continue
                 key = (sorted_numbers, target)
@@ -137,7 +137,7 @@ def build_heldout_shift_tasks() -> tuple[CountdownTask, ...]:
         CountdownTask(
             task_id=f"countdown_heldout_shift_{index:04d}",
             split=SHIFT_SPLIT,
-            difficulty=_difficulty_for(numbers, target, solution),
+            difficulty=difficulty_for(numbers, target, solution),
             numbers=numbers,
             target=target,
             solution=solution,

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import torch
 
+from esme_posttrain.chat.data_types import ChatTurn
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.cli import main
 from esme_posttrain.dpo.chat_eval import (
     CONVERSATIONAL_PROMPTS,
@@ -20,6 +24,7 @@ from esme_posttrain.dpo.chat_eval_run import (
     build_chat_eval_preflight,
     chat_eval_blockers,
 )
+from esme_posttrain.dpo.config import DPO_FULL_RUN_SPEND_CAP_USD, EXPECTED_SWEEP_BETAS
 from esme_posttrain.dpo.data import (
     PreferencePair,
     tokenize_preference_pair,
@@ -40,8 +45,6 @@ from esme_posttrain.dpo.full import (
     _assert_prompt_masking,
 )
 from esme_posttrain.dpo.launch import (
-    DPO_FULL_RUN_SPEND_CAP_USD,
-    EXPECTED_SWEEP_BETAS,
     build_dpo_dry_run,
     full_launch_blockers,
     load_dpo_config,
@@ -51,7 +54,6 @@ from esme_posttrain.dpo.launch import (
 from esme_posttrain.dpo.smoke import run_dpo_cpu_fixture
 from esme_posttrain.dpo.sweep import (
     SWEEP_ARMS,
-    SWEEP_SPEND_CAP_USD,
     build_dpo_sweep_preflight,
     dpo_sweep_blockers,
     learning_gate_payload,
@@ -66,18 +68,15 @@ from esme_posttrain.dpo.trainer import (
     run_dpo_training,
     sequence_logprob,
 )
+from esme_posttrain.export.chat_template import CHAT_TEMPLATE_ID
+from esme_posttrain.launch.config_models import SWEEP_SPEND_CAP_USD
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data import IGNORE_INDEX, ChatTurn
-from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
-from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-chat-dpo.json"
-
-
-# --- DPO loss + logp + frozen reference ---------------------------------------
 
 
 def test_dpo_loss_is_log2_and_zero_margin_at_init() -> None:
@@ -229,7 +228,7 @@ def test_dpo_rejects_mismatched_policy_reference_config(tmp_path: Path) -> None:
     tokenizer = tiny_chat_tokenizer()
     policy = DenseBackbone(tiny_backbone_config())
     other = tiny_backbone_config()
-    reference = DenseBackbone(type(other)(**{**other.to_dict(), "layers": 2}))
+    reference = DenseBackbone(dataclasses.replace(other, layers=2))
     pair = tokenize_preference_pair(
         tokenizer,
         PreferencePair(
@@ -315,7 +314,7 @@ def test_dpo_logs_chosen_rejected_logps_every_eval(tmp_path: Path) -> None:
     assert "wandb_run_url" in result.to_dict()
 
 
-def _tiny_dpo_pairs(tokenizer) -> tuple:
+def _tiny_dpo_pairs(tokenizer) -> tuple[Any, ...]:
     return tuple(
         tokenize_preference_pair(
             tokenizer,
@@ -360,7 +359,7 @@ def _dpo_config(output_dir: Path, *, max_steps: int, resume_from_latest: bool = 
     )
 
 
-def _train_rows(metrics_path: Path) -> dict[int, dict]:
+def _train_rows(metrics_path: Path) -> dict[int, dict[str, Any]]:
     rows = [
         json.loads(line)
         for line in metrics_path.read_text(encoding="utf-8").splitlines()
@@ -488,9 +487,6 @@ def test_dpo_resume_rejects_model_only_checkpoint_loudly(tmp_path: Path) -> None
         )
 
 
-# --- decoding pre-check -------------------------------------------------------
-
-
 def test_ngram_repetition_rate() -> None:
     assert ngram_repetition_rate([1, 2, 3, 4], n=2) == 0.0
     # [1,1,1,1] -> bigrams all (1,1): one distinct of three -> 2/3 repeats.
@@ -534,6 +530,7 @@ def test_decoding_precheck_summarizes_both_decoders() -> None:
     )
     payload = report.to_dict()
     assert payload["is_real_checkpoint"] is False
+    assert payload["chat_template_id"] == CHAT_TEMPLATE_ID
     assert set(payload["per_decoding_summary"]) == {GREEDY.name, NUCLEUS_REP_PENALTY.name}
     for summary in payload["per_decoding_summary"].values():
         assert "mean_response_length" in summary
@@ -544,9 +541,6 @@ def test_nucleus_sampling_keeps_threshold_crossing_token() -> None:
     keep = _nucleus_keep_mask(torch.tensor([0.6, 0.3, 0.1]), top_p=0.7)
 
     assert keep.tolist() == [True, True, False]
-
-
-# --- SFT-vs-DPO chat eval -----------------------------------------------------
 
 
 def test_chat_eval_prompts_include_fixed_and_conversational() -> None:
@@ -597,8 +591,11 @@ def test_chat_eval_compares_two_checkpoints_and_writes_markdown(tmp_path: Path) 
     assert "DPO vs SFT chat-quality comparison" in md
     assert "Side-by-side generations" in md
     assert "SFT (" in md and "DPO (" in md  # both sides present per prompt
+    assert f"- Chat template: `{CHAT_TEMPLATE_ID}`" in md
     saved = json.loads(json_path.read_text(encoding="utf-8"))
     assert saved["mode"] == "dpo_chat_eval"
+    assert saved["chat_template_id"] == CHAT_TEMPLATE_ID
+    assert saved["sft"]["report"]["chat_template_id"] == CHAT_TEMPLATE_ID
     assert {"sft", "dpo", "summary_comparison", "degeneration_flags"} <= set(saved)
 
 
@@ -680,9 +677,6 @@ def test_modal_chat_dpo_parses_fractional_timeout_hours(
         importlib.reload(modal_chat_dpo)
 
 
-# --- CPU fixture: margin up, logp tracked, checkpoint round-trip ---------------
-
-
 def test_cpu_fixture_margin_increases_and_no_collapse(tmp_path: Path) -> None:
     config = load_dpo_config(CONFIG_PATH)
     out = tmp_path / "fixture"
@@ -738,7 +732,7 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
         margin_increased=True,
         chosen_logp_collapsed=False,
     )
-    _assert_accepted_dpo_result(accepted)
+    _assert_accepted_dpo_result(accepted)  # pyright: ignore[reportArgumentType]  # a namespace stands in for the result type
 
     lower_accuracy = SimpleNamespace(
         base_eval=SimpleNamespace(preference_accuracy=0.6),
@@ -747,7 +741,7 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
         chosen_logp_collapsed=False,
     )
     with pytest.raises(DPOFullRunError, match="preference accuracy"):
-        _assert_accepted_dpo_result(lower_accuracy)
+        _assert_accepted_dpo_result(lower_accuracy)  # pyright: ignore[reportArgumentType]  # a namespace stands in for the result type
 
     collapsed = SimpleNamespace(
         base_eval=SimpleNamespace(preference_accuracy=0.5),
@@ -756,7 +750,7 @@ def test_dpo_full_acceptance_requires_accuracy_margin_and_no_logp_collapse() -> 
         chosen_logp_collapsed=True,
     )
     with pytest.raises(DPOFullRunError, match="log-prob collapsed"):
-        _assert_accepted_dpo_result(collapsed)
+        _assert_accepted_dpo_result(collapsed)  # pyright: ignore[reportArgumentType]  # a namespace stands in for the result type
 
 
 def test_dpo_full_prompt_masking_check_raises_on_leaked_prompt() -> None:
@@ -815,18 +809,15 @@ def test_dpo_full_rejects_eval_shortfalls_and_eval_cap_overruns() -> None:
         )
 
 
-# --- config + dry-run + guards ------------------------------------------------
-
-
 def test_config_pins_dpo_recipe_and_dry_run_never_launches() -> None:
     config = load_dpo_config(CONFIG_PATH)
     assert config.run_id == "esme_214m_chat_dpo"
     assert config.artifact_name == "Esme-214M-Chat"
-    assert config.payload["dpo"]["loss_type"] == "sigmoid"
-    assert config.payload["dpo"]["beta"] == 0.5
-    assert config.budgets["max_length"] == 1024
-    assert config.budgets["max_prompt_length"] == 512
-    assert config.runtime["modal_volume"] == "esme-posttrain-esme-chat-dpo"
+    assert config.settings.dpo.loss_type == "sigmoid"
+    assert config.settings.dpo.beta == 0.5
+    assert config.budgets.max_length == 1024
+    assert config.budgets.max_prompt_length == 512
+    assert config.runtime.modal_volume == "esme-posttrain-esme-chat-dpo"
 
     dry_run = build_dpo_dry_run(config)
     assert dry_run["will_start_modal_job"] is False
@@ -842,7 +833,7 @@ def test_config_pins_dpo_recipe_and_dry_run_never_launches() -> None:
 def test_smoke_cost_under_two_dollars_and_no_blockers() -> None:
     config = load_dpo_config(CONFIG_PATH)
     assert config.estimated_smoke_cost_usd <= 2
-    assert smoke_launch_blockers(config) == []
+    assert smoke_launch_blockers(config, modal_gpu=None, timeout_hours=None) == []
 
 
 def test_full_run_refused_without_approval() -> None:
@@ -867,7 +858,7 @@ def test_full_run_blocks_modal_gpu_mismatch() -> None:
     assert any("DPO_MODAL_GPU must match" in b for b in blockers)
 
 
-def _passing_beta_sweep_evidence() -> dict[str, object]:
+def _passing_beta_sweep_evidence() -> dict[str, Any]:
     return {
         "bounded_beta_sweep": {
             "kind": "bounded_beta_sweep",
@@ -882,11 +873,25 @@ def _passing_beta_sweep_evidence() -> dict[str, object]:
     }
 
 
-def test_full_run_accepts_passing_beta_sweep_evidence() -> None:
+@pytest.mark.parametrize("swept_betas", [[0.1, 0.3, 0.5], ["0.1", "0.3", "0.5"]])
+def test_full_run_accepts_passing_beta_sweep_evidence(swept_betas: list[float | str]) -> None:
     payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     payload["learning_gate"]["evidence"] = _passing_beta_sweep_evidence()
+    payload["learning_gate"]["evidence"]["bounded_beta_sweep"]["swept_betas"] = swept_betas
     config = validate_dpo_payload(payload, CONFIG_PATH)
     assert full_launch_blockers(config, approved=True, modal_gpu="A100") == []
+
+
+@pytest.mark.parametrize("swept_betas", [[0.1, None, 0.5], [0.1, "invalid", 0.5]])
+def test_malformed_beta_sweep_reports_a_launch_blocker(swept_betas: list[object]) -> None:
+    payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    payload["learning_gate"]["evidence"] = _passing_beta_sweep_evidence()
+    payload["learning_gate"]["evidence"]["bounded_beta_sweep"]["swept_betas"] = swept_betas
+    config = validate_dpo_payload(payload, CONFIG_PATH)
+
+    assert full_launch_blockers(config, approved=True, modal_gpu="A100") == [
+        "learning_gate.evidence.bounded_beta_sweep.swept_betas must be [0.1, 0.3, 0.5]"
+    ]
 
 
 def test_full_run_rejects_sweep_not_beating_reference() -> None:
@@ -919,16 +924,16 @@ def test_config_rejects_non_1024_max_length() -> None:
 def test_config_pins_train_pair_floor_below_cap() -> None:
     config = load_dpo_config(CONFIG_PATH)
     budgets = config.budgets
-    assert budgets["min_train_pairs"] == 8000
-    assert budgets["min_eval_pairs"] == 100
+    assert budgets.min_train_pairs == 8000
+    assert budgets.min_eval_pairs == 100
     # The floor is a sufficiency minimum, well below the cap.
-    assert budgets["min_train_pairs"] < budgets["max_train_pairs"]
+    assert budgets.min_train_pairs < budgets.max_train_pairs
 
 
 def test_config_rejects_train_floor_above_cap() -> None:
     payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     payload["budgets"]["min_train_pairs"] = payload["budgets"]["max_train_pairs"] + 1
-    with pytest.raises(LaunchError, match="min_train_pairs .floor. must be <="):
+    with pytest.raises(LaunchError, match=r"min_train_pairs .floor. must be <="):
         validate_dpo_payload(payload, CONFIG_PATH)
 
 
@@ -986,9 +991,6 @@ def test_full_run_cap_above_limit_is_rejected() -> None:
     payload["runtime"]["full_run_max_cost_usd"] = DPO_FULL_RUN_SPEND_CAP_USD + 1
     with pytest.raises(LaunchError, match="full_run_max_cost_usd must be <="):
         validate_dpo_payload(payload, CONFIG_PATH)
-
-
-# --- beta sweep ---------------------------------------------------------------
 
 
 def test_beta_sweep_arms_cover_exactly_the_swept_betas() -> None:
@@ -1068,9 +1070,6 @@ def test_beta_sweep_fails_when_no_arm_beats_reference() -> None:
     gate = learning_gate_payload(best_arm=None, evidence_uri="x")
     assert gate["status"] == "fail"
     assert "blocker" in gate
-
-
-# --- CLI ----------------------------------------------------------------------
 
 
 def test_cli_dpo_dry_run_proves_no_modal_job(capsys: pytest.CaptureFixture[str]) -> None:

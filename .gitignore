@@ -30,3 +30,7 @@ modal_logs/
 
 # Local planning notes that must not be published.
 docs/internal/
+.verify/
+
+# The tiny bundle is a deterministic CPU test fixture, not a training artifact.
+!fixtures/tiny_bundle/weights.pt

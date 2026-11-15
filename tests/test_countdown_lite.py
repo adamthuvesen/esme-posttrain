@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -85,9 +86,9 @@ def test_countdown_lite_build_data_cli_writes_manifest_and_jsonl(tmp_path: Path)
 
 
 def test_countdown_lite_decision_requires_exact_signal() -> None:
-    no_signal = [{"difficulty": "easy", "pass@32": False}]
-    valid_but_no_exact = [{"difficulty": "easy", "pass@32": False}]
-    exact_easy_signal = [{"difficulty": "easy", "pass@32": True}]
+    no_signal: list[dict[str, Any]] = [{"difficulty": "easy", "pass@32": False}]
+    valid_but_no_exact: list[dict[str, Any]] = [{"difficulty": "easy", "pass@32": False}]
+    exact_easy_signal: list[dict[str, Any]] = [{"difficulty": "easy", "pass@32": True}]
 
     assert (
         _decision(no_signal, valid_count=0, exact_count=0, samples_per_task=32)
@@ -104,7 +105,7 @@ def test_countdown_lite_decision_requires_exact_signal() -> None:
 
 
 def test_countdown_lite_decision_uses_largest_honest_pass_at_k() -> None:
-    one_sample_signal = [{"difficulty": "easy", "pass@1": True}]
+    one_sample_signal: list[dict[str, Any]] = [{"difficulty": "easy", "pass@1": True}]
 
     assert (
         _decision(one_sample_signal, valid_count=1, exact_count=1, samples_per_task=1)

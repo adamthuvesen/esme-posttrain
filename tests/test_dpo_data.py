@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from esme_posttrain.chat.data_types import ChatTurn, DataError, DatasetSource
+from esme_posttrain.chat.fixtures import tiny_chat_tokenizer
 from esme_posttrain.dpo.data import (
     MAX_VALIDATION_DROP_FRACTION,
     PreferencePair,
@@ -13,14 +15,10 @@ from esme_posttrain.dpo.data import (
     parse_ultrafeedback_row,
     tokenize_preference_pair,
 )
-from esme_posttrain.sft.data import IGNORE_INDEX, ChatTurn, DataError, DatasetSource
-from esme_posttrain.sft.smoke_multiturn import tiny_chat_tokenizer
+from esme_posttrain.training.collate import IGNORE_INDEX
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-chat-dpo.json"
-
-
-# --- preference-pair templating + prompt masking ------------------------------
 
 
 def test_preference_pair_tokenization_masks_prompt_in_both_completions() -> None:
@@ -40,7 +38,6 @@ def test_preference_pair_tokenization_masks_prompt_in_both_completions() -> None
 
     eos_id = tokenizer.token_to_id("<eos>")
     for completion in (tokenized.chosen, tokenized.rejected):
-        # The whole prompt span is masked; only response tokens score.
         assert all(label == IGNORE_INDEX for label in completion.labels[: completion.prompt_tokens])
         supervised = [
             (token, label)
@@ -48,9 +45,7 @@ def test_preference_pair_tokenization_masks_prompt_in_both_completions() -> None
             if label != IGNORE_INDEX
         ]
         assert supervised, "completion must have supervised response tokens"
-        # Supervised labels equal their input ids.
         assert all(token == label for token, label in supervised)
-        # Exactly one trailing <eos> per response.
         assert completion.input_ids[-1] == eos_id
         assert completion.response_supervised_tokens == completion.response_tokens
 
@@ -98,9 +93,6 @@ def test_preference_length_measurement_flags_truncation() -> None:
     lengths = measure_preference_lengths(tokenizer, pair, max_length=6, max_prompt_length=24)
     assert lengths["prompt_truncated"] is False
     assert lengths["response_truncated"] is True
-
-
-# --- UltraFeedback parsing + filtering ----------------------------------------
 
 
 def _ultrafeedback_source(path: Path | None = None) -> DatasetSource:
@@ -367,7 +359,7 @@ def test_max_pairs_still_caps(tmp_path: Path) -> None:
 def test_min_pairs_must_not_exceed_cap(tmp_path: Path) -> None:
     path = tmp_path / "uf.jsonl"
     _clean_preference_jsonl(path, 5)
-    with pytest.raises(DataError, match="min_pairs .floor. must be <= max_pairs"):
+    with pytest.raises(DataError, match=r"min_pairs .floor. must be <= max_pairs"):
         build_preference_set(
             _ultrafeedback_source(path),
             tiny_chat_tokenizer(),

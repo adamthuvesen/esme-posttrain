@@ -31,25 +31,43 @@ from esme_posttrain.dpo.decoding_precheck import (
     DecodingPrecheckReport,
     run_decoding_precheck,
 )
+from esme_posttrain.export.chat_template import CHAT_TEMPLATE_ID, render_prompt
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.training.checkpointing import load_training_checkpoint
 
 FIXED_MULTI_TURN_PROMPTS: tuple[tuple[str, str], ...] = (
     (
         "followup_clarification",
-        "user\nName three primary colors.\nassistant\nRed, yellow, and blue.\n"
-        "user\nNow combine the first two. What color do you get?\nassistant\n",
+        render_prompt(
+            [
+                ("user", "Name three primary colors."),
+                ("assistant", "Red, yellow, and blue."),
+                ("user", "Now combine the first two. What color do you get?"),
+            ]
+        ),
     ),
     (
         "context_carryover",
-        "user\nMy dog is named Pixel.\nassistant\nNice to meet Pixel!\n"
-        "user\nWhat is my dog's name?\nassistant\n",
+        render_prompt(
+            [
+                ("user", "My dog is named Pixel."),
+                ("assistant", "Nice to meet Pixel!"),
+                ("user", "What is my dog's name?"),
+            ]
+        ),
     ),
     (
         "instruction_then_revise",
-        "user\nWrite a one-sentence summary of photosynthesis.\nassistant\n"
-        "Plants turn sunlight, water, and carbon dioxide into energy and oxygen.\n"
-        "user\nMake it shorter, under ten words.\nassistant\n",
+        render_prompt(
+            [
+                ("user", "Write a one-sentence summary of photosynthesis."),
+                (
+                    "assistant",
+                    "Plants turn sunlight, water, and carbon dioxide into energy and oxygen.",
+                ),
+                ("user", "Make it shorter, under ten words."),
+            ]
+        ),
     ),
 )
 
@@ -57,21 +75,26 @@ FIXED_MULTI_TURN_PROMPTS: tuple[tuple[str, str], ...] = (
 # the repo chat template. Deliberately easy/open -- the point is chat feel and
 # rambling, not capability. The two-turn prompt tests context carry-over.
 CONVERSATIONAL_PROMPTS: tuple[tuple[str, str], ...] = (
-    ("capital_of_france", "user\nWhat is the capital of France?\nassistant\n"),
+    ("capital_of_france", render_prompt([("user", "What is the capital of France?")])),
     (
         "photosynthesis_one_sentence",
-        "user\nExplain photosynthesis in one sentence.\nassistant\n",
+        render_prompt([("user", "Explain photosynthesis in one sentence.")]),
     ),
     (
         "thank_you_note",
-        "user\nWrite a short thank-you note to a coworker who helped me.\nassistant\n",
+        render_prompt([("user", "Write a short thank-you note to a coworker who helped me.")]),
     ),
     (
         "weekend_followup",
-        "user\nI went hiking this weekend.\nassistant\nThat sounds lovely! How was it?\n"
-        "user\nIt was great, we saw a waterfall.\nassistant\n",
+        render_prompt(
+            [
+                ("user", "I went hiking this weekend."),
+                ("assistant", "That sounds lovely! How was it?"),
+                ("user", "It was great, we saw a waterfall."),
+            ]
+        ),
     ),
-    ("tell_me_about_yourself", "user\nTell me about yourself.\nassistant\n"),
+    ("tell_me_about_yourself", render_prompt([("user", "Tell me about yourself.")])),
 )
 
 
@@ -105,15 +128,16 @@ class ChatEvalComparison:
     def to_dict(self) -> dict[str, Any]:
         return {
             "mode": "dpo_chat_eval",
+            "chat_template_id": CHAT_TEMPLATE_ID,
             "decodings": list(self.decodings),
             "prompt_names": [name for name, _ in self.prompts],
             "sft": self.sft.to_dict(),
             "dpo": self.dpo.to_dict(),
-            "summary_comparison": self._summary_comparison(),
+            "summary_comparison": self.summary_comparison(),
             "degeneration_flags": list(self.degeneration_flags),
         }
 
-    def _summary_comparison(self) -> dict[str, Any]:
+    def summary_comparison(self) -> dict[str, Any]:
         comparison: dict[str, Any] = {}
         for decoding in self.decodings:
             sft = self.sft.report.per_decoding[decoding]
@@ -234,13 +258,14 @@ def write_chat_eval_markdown(comparison: ChatEvalComparison, path: Path) -> None
         f"- SFT checkpoint: `{comparison.sft.checkpoint_path}`",
         f"- DPO checkpoint: `{comparison.dpo.checkpoint_path}`",
         "- Decoders: " + ", ".join(comparison.decodings),
+        f"- Chat template: `{CHAT_TEMPLATE_ID}`",
         "",
         "## Summary (lower repetition is better; length should stay sane)",
         "",
         "| Decoder | Metric | SFT | DPO |",
         "| --- | --- | --- | --- |",
     ]
-    summary = comparison._summary_comparison()
+    summary = comparison.summary_comparison()
     for decoding, row in summary.items():
         lines.append(
             f"| {decoding} | mean response length | "
@@ -269,7 +294,7 @@ def write_chat_eval_markdown(comparison: ChatEvalComparison, path: Path) -> None
 
     sft_by_key = {(r.prompt_name, r.decoding): r for r in comparison.sft.report.per_prompt}
     dpo_by_key = {(r.prompt_name, r.decoding): r for r in comparison.dpo.report.per_prompt}
-    prompt_text = {name: text for name, text in comparison.prompts}
+    prompt_text = dict(comparison.prompts)
     for name, _text in comparison.prompts:
         lines.extend([f"### Prompt: {name}", "", "Prompt:", "", *_fenced(prompt_text[name]), ""])
         for decoding in comparison.decodings:

@@ -1,113 +1,45 @@
-"""Approval-gated launch validation for the multi-turn SFT foundation.
+"""Approval-gated launch preparation for the multi-turn SFT foundation.
 
-Dry-run never starts Modal. Spend/GPU guards and the learning gate pin the
-multi-turn run to its run_id, Volume, output stem, sequence length, and train
-mix.
+Dry-run never starts Modal. ``sft.config`` pins the recipe at parse time; this
+module adds the base-bundle check, cost projections, and launch blockers.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from esme_posttrain.chat.data_types import DatasetSource
 from esme_posttrain.launch.config_guards import (
-    IMAGE_PACKAGE_PINS,
     LAUNCH_APPROVAL_FLAG,
     MODAL_CLIENT_VERSION,
-    LaunchError,
-    build_modal_launch_command,
-    estimate_cost_usd,
+    image_package_pins,
     load_json_object,
-    matched_interval_eval_sweep_blockers,
-    validate_adamw_optimizer,
-    validate_base_bundle_config,
-    validate_full_tuning,
-    validate_modal_runtime,
-    validate_output_artifacts,
-    validate_sft_loss,
-    validate_unpacked_sequence,
+    projected_cost_usd,
+    smoke_and_full_launch_commands,
 )
 from esme_posttrain.launch.config_guards import (
     full_launch_blockers as _common_full_launch_blockers,
 )
 from esme_posttrain.launch.config_guards import (
-    object_field as _require_object_field,
-)
-from esme_posttrain.launch.config_guards import (
-    positive_int as _positive_int,
-)
-from esme_posttrain.launch.config_guards import (
-    require_keys as _require_keys,
-)
-from esme_posttrain.launch.config_guards import (
     smoke_launch_blockers as _common_smoke_launch_blockers,
 )
-from esme_posttrain.launch.config_guards import (
-    str_field as _str,
+from esme_posttrain.launch.config_models import (
+    SmokeGPUProfile,
+    SmokeModalRuntime,
+    parse_config,
 )
-from esme_posttrain.sft.data import DatasetSource
-from esme_posttrain.sft.launch_shared import (
-    validate_eval_source as _validate_eval_source,
+from esme_posttrain.launch.errors import LaunchError
+from esme_posttrain.sft.config import (
+    Datasets,
+    LearningGate,
+    MultiTurnSettings,
+    SFTBudgets,
 )
-from esme_posttrain.sft.launch_shared import (
-    validate_sft_budgets as _validate_sft_budgets,
-)
-from esme_posttrain.sft.launch_shared import (
-    validate_sft_monitoring as _validate_sft_monitoring,
-)
+from esme_posttrain.sft.launch_shared import matched_interval_eval_sweep_blockers
 
-# Hard cap for the approved multi-turn foundation run.
-MULTITURN_FULL_RUN_SPEND_CAP_USD = 40.0
-
-RUN_ID = "esme_214m_sft_multiturn"
-RUN_CARD = "run_cards/esme-214m-sft-multiturn.md"
-ARTIFACT_NAME = "Esme-214M-Instruct"
-MODAL_VOLUME = "esme-posttrain-esme-sft-multiturn"
-MAX_APPROVED_TRAIN_SAMPLES = 50_000
-MAX_APPROVED_TRAIN_TOKENS = 80_000_000
-
-EXPECTED_TRAIN_DATASETS: dict[str, dict[str, Any]] = {
-    "smol-smoltalk": {
-        "source": "HuggingFaceTB/smol-smoltalk",
-        "revision": "f73fe857d519ff6ac5af2ea67c4d3834da7b8bcc",
-        "license": "apache-2.0",
-        "split": "train",
-    },
-    "tulu-3-personas": {
-        "source": "allenai/tulu-3-sft-personas-instruction-following",
-        "revision": "fe0c7d350c9b4542b8d829a6f1daa1c259f0ba0e",
-        "license": "odc-by",
-        "split": "train",
-    },
-}
-EXPECTED_EVAL_DATASET: dict[str, Any] = {
-    "name": "no_robots",
-    "source": "HuggingFaceH4/no_robots",
-    "revision": "e6f9a4ac5c37faeb744ba9ecf0473184d7f8105b",
-    "license": "cc-by-nc-4.0",
-    "split": "test",
-    "train_allowed": False,
-}
-EXPECTED_ARTIFACTS: tuple[str, ...] = (
-    "config.json",
-    "data-report.json",
-    "selected-row-manifest.jsonl",
-    "eval-smol-smoltalk-manifest.jsonl",
-    "eval-tulu-3-personas-manifest.jsonl",
-    "eval-no_robots-manifest.jsonl",
-    "metrics.jsonl",
-    "checkpoint.pt",
-    "best-checkpoint.pt",
-    "best-checkpoint.json",
-    "samples.md",
-    "multi-turn-samples.md",
-    "tokenizer.json",
-    "manifest.json",
-    "eval-report.json",
-    "cost.json",
-    "environment.txt",
-)
 LEARNING_GATE_BLOCKER = (
     "full multi-turn SFT launch requires learning_gate.evidence with "
     "bounded_matched_interval_eval_sweep proof where eval/matched/response_loss "
@@ -117,7 +49,7 @@ LEARNING_GATE_BLOCKER = (
 
 @dataclass(frozen=True)
 class MultiTurnLaunchConfig:
-    payload: dict[str, Any]
+    settings: MultiTurnSettings
     config_path: Path
     base_bundle_path: Path
     train_sources: tuple[DatasetSource, ...]
@@ -132,24 +64,23 @@ class MultiTurnLaunchConfig:
 
     @property
     def run_id(self) -> str:
-        return str(self.payload["run_id"])
+        return self.settings.run_id
 
     @property
     def artifact_name(self) -> str:
-        return str(self.payload["artifact_name"])
+        return self.settings.artifact_name
 
     @property
-    def runtime(self) -> dict[str, Any]:
-        return dict(self.payload["runtime"])
+    def runtime(self) -> SmokeModalRuntime:
+        return self.settings.runtime
 
     @property
-    def budgets(self) -> dict[str, Any]:
-        return dict(self.payload["budgets"])
+    def budgets(self) -> SFTBudgets:
+        return self.settings.budgets
 
     @property
-    def selected_gpu_profile(self) -> dict[str, Any]:
-        runtime = self.runtime
-        return dict(runtime["gpu_profiles"][runtime["selected_gpu"]])
+    def selected_gpu_profile(self) -> SmokeGPUProfile:
+        return self.runtime.gpu_profiles[self.runtime.selected_gpu]
 
 
 def load_multi_turn_config(config_path: Path) -> MultiTurnLaunchConfig:
@@ -158,95 +89,29 @@ def load_multi_turn_config(config_path: Path) -> MultiTurnLaunchConfig:
 
 
 def validate_multi_turn_payload(
-    payload: dict[str, Any], config_path: Path, *, require_base_bundle_exists: bool = True
+    payload: object, config_path: Path, *, require_base_bundle_exists: bool = True
 ) -> MultiTurnLaunchConfig:
-    _require_keys(
-        payload,
-        {
-            "schema_version",
-            "run_id",
-            "run_card",
-            "requires_approval",
-            "artifact_name",
-            "starts_from",
-            "stage",
-            "base_bundle",
-            "datasets",
-            "budgets",
-            "optimizer",
-            "loss",
-            "tuning",
-            "sequence",
-            "runtime",
-            "monitoring",
-            "artifacts",
-            "learning_gate",
-            "acceptance",
-        },
-        "config",
-    )
-    if payload["schema_version"] != 1:
-        raise LaunchError("schema_version must be 1")
-    if payload["run_id"] != RUN_ID:
-        raise LaunchError(f"run_id must be {RUN_ID}")
-    if payload["run_card"] != RUN_CARD:
-        raise LaunchError(f"run_card must be {RUN_CARD}")
-    if payload["requires_approval"] is not True:
-        raise LaunchError("requires_approval must be true")
-    if payload["artifact_name"] != ARTIFACT_NAME:
-        raise LaunchError(f"artifact_name must be {ARTIFACT_NAME}")
-    if payload["starts_from"] != "Esme-214M-Base":
-        raise LaunchError("starts_from must be Esme-214M-Base")
-    if payload["stage"] != "sft":
-        raise LaunchError("stage must be sft")
+    settings = parse_config(MultiTurnSettings, payload, source=config_path)
+    base_bundle_path = Path(settings.base_bundle.path).expanduser().resolve()
+    if require_base_bundle_exists and not base_bundle_path.is_dir():
+        raise LaunchError(f"base_bundle.path does not exist: {base_bundle_path}")
+    train_sources, eval_source = _dataset_sources(settings.datasets)
+    budgets = settings.budgets
+    optimizer = settings.optimizer
+    runtime = settings.runtime
+    output_dir = Path(settings.artifacts.output_dir)
 
-    base_bundle_path = validate_base_bundle_config(
-        _require_object_field(payload["base_bundle"], "base_bundle"),
-        require_exists=require_base_bundle_exists,
-    )
-    train_sources, eval_source = _validate_datasets(
-        _require_object_field(payload["datasets"], "datasets")
-    )
-    budgets = _validate_budgets(_require_object_field(payload["budgets"], "budgets"))
-    optimizer = validate_adamw_optimizer(
-        _require_object_field(payload["optimizer"], "optimizer"),
-        effective_batch_size=16,
-    )
-    validate_sft_loss(_require_object_field(payload["loss"], "loss"))
-    validate_full_tuning(_require_object_field(payload["tuning"], "tuning"))
-    validate_unpacked_sequence(_require_object_field(payload["sequence"], "sequence"))
-    runtime = validate_modal_runtime(
-        _require_object_field(payload["runtime"], "runtime"),
-        full_run_spend_cap_usd=MULTITURN_FULL_RUN_SPEND_CAP_USD,
-        full_run_cap_label="40",
-        modal_volume=MODAL_VOLUME,
-        require_smoke_profile_metrics=True,
-    )
-    _validate_monitoring(_require_object_field(payload["monitoring"], "monitoring"))
-    output_dir = validate_output_artifacts(
-        _require_object_field(payload["artifacts"], "artifacts"),
-        expected_files=EXPECTED_ARTIFACTS,
-        manifest_label="multi-turn SFT evidence manifest",
-    )
-    _validate_learning_gate(_require_object_field(payload["learning_gate"], "learning_gate"))
-    _validate_acceptance(_require_object_field(payload["acceptance"], "acceptance"))
-
-    train_steps = int(optimizer["max_steps"])
-    tokens_per_step = max(1, int(budgets["target_train_tokens"]) // train_steps)
-    selected_profile = runtime["gpu_profiles"][runtime["selected_gpu"]]
-    estimated_full_cost = estimate_cost_usd(
-        tokens=int(budgets["target_train_tokens"]),
-        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
-        usd_per_hour=float(selected_profile["usd_per_hour"]),
-    )
-    estimated_smoke_cost = estimate_cost_usd(
-        tokens=int(budgets["smoke_train_tokens"]),
-        projected_tokens_per_second=float(selected_profile["projected_tokens_per_second"]),
-        usd_per_hour=float(selected_profile["usd_per_hour"]),
+    train_steps = int(optimizer.max_steps)
+    tokens_per_step = max(1, int(budgets.target_train_tokens) // train_steps)
+    selected_profile = runtime.gpu_profiles[runtime.selected_gpu]
+    estimated_full_cost = projected_cost_usd(selected_profile, int(budgets.target_train_tokens))
+    estimated_smoke_cost = projected_cost_usd(selected_profile, int(budgets.smoke_train_tokens))
+    smoke_command, full_command = smoke_and_full_launch_commands(
+        config_path, runtime, env_prefix="SFT", script_path="scripts/modal_chat_sft.py"
     )
 
     return MultiTurnLaunchConfig(
-        payload=payload,
+        settings=settings,
         config_path=config_path,
         base_bundle_path=base_bundle_path,
         train_sources=train_sources,
@@ -256,8 +121,8 @@ def validate_multi_turn_payload(
         tokens_per_step=tokens_per_step,
         estimated_full_cost_usd=estimated_full_cost,
         estimated_smoke_cost_usd=estimated_smoke_cost,
-        smoke_launch_command=_launch_command(config_path, runtime, mode="modal-smoke"),
-        full_launch_command=_launch_command(config_path, runtime, mode="full-run"),
+        smoke_launch_command=smoke_command,
+        full_launch_command=full_command,
     )
 
 
@@ -266,8 +131,12 @@ def build_multi_turn_dry_run(
     *,
     full_run_approved: bool = False,
     full_run_modal_gpu: str | None = None,
+    smoke_modal_gpu: str | None = None,
+    smoke_timeout_hours: float | None = None,
 ) -> dict[str, Any]:
-    smoke_blockers = smoke_launch_blockers(config)
+    smoke_blockers = smoke_launch_blockers(
+        config, modal_gpu=smoke_modal_gpu, timeout_hours=smoke_timeout_hours
+    )
     full_blockers = full_launch_blockers(
         config, approved=full_run_approved, modal_gpu=full_run_modal_gpu
     )
@@ -279,33 +148,33 @@ def build_multi_turn_dry_run(
         "status": status,
         "run_id": config.run_id,
         "artifact_name": config.artifact_name,
-        "stage": config.payload["stage"],
-        "starts_from": config.payload["starts_from"],
+        "stage": config.settings.stage,
+        "starts_from": config.settings.starts_from,
         "requires_approval": True,
         "approval_flag": LAUNCH_APPROVAL_FLAG,
-        "base_bundle": config.payload["base_bundle"],
-        "datasets": config.payload["datasets"],
-        "budgets": config.payload["budgets"],
-        "optimizer": config.payload["optimizer"],
+        "base_bundle": config.settings.base_bundle.to_dict(),
+        "datasets": config.settings.datasets.to_dict(),
+        "budgets": config.settings.budgets.to_dict(),
+        "optimizer": config.settings.optimizer.to_dict(),
         "runtime": {
-            **config.payload["runtime"],
+            **config.settings.runtime.to_dict(),
             "train_steps": config.train_steps,
             "tokens_per_step": config.tokens_per_step,
-            "projected_train_tokens": config.budgets["target_train_tokens"],
+            "projected_train_tokens": config.budgets.target_train_tokens,
             "estimated_full_cost_usd": round(config.estimated_full_cost_usd, 4),
             "estimated_smoke_cost_usd": round(config.estimated_smoke_cost_usd, 4),
         },
-        "monitoring": config.payload["monitoring"],
-        "loss": config.payload["loss"],
-        "tuning": config.payload["tuning"],
-        "sequence": config.payload["sequence"],
+        "monitoring": config.settings.monitoring.to_dict(),
+        "loss": config.settings.loss.to_dict(),
+        "tuning": config.settings.tuning.to_dict(),
+        "sequence": config.settings.sequence.to_dict(),
         "artifacts": {
             "output_dir": str(config.output_dir),
-            "required_files": config.payload["artifacts"]["required_files"],
+            "required_files": list(config.settings.artifacts.required_files),
         },
-        "learning_gate": config.payload["learning_gate"],
-        "dependency_pins": {"modal": MODAL_CLIENT_VERSION, **IMAGE_PACKAGE_PINS},
-        "acceptance": config.payload["acceptance"],
+        "learning_gate": config.settings.learning_gate.to_dict(),
+        "dependency_pins": {"modal": MODAL_CLIENT_VERSION, **image_package_pins()},
+        "acceptance": config.settings.acceptance.to_dict(),
         "launch_blockers": smoke_blockers,
         "full_launch_blockers": full_blockers,
         "modal_smoke_command": config.smoke_launch_command,
@@ -316,7 +185,7 @@ def build_multi_turn_dry_run(
                 source.name: source.revision
                 for source in (*config.train_sources, config.eval_source)
             },
-            "budgets": config.payload["budgets"],
+            "budgets": config.settings.budgets.to_dict(),
             "projected_cost_usd": round(config.estimated_full_cost_usd, 4),
             "exact_launch_command": config.full_launch_command,
             "blockers": full_blockers,
@@ -326,155 +195,67 @@ def build_multi_turn_dry_run(
     }
 
 
-def smoke_launch_blockers(config: MultiTurnLaunchConfig) -> list[str]:
+def smoke_launch_blockers(
+    config: MultiTurnLaunchConfig, *, modal_gpu: str | None, timeout_hours: float | None
+) -> list[str]:
     return _common_smoke_launch_blockers(
-        runtime=config.payload["runtime"],
+        runtime=config.runtime,
         estimated_smoke_cost_usd=config.estimated_smoke_cost_usd,
+        modal_gpu=modal_gpu,
+        env_prefix="SFT",
+        timeout_hours=timeout_hours,
     )
 
 
 def full_launch_blockers(
     config: MultiTurnLaunchConfig, *, approved: bool = False, modal_gpu: str | None = None
 ) -> list[str]:
-    runtime = config.payload["runtime"]
+    runtime = config.runtime
     blockers = _common_full_launch_blockers(
         runtime=runtime,
         estimated_full_cost_usd=config.estimated_full_cost_usd,
         approved=approved,
         modal_gpu=modal_gpu,
         approval_message="full multi-turn SFT launch requires --approved",
-        modal_gpu_env_var="SFT_MODAL_GPU",
+        env_prefix="SFT",
     )
-    blockers.extend(_learning_gate_blockers(config.payload["learning_gate"]))
+    blockers.extend(_learning_gate_blockers(config.settings.learning_gate))
     return blockers
 
 
-def _validate_datasets(
-    payload: dict[str, Any],
-) -> tuple[tuple[DatasetSource, ...], DatasetSource]:
-    _require_keys(
-        payload, {"train_mix", "eval_holdout", "non_commercial_training_approved"}, "datasets"
-    )
-    if payload["non_commercial_training_approved"] is not False:
-        raise LaunchError("datasets.non_commercial_training_approved must stay false")
-    raw_mix = payload["train_mix"]
-    if not isinstance(raw_mix, list) or not 1 <= len(raw_mix) <= 2:
-        raise LaunchError("datasets.train_mix must contain one or two sources")
+def _dataset_sources(payload: Datasets) -> tuple[tuple[DatasetSource, ...], DatasetSource]:
     train_sources = tuple(
-        _validate_train_source(_require_object_field(item, "datasets.train_mix[]"))
-        for item in raw_mix
+        DatasetSource(
+            name=source.name,
+            source=source.source,
+            revision=source.revision,
+            license=source.license,
+            split=source.split,
+            role="train",
+            mix_ratio=float(source.mix_ratio),
+            max_prompt_chars=source.filters.max_prompt_chars,
+            max_response_chars=source.filters.max_response_chars,
+        )
+        for source in payload.train_mix
     )
-    names = {source.name for source in train_sources}
-    if not names <= set(EXPECTED_TRAIN_DATASETS):
-        raise LaunchError("datasets.train_mix may only use smol-smoltalk and tulu-3-personas")
-    if "smol-smoltalk" not in names:
-        raise LaunchError("datasets.train_mix must include smol-smoltalk")
-    ratio_sum = sum(source.mix_ratio for source in train_sources)
-    if abs(ratio_sum - 1.0) > 1e-9:
-        raise LaunchError("datasets.train_mix ratios must sum to 1.0")
-    eval_source = _validate_eval_source(
-        _require_object_field(payload["eval_holdout"], "datasets.eval_holdout"),
-        EXPECTED_EVAL_DATASET,
+    holdout = payload.eval_holdout
+    eval_source = DatasetSource(
+        name=holdout.name,
+        source=holdout.source,
+        revision=holdout.revision,
+        license=holdout.license,
+        split=holdout.split,
+        role="eval",
+        train_allowed=False,
     )
     return train_sources, eval_source
 
 
-def _validate_train_source(payload: dict[str, Any]) -> DatasetSource:
-    _require_keys(
-        payload,
-        {"name", "source", "revision", "license", "split", "role", "mix_ratio", "filters"},
-        "datasets.train_mix[]",
-    )
-    name = _str(payload["name"], "datasets.train_mix[].name")
-    if name not in EXPECTED_TRAIN_DATASETS:
-        raise LaunchError(f"unsupported training dataset: {name}")
-    expected = EXPECTED_TRAIN_DATASETS[name]
-    for key in ("source", "revision", "license", "split"):
-        if payload[key] != expected[key]:
-            raise LaunchError(f"dataset {name}.{key} must be {expected[key]}")
-    if payload["role"] != "train":
-        raise LaunchError(f"dataset {name}.role must be train")
-    mix_ratio = payload["mix_ratio"]
-    if (
-        isinstance(mix_ratio, bool)
-        or not isinstance(mix_ratio, int | float)
-        or not 0 < mix_ratio <= 1
-    ):
-        raise LaunchError(f"dataset {name}.mix_ratio must be in (0, 1]")
-    filters = _require_object_field(payload["filters"], f"dataset {name}.filters")
-    max_prompt_chars = _positive_int(
-        filters.get("max_prompt_chars"), f"dataset {name}.filters.max_prompt_chars"
-    )
-    max_response_chars = _positive_int(
-        filters.get("max_response_chars"), f"dataset {name}.filters.max_response_chars"
-    )
-    return DatasetSource(
-        name=name,
-        source=expected["source"],
-        revision=expected["revision"],
-        license=expected["license"],
-        split=expected["split"],
-        role="train",
-        mix_ratio=float(mix_ratio),
-        max_prompt_chars=max_prompt_chars,
-        max_response_chars=max_response_chars,
-    )
-
-
-def _validate_budgets(payload: dict[str, Any]) -> dict[str, Any]:
-    return _validate_sft_budgets(
-        payload,
-        max_train_samples_cap=MAX_APPROVED_TRAIN_SAMPLES,
-        max_train_tokens_cap=MAX_APPROVED_TRAIN_TOKENS,
-        require_context_1024=True,
-    )
-
-
-def _validate_monitoring(payload: dict[str, Any]) -> None:
-    _validate_sft_monitoring(payload)
-
-
-def _validate_learning_gate(payload: dict[str, Any]) -> None:
-    _require_keys(payload, {"full_run_requires_matched_sweep", "evidence"}, "learning_gate")
-    if payload["full_run_requires_matched_sweep"] is not True:
-        raise LaunchError("learning_gate.full_run_requires_matched_sweep must be true")
-    evidence = payload["evidence"]
-    if evidence is not None and not isinstance(evidence, dict):
-        raise LaunchError("learning_gate.evidence must be an object or null")
-
-
-def _learning_gate_blockers(payload: dict[str, Any]) -> list[str]:
-    evidence = payload["evidence"]
+def _learning_gate_blockers(payload: LearningGate) -> list[str]:
+    evidence = payload.evidence
     if evidence is None:
         return [LEARNING_GATE_BLOCKER]
-    if not isinstance(evidence, dict):
-        return ["learning_gate.evidence must be an object"]
     sweep = evidence.get("bounded_matched_interval_eval_sweep")
-    if not isinstance(sweep, dict):
+    if not isinstance(sweep, Mapping):
         return ["learning_gate.evidence is missing bounded_matched_interval_eval_sweep evidence"]
     return matched_interval_eval_sweep_blockers(sweep)
-
-
-def _validate_acceptance(payload: dict[str, Any]) -> None:
-    _require_keys(
-        payload,
-        {"heldout_response_loss_required", "sft_must_beat_base", "eval_dataset"},
-        "acceptance",
-    )
-    if payload["heldout_response_loss_required"] is not True:
-        raise LaunchError("acceptance.heldout_response_loss_required must be true")
-    if payload["sft_must_beat_base"] is not True:
-        raise LaunchError("acceptance.sft_must_beat_base must be true")
-    _str(payload["eval_dataset"], "acceptance.eval_dataset")
-
-
-def _launch_command(config_path: Path, runtime: dict[str, Any], *, mode: str) -> str:
-    flag = " --full-run" if mode == "full-run" else ""
-    return build_modal_launch_command(
-        config_path=config_path,
-        runtime=runtime,
-        gpu_env_var="SFT_MODAL_GPU",
-        timeout_env_var="SFT_TIMEOUT_HOURS",
-        script_path="scripts/modal_chat_sft.py",
-        mode_flag=flag,
-    )

@@ -5,9 +5,9 @@ from pathlib import Path
 
 from tokenizers import Tokenizer
 
+from esme_posttrain.chat.data_types import DataError, TokenizedExample
+from esme_posttrain.chat.sampling import generate_samples, markdown_fenced_text
 from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data import DataError, TokenizedExample
-from esme_posttrain.sft.sampling import generate_samples, markdown_fenced_text
 from esme_posttrain.training.collate import IGNORE_INDEX
 
 

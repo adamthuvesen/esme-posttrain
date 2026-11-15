@@ -25,9 +25,11 @@ import math
 import re
 import statistics
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-import plotly.graph_objects as go
+import plotly.graph_objects as go  # pyright: ignore[reportMissingImports]  # a PEP 723 script dependency, not in the dev env
 from plot_run_telemetry import (
     BLUE,
     CARD_HEIGHT,
@@ -46,10 +48,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from esme_posttrain.studies.report import (  # noqa: E402
-    _parse_countdown_key,
-    _read_jsonl,
-    _score_completion_rows,
-    _score_countdown_sample,
+    ProblemMetrics,
+    parse_countdown_key,
+    read_jsonl,
+    score_completion_rows,
+    score_countdown_sample,
 )
 
 TASKS = 200
@@ -77,39 +80,49 @@ def sum_task_ids() -> set[str]:
     return {row["task_id"] for row in rows if row["target"] == sum(row["numbers"])}
 
 
-def score(directory: Path, *, samples: int = 16) -> dict[str, object]:
+@dataclass(frozen=True)
+class HeldoutScore:
+    valid_expression_rate: float | int
+    exact_solve_rate: float | int
+    problems_solved: float | int
+    sum_template_rate: float
+    solved_ids: set[str]
+    per_problem: ProblemMetrics
+
+
+def score(directory: Path, *, samples: int = 16) -> HeldoutScore:
     provenance = json.loads((directory / "provenance.json").read_text(encoding="utf-8"))
     expected = {"n": samples, "temperature": 1.0, "max_new_tokens": 12, "seed": 0}
     actual = {key: provenance["sampling"][key] for key in expected}
     if actual != expected or provenance["dataset"]["config"] != "heldout_large":
         raise ValueError(f"{directory} was sampled with {actual}, expected {expected}")
-    rows = _read_jsonl(directory / "completions.jsonl")
-    metrics, per_problem = _score_completion_rows(rows)
+    rows = read_jsonl(directory / "completions.jsonl")
+    metrics, per_problem = score_completion_rows(rows)
     if metrics["problem_count"] != TASKS:
         raise ValueError(f"{directory} has {metrics['problem_count']} problems, expected {TASKS}")
     # A valid expression with only "+" uses every supplied number once, so it is their sum.
     sum_template = 0
     for row in rows:
-        target, numbers = _parse_countdown_key(row["problem"]["gold_answer"])
+        target, numbers = parse_countdown_key(row["problem"]["gold_answer"])
         for sample in row["samples"]:
             match = re.fullmatch(r"\\boxed\{(.*)\}", sample)
             expression = match.group(1) if match else ""
             if (
                 "+" in expression
                 and set(expression) <= set("0123456789+ ")
-                and _score_countdown_sample(
+                and score_countdown_sample(
                     sample, numbers=numbers, target=target
                 ).is_valid_expression
             ):
                 sum_template += 1
-    return {
-        "valid_expression_rate": metrics["valid_expression_rate"],
-        "exact_solve_rate": metrics["exact_solve_rate"],
-        "problems_solved": metrics["any_exact_solved"],
-        "sum_template_rate": sum_template / metrics["sample_count"],
-        "solved_ids": {k for k, v in per_problem.items() if v["any_exact_solve_rate"]},
-        "per_problem": per_problem,
-    }
+    return HeldoutScore(
+        valid_expression_rate=metrics["valid_expression_rate"],
+        exact_solve_rate=metrics["exact_solve_rate"],
+        problems_solved=metrics["any_exact_solved"],
+        sum_template_rate=sum_template / metrics["sample_count"],
+        solved_ids={k for k, v in per_problem.items() if v["any_exact_solve_rate"]},
+        per_problem=per_problem,
+    )
 
 
 def unbiased_pass_at_k(samples: int, correct: int, k: int) -> float:
@@ -122,16 +135,14 @@ def unbiased_pass_at_k(samples: int, correct: int, k: int) -> float:
 def summarize(root: Path) -> dict[str, object]:
     sums = sum_task_ids()
 
-    def public(result: dict[str, object]) -> dict[str, object]:
-        solved = result["solved_ids"]
-        assert isinstance(solved, set)
+    def public(result: HeldoutScore) -> dict[str, float | int]:
         return {
-            "valid_expression_rate": result["valid_expression_rate"],
-            "exact_solve_rate": result["exact_solve_rate"],
-            "problems_solved": result["problems_solved"],
-            "sum_template_rate": result["sum_template_rate"],
-            "solved_sum_tasks": len(solved & sums),
-            "solved_other_tasks": len(solved - sums),
+            "valid_expression_rate": result.valid_expression_rate,
+            "exact_solve_rate": result.exact_solve_rate,
+            "problems_solved": result.problems_solved,
+            "sum_template_rate": result.sum_template_rate,
+            "solved_sum_tasks": len(result.solved_ids & sums),
+            "solved_other_tasks": len(result.solved_ids - sums),
         }
 
     chat = score(root / "heldout_large-chat")
@@ -139,20 +150,18 @@ def summarize(root: Path) -> dict[str, object]:
     arms: dict[str, object] = {}
     for key, (name, seeds) in ARMS.items():
         results = [score(root / f"heldout_large-{key}-seed{s}-step240") for s in seeds]
-        solved_sets = [r["solved_ids"] for r in results]
-        union = set().union(*solved_sets)
+        solved_sets = [r.solved_ids for r in results]
+        union = set[str]().union(*solved_sets)
         if key == "real":
             real_union = union
         arms[key] = {
             "name": name,
             "runs": [{"seed": s, **public(r)} for s, r in zip(seeds, results, strict=True)],
             "mean_valid_expression_rate": statistics.fmean(
-                float(r["valid_expression_rate"]) for r in results
+                r.valid_expression_rate for r in results
             ),
-            "mean_problems_solved": statistics.fmean(float(r["problems_solved"]) for r in results),
-            "mean_sum_template_rate": statistics.fmean(
-                float(r["sum_template_rate"]) for r in results
-            ),
+            "mean_problems_solved": statistics.fmean(r.problems_solved for r in results),
+            "mean_sum_template_rate": statistics.fmean(r.sum_template_rate for r in results),
             "problems_solved_by_any_seed": len(union),
             "problems_solved_by_every_seed": len(set.intersection(*solved_sets)),
             "solved_by_any_seed_and_no_full_recipe_seed": len(union - real_union),
@@ -164,13 +173,10 @@ def summarize(root: Path) -> dict[str, object]:
             per_seed = [
                 public(score(root / f"heldout_large-{key}-seed{s}-step{step}")) for s in CURVE_SEEDS
             ]
-            points.append(
-                {"step": step}
-                | {
-                    field: statistics.fmean(float(m[field]) for m in per_seed)
-                    for field in per_seed[0]
-                }
-            )
+            point: dict[str, float | int] = {"step": step}
+            for field in per_seed[0]:
+                point[field] = statistics.fmean(m[field] for m in per_seed)
+            points.append(point)
         curves[key] = points
     pass_at_k: dict[str, object] = {}
     solved_at_256: dict[str, set[str]] = {}
@@ -179,11 +185,8 @@ def summarize(root: Path) -> dict[str, object]:
         ("real", "passk-heldout_large-real-seed214-step240"),
     ):
         result = score(root / label, samples=256)
-        per_problem = result["per_problem"]
-        assert isinstance(per_problem, dict)
-        correct = [round(v["exact_solve_rate"] * 256) for v in per_problem.values()]
-        solved = result["solved_ids"]
-        assert isinstance(solved, set)
+        correct = [round(v["exact_solve_rate"] * 256) for v in result.per_problem.values()]
+        solved = result.solved_ids
         solved_at_256[key] = solved
         pass_at_k[key] = {
             "samples_per_problem": 256,
@@ -212,7 +215,7 @@ def summarize(root: Path) -> dict[str, object]:
     }
 
 
-def tradeoff_figure(summary: dict) -> go.Figure:
+def tradeoff_figure(summary: dict[str, Any]) -> go.Figure:
     arms = summary["arms_step240"]
     colors = {
         "placebo": REFERENCE_GREY,
@@ -264,7 +267,7 @@ def tradeoff_figure(summary: dict) -> go.Figure:
     return figure
 
 
-def curves_figure(summary: dict) -> go.Figure:
+def curves_figure(summary: dict[str, Any]) -> go.Figure:
     curves = summary["learning_curves"]
     chat = summary["chat"]
     figure = go.Figure(
@@ -325,7 +328,7 @@ def curves_figure(summary: dict) -> go.Figure:
     return figure
 
 
-def pass_at_k_figure(summary: dict) -> go.Figure:
+def pass_at_k_figure(summary: dict[str, Any]) -> go.Figure:
     data = summary["pass_at_k"]
     figure = go.Figure(
         layout=card_layout(

@@ -10,6 +10,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from tokenizers import Tokenizer
 
 from esme_posttrain.modeling import BackboneConfig, DenseBackbone
 
@@ -72,6 +73,12 @@ def _as_cpu_byte_tensor(value: Any) -> torch.Tensor:
 
 def checkpoint_dir(output_dir: Path, step: int) -> Path:
     return output_dir / "checkpoints" / f"step-{step:06d}"
+
+
+def write_tokenizer(tokenizer: Tokenizer, path: Path) -> None:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tokenizer.save(str(tmp_path))
+    tmp_path.replace(path)
 
 
 def save_training_checkpoint(

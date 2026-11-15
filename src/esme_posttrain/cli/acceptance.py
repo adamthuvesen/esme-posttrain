@@ -3,15 +3,20 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from esme_posttrain.cli.output import emit_payload, exit_with_error, format_stage_payload
-from esme_posttrain.launch.errors import LaunchError
-from esme_posttrain.launch.full_path_smoke import (
+from esme_posttrain.acceptance.full_path_smoke import (
     load_full_path_smoke_config,
     run_full_path_cpu_smoke,
 )
+from esme_posttrain.cli.output import (
+    Subparsers,
+    emit_payload,
+    exit_with_error,
+    format_stage_payload,
+)
+from esme_posttrain.launch.errors import LaunchError
 
 
-def add_acceptance_parsers(subparsers: argparse._SubParsersAction) -> None:
+def add_acceptance_parsers(subparsers: Subparsers) -> None:
     full_path = subparsers.add_parser(
         "full-path-cpu-smoke",
         help="Run the no-spend SFT to DPO to RLVR artifact handoff on CPU fixtures.",

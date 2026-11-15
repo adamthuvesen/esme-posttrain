@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from esme_posttrain.bundle import load_dense_backbone_bundle
+from esme_posttrain.chat.data import sequence_efficiency_report
+from esme_posttrain.chat.data_types import TokenizedExample
 from esme_posttrain.run_artifacts import (
     RuntimeSpendTracker,
     refresh_manifest_files,
@@ -22,7 +24,8 @@ from esme_posttrain.run_artifacts import (
     write_json,
     write_selected_row_manifest,
 )
-from esme_posttrain.sft.data import TokenizedExample, sequence_efficiency_report
+from esme_posttrain.sft.config import EXPECTED_ARTIFACTS
+from esme_posttrain.sft.eval_suite import EvalSplit
 from esme_posttrain.sft.full_shared import (
     SFTFullRunError,
 )
@@ -38,7 +41,7 @@ from esme_posttrain.sft.full_shared import (
 from esme_posttrain.sft.full_shared import (
     steps_for_target_tokens as _steps_for_target_tokens,
 )
-from esme_posttrain.sft.launch_multiturn import EXPECTED_ARTIFACTS, MultiTurnLaunchConfig
+from esme_posttrain.sft.launch_multiturn import MultiTurnLaunchConfig
 from esme_posttrain.sft.multiturn_data import (
     build_multi_turn_eval_set,
     build_multi_turn_matched_eval_sets,
@@ -46,13 +49,9 @@ from esme_posttrain.sft.multiturn_data import (
     turn_distribution,
 )
 from esme_posttrain.sft.sample_artifacts import write_multi_turn_samples
-from esme_posttrain.sft.trainer import (
-    EvalSplit,
-    SFTTrainerConfig,
-    WandbConfig,
-    run_sft_training,
-)
+from esme_posttrain.sft.trainer import SFTTrainerConfig, run_sft_training
 from esme_posttrain.training.checkpointing import latest_checkpoint_path
+from esme_posttrain.training.wandb_init import WandbConfig
 
 
 def run_full_multi_turn_sft(
@@ -79,8 +78,8 @@ def run_full_multi_turn_sft(
     profile = config.selected_gpu_profile
     spend_tracker = RuntimeSpendTracker(
         started=started or time.perf_counter(),
-        usd_per_hour=float(profile["usd_per_hour"]),
-        stop_usd=float(config.runtime["full_run_runtime_spend_stop_usd"]),
+        usd_per_hour=profile.usd_per_hour,
+        stop_usd=config.runtime.full_run_runtime_spend_stop_usd,
         output_dir=output_dir,
     )
     check_spend = partial(
@@ -89,7 +88,7 @@ def run_full_multi_turn_sft(
         error_type=SFTFullRunError,
     )
     device = _select_full_run_device(require_cuda=require_cuda)
-    if config.estimated_full_cost_usd > float(config.runtime["full_run_max_cost_usd"]):
+    if config.estimated_full_cost_usd > config.runtime.full_run_max_cost_usd:
         raise SFTFullRunError("projected full-run cost exceeds runtime.full_run_max_cost_usd")
 
     bundle_path = (base_bundle_path or config.base_bundle_path).expanduser().resolve()
@@ -99,17 +98,17 @@ def run_full_multi_turn_sft(
     train_report = build_multi_turn_mix(
         config.train_sources,
         loaded.tokenizer,
-        max_samples=int(budgets["max_train_samples"]),
-        max_tokens=int(budgets["max_train_tokens"]),
-        max_sequence_tokens=int(budgets["max_sequence_tokens"]),
+        max_samples=budgets.max_train_samples,
+        max_tokens=budgets.max_train_tokens,
+        max_sequence_tokens=budgets.max_sequence_tokens,
         allow_remote_download=allow_remote_download,
     )
     eval_report = build_multi_turn_eval_set(
         config.eval_source,
         loaded.tokenizer,
-        max_samples=int(budgets["max_eval_samples"]),
-        max_tokens=int(budgets["max_eval_tokens"]),
-        max_sequence_tokens=int(budgets["max_sequence_tokens"]),
+        max_samples=budgets.max_eval_samples,
+        max_tokens=budgets.max_eval_tokens,
+        max_sequence_tokens=budgets.max_sequence_tokens,
         allow_remote_download=allow_remote_download,
     )
     matched_eval_reports = build_multi_turn_matched_eval_sets(
@@ -118,22 +117,22 @@ def run_full_multi_turn_sft(
         skip_selected_by_source={
             name: counts.selected for name, counts in train_report.counts_by_source.items()
         },
-        max_samples_per_source=int(budgets["matched_eval_samples_per_source"]),
-        max_tokens_per_source=int(budgets["matched_eval_tokens_per_source"]),
-        max_sequence_tokens=int(budgets["max_sequence_tokens"]),
+        max_samples_per_source=budgets.matched_eval_samples_per_source,
+        max_tokens_per_source=budgets.matched_eval_tokens_per_source,
+        max_sequence_tokens=budgets.max_sequence_tokens,
         allow_remote_download=allow_remote_download,
     )
     _assert_full_run_data_safe(config.budgets, train_report.to_dict(), eval_report.to_dict())
 
-    optimizer_config = config.payload["optimizer"]
-    monitoring_config = config.payload["monitoring"]
-    sequence_config = config.payload["sequence"]
+    optimizer_config = config.settings.optimizer
+    monitoring_config = config.settings.monitoring
+    sequence_config = config.settings.sequence
     train_steps = _steps_for_target_tokens(
         train_report.examples,
-        target_train_tokens=int(budgets["target_train_tokens"]),
-        micro_batch_size=int(optimizer_config["micro_batch_size"]),
-        gradient_accumulation_steps=int(optimizer_config["gradient_accumulation_steps"]),
-        max_steps=int(optimizer_config["max_steps"]),
+        target_train_tokens=budgets.target_train_tokens,
+        micro_batch_size=optimizer_config.micro_batch_size,
+        gradient_accumulation_steps=optimizer_config.gradient_accumulation_steps,
+        max_steps=optimizer_config.max_steps,
     )
 
     write_json(
@@ -164,8 +163,8 @@ def run_full_multi_turn_sft(
             "train_sources": [source.__dict__ for source in config.train_sources],
             "eval_source": config.eval_source.__dict__,
             "token_accounting": {
-                "max_train_tokens": budgets["max_train_tokens"],
-                "target_train_tokens": budgets["target_train_tokens"],
+                "max_train_tokens": budgets.max_train_tokens,
+                "target_train_tokens": budgets.target_train_tokens,
                 "selected_train_tokens": train_report.selected_tokens,
                 "selected_supervised_tokens": train_report.selected_supervised_tokens,
                 "selected_examples": len(train_report.examples),
@@ -178,19 +177,19 @@ def run_full_multi_turn_sft(
             "sequence_efficiency": {
                 "train": sequence_efficiency_report(
                     train_report.examples,
-                    max_sequence_tokens=int(budgets["max_sequence_tokens"]),
-                    micro_batch_size=int(optimizer_config["micro_batch_size"]),
-                    sequence_packing=bool(sequence_config["sequence_packing"]),
-                    pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-                    no_packing_rationale=str(sequence_config["no_packing_rationale"]),
+                    max_sequence_tokens=budgets.max_sequence_tokens,
+                    micro_batch_size=optimizer_config.micro_batch_size,
+                    sequence_packing=sequence_config.sequence_packing,
+                    pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+                    no_packing_rationale=sequence_config.no_packing_rationale,
                 ),
                 "eval": sequence_efficiency_report(
                     eval_report.examples,
-                    max_sequence_tokens=int(budgets["max_sequence_tokens"]),
-                    micro_batch_size=int(optimizer_config["micro_batch_size"]),
-                    sequence_packing=bool(sequence_config["sequence_packing"]),
-                    pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-                    no_packing_rationale=str(sequence_config["no_packing_rationale"]),
+                    max_sequence_tokens=budgets.max_sequence_tokens,
+                    micro_batch_size=optimizer_config.micro_batch_size,
+                    sequence_packing=sequence_config.sequence_packing,
+                    pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+                    no_packing_rationale=sequence_config.no_packing_rationale,
                 ),
             },
             "multi_turn_masking_asserted": all(
@@ -213,35 +212,33 @@ def run_full_multi_turn_sft(
         eval_report.examples,
         SFTTrainerConfig(
             max_steps=train_steps,
-            micro_batch_size=int(optimizer_config["micro_batch_size"]),
-            gradient_accumulation_steps=int(optimizer_config["gradient_accumulation_steps"]),
-            learning_rate=float(optimizer_config["learning_rate"]),
-            scheduler=str(optimizer_config["scheduler"]),
-            warmup_steps=int(optimizer_config["warmup_steps"]),
-            weight_decay=float(optimizer_config["weight_decay"]),
-            precision=str(config.runtime["precision"]),
-            pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-            seed=int(optimizer_config["seed"]),
+            micro_batch_size=optimizer_config.micro_batch_size,
+            gradient_accumulation_steps=optimizer_config.gradient_accumulation_steps,
+            learning_rate=optimizer_config.learning_rate,
+            scheduler=optimizer_config.scheduler,
+            warmup_steps=optimizer_config.warmup_steps,
+            weight_decay=optimizer_config.weight_decay,
+            precision=config.runtime.precision,
+            pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+            seed=optimizer_config.seed,
             output_dir=output_dir,
             artifact_name=config.artifact_name,
-            assistant_only_loss=bool(config.payload["loss"]["assistant_only_loss"]),
-            completion_only_loss=bool(config.payload["loss"]["completion_only_loss"]),
-            tuning_mode=str(config.payload["tuning"]["mode"]),
-            grad_clip=float(optimizer_config["grad_clip"]),
-            log_interval=int(monitoring_config["log_interval"]),
-            eval_interval=int(monitoring_config["eval_interval"]),
-            checkpoint_interval=int(monitoring_config["checkpoint_interval"]),
-            retain_last_checkpoints=int(monitoring_config["retain_last_checkpoints"]),
-            early_stopping_patience=int(monitoring_config["early_stopping_patience"]),
-            no_robots_catastrophic_regression_multiplier=float(
-                monitoring_config["no_robots_catastrophic_regression_multiplier"]
-            ),
-            sample_new_tokens=int(monitoring_config["sample_new_tokens"]),
+            assistant_only_loss=config.settings.loss.assistant_only_loss,
+            completion_only_loss=config.settings.loss.completion_only_loss,
+            tuning_mode=config.settings.tuning.mode,
+            grad_clip=optimizer_config.grad_clip,
+            log_interval=monitoring_config.log_interval,
+            eval_interval=monitoring_config.eval_interval,
+            checkpoint_interval=monitoring_config.checkpoint_interval,
+            retain_last_checkpoints=monitoring_config.retain_last_checkpoints,
+            early_stopping_patience=monitoring_config.early_stopping_patience,
+            no_robots_catastrophic_regression_multiplier=monitoring_config.no_robots_catastrophic_regression_multiplier,
+            sample_new_tokens=monitoring_config.sample_new_tokens,
             device=device.type,
             resume_from_latest=resume_from_latest,
             wandb=WandbConfig(
                 enabled=wandb_enabled,
-                project=str(monitoring_config["wandb_project"]),
+                project=monitoring_config.wandb_project,
                 run_name=f"{config.run_id}-{'resume' if resume_from_latest else 'full-sft'}",
                 tags=(
                     "Esme-214M-Instruct",
@@ -251,7 +248,7 @@ def run_full_multi_turn_sft(
                     "smol-smoltalk",
                     "tulu-personas",
                     "no-robots-eval",
-                    config.runtime["selected_gpu"],
+                    config.runtime.selected_gpu,
                 ),
                 group=config.run_id,
                 job_type="full-sft",
@@ -264,10 +261,10 @@ def run_full_multi_turn_sft(
                         source.name: source.mix_ratio for source in config.train_sources
                     },
                     "eval_holdout": config.eval_source.source,
-                    "gpu": config.runtime["selected_gpu"],
-                    "precision": config.runtime["precision"],
-                    "scheduler": optimizer_config["scheduler"],
-                    "max_sequence_tokens": budgets["max_sequence_tokens"],
+                    "gpu": config.runtime.selected_gpu,
+                    "precision": config.runtime.precision,
+                    "scheduler": optimizer_config.scheduler,
+                    "max_sequence_tokens": budgets.max_sequence_tokens,
                 },
             ),
         ),
@@ -283,7 +280,7 @@ def run_full_multi_turn_sft(
         loaded.model,
         loaded.tokenizer,
         _multi_turn_sample_pool(matched_eval_reports),
-        sample_new_tokens=int(monitoring_config["sample_new_tokens"]),
+        sample_new_tokens=monitoring_config.sample_new_tokens,
         selected_step=result.selected_step,
     )
     write_json(output_dir / "eval-report.json", result.to_dict())
@@ -296,7 +293,7 @@ def run_full_multi_turn_sft(
         "run_id": config.run_id,
         "artifact_name": config.artifact_name,
         "output_dir": str(output_dir),
-        "volume": config.runtime["modal_volume"],
+        "volume": config.runtime.modal_volume,
         "commit": commit,
         "dirty": dirty,
         "device": device.type,
@@ -343,10 +340,10 @@ def _config_evidence(
         "training_mode": "resumed" if resume_from_latest else "fresh",
         "resume_from_latest": resume_from_latest,
         "resume_checkpoint": str(resume_checkpoint) if resume_checkpoint is not None else None,
-        "source_config": config.payload,
+        "source_config": config.settings.to_dict(),
         "commit": commit,
         "dirty": dirty,
         "projected_full_cost_usd": config.estimated_full_cost_usd,
-        "target_train_tokens": config.budgets["target_train_tokens"],
-        "max_train_tokens": config.budgets["max_train_tokens"],
+        "target_train_tokens": config.budgets.target_train_tokens,
+        "max_train_tokens": config.budgets.max_train_tokens,
     }

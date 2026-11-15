@@ -6,12 +6,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from esme_posttrain.rl.launch import (
-    FULL_EVAL_PROFILE,
-    FULL_RUN_SPEND_CAP_USD,
-    RLVRLaunchConfig,
-    build_eval_profile,
-)
+from esme_posttrain.rl.config import FULL_RUN_SPEND_CAP_USD
+from esme_posttrain.rl.launch import FULL_EVAL_PROFILE, RLVRLaunchConfig, build_eval_profile
 
 
 def write_grpo_report_artifacts(
@@ -124,16 +120,16 @@ def build_grpo_report(
         "blocker": run_payload.get("blocker"),
         "input_bundle_path": str(config.input_bundle_path),
         "dataset_manifest_path": str(config.dataset_manifest_path),
-        "sample_budget": config.budgets["dataset_sample_budget"],
-        "token_budget": config.budgets["max_rollout_tokens"],
+        "sample_budget": config.budgets.dataset_sample_budget,
+        "token_budget": config.budgets.max_rollout_tokens,
         "estimated_train_tokens": config.estimated_train_tokens,
         "hardware": {
-            "provider": config.runtime["provider"],
-            "selected_gpu": config.runtime["selected_gpu"],
-            "modal_gpu": config.selected_gpu_profile["modal_gpu"],
+            "provider": config.runtime.provider,
+            "selected_gpu": config.runtime.selected_gpu,
+            "modal_gpu": config.selected_gpu_profile.modal_gpu,
             "expected_duration_minutes": round(
                 config.estimated_train_tokens
-                / float(config.selected_gpu_profile["projected_tokens_per_second"])
+                / config.selected_gpu_profile.projected_tokens_per_second
                 / 60.0,
                 2,
             ),
@@ -142,7 +138,7 @@ def build_grpo_report(
             "cap_usd": FULL_RUN_SPEND_CAP_USD,
             "projected_cost_usd": config.estimated_full_cost_usd,
             "actual_or_estimated_cost_usd": _actual_cost(run_payload),
-            "runtime_spend_stop_usd": config.runtime["full_run_runtime_spend_stop_usd"],
+            "runtime_spend_stop_usd": config.runtime.full_run_runtime_spend_stop_usd,
             "paid_compute": bool(run_payload.get("paid_compute", False)),
             "cost_basis": _cost_basis(run_payload),
             "timeout_cost_ceiling_usd": _timeout_cost_ceiling(run_payload),
@@ -161,9 +157,9 @@ def build_grpo_report(
         },
         "resume_command": run_payload.get("resume_command") or launch_command,
         "wandb": {
-            "project": config.payload["monitoring"].get("wandb_project"),
-            "required_for_modal": config.payload["monitoring"].get("wandb_required_for_modal"),
-            "tags": config.payload["monitoring"].get("wandb_tags"),
+            "project": config.settings.monitoring.wandb_project,
+            "required_for_modal": config.settings.monitoring.wandb_required_for_modal,
+            "tags": list(config.settings.monitoring.wandb_tags),
             "eval_profile": eval_profile,
             "run": run_payload.get("wandb_run"),
         },
@@ -190,15 +186,15 @@ def build_grpo_report(
 
 
 def _baseline_from_acceptance(config: RLVRLaunchConfig) -> dict[str, Any]:
-    acceptance = config.payload["acceptance"]
+    acceptance = config.settings.acceptance
     eval_profile = build_eval_profile(config)
     return {
         "eval_profile": eval_profile["profile"],
-        "pass@1": acceptance["baseline_pass_at_1"],
-        "pass@8": acceptance["baseline_pass_at_8"],
-        "pass@32": acceptance["baseline_pass_at_32"],
-        "valid_expression_rate": acceptance["baseline_valid_expression_rate"],
-        "exact_solve_rate": acceptance["baseline_exact_solve_rate"],
+        "pass@1": acceptance.baseline_pass_at_1,
+        "pass@8": acceptance.baseline_pass_at_8,
+        "pass@32": acceptance.baseline_pass_at_32,
+        "valid_expression_rate": acceptance.baseline_valid_expression_rate,
+        "exact_solve_rate": acceptance.baseline_exact_solve_rate,
         "task_count": eval_profile["tasks"],
         "samples_per_task": eval_profile["samples_per_task"],
     }

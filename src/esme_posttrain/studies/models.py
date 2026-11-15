@@ -13,6 +13,14 @@ class _StrictModel(BaseModel):
 
 
 class ArmRole(StrEnum):
+    """An arm's place in a study's experimental design, not the training it got.
+
+    A study has exactly one treatment arm and one control arm, which must use the
+    planned seeds, and at most one baseline arm, which needs no training evidence.
+    grpo-decomp's `ArmRole` (base, correct, random) names reward conditions
+    instead; the two do not map onto each other.
+    """
+
     TREATMENT = "treatment"
     CONTROL = "control"
     BASELINE = "baseline"

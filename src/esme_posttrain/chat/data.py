@@ -9,18 +9,14 @@ from typing import Any
 
 from tokenizers import Tokenizer
 
-from esme_posttrain.sft.data_types import (
-    IGNORE_INDEX as IGNORE_INDEX,
-)
-from esme_posttrain.sft.data_types import (
-    ChatTurn as ChatTurn,
-)
-from esme_posttrain.sft.data_types import (
+from esme_posttrain.chat.data_types import (
     DataError,
     DatasetSource,
     MultiTurnExample,
     TokenizedExample,
 )
+from esme_posttrain.export.chat_template import GENERATION_PROMPT, render_turn
+from esme_posttrain.training.collate import IGNORE_INDEX
 
 
 def sequence_efficiency_report(
@@ -72,16 +68,14 @@ def _render_chat_segments(example: MultiTurnExample) -> list[tuple[str, bool]]:
     """
     segments: list[tuple[str, bool]] = []
     for turn in example.turns:
-        content = _clean_text(turn.content)
+        content = clean_text(turn.content)
         if turn.role == "assistant":
             if not content:
                 raise DataError(f"{example.source}:{example.row_id} has an empty assistant turn")
-            segments.append(("assistant\n", False))
+            segments.append((GENERATION_PROMPT, False))
             segments.append((content, True))
-        elif turn.role == "system":
-            segments.append((f"system\n{content}\n", False))
         else:
-            segments.append((f"user\n{content}\n", False))
+            segments.append((render_turn(turn.role, content), False))
     return segments
 
 
@@ -129,7 +123,7 @@ def tokenize_multi_turn(
         )
 
     prompt_chars = sum(
-        len(_clean_text(turn.content)) for turn in example.turns if turn.role != "assistant"
+        len(clean_text(turn.content)) for turn in example.turns if turn.role != "assistant"
     )
     return TokenizedExample(
         input_ids=tuple(input_ids),
@@ -208,5 +202,5 @@ def _iter_jsonl(path: Path) -> Iterator[tuple[str, Any]]:
                 raise DataError(f"{path}:{line_number}: malformed JSON: {error.msg}") from error
 
 
-def _clean_text(value: str) -> str:
+def clean_text(value: str) -> str:
     return "\n".join(line.rstrip() for line in value.strip().splitlines()).strip()

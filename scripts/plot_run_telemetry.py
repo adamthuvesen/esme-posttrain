@@ -49,9 +49,10 @@ import statistics
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import plotly.graph_objects as go  # pyright: ignore[reportMissingImports]  # a PEP 723 script dependency, not in the dev env
+from plotly.subplots import make_subplots  # pyright: ignore[reportMissingImports]  # a PEP 723 script dependency, not in the dev env
 
 # Style contract: match esme-pretrain/scripts/plot_run_telemetry.py (which in
 # turn matches grpo-decomp/results/fig-gsm8k-decomposition.svg).
@@ -141,7 +142,7 @@ def load_grpo_telemetry(run_dir: Path) -> GrpoTelemetry:
         if not path.is_file():
             raise FileNotFoundError(f"missing run artifact: {path}")
 
-    per_step: dict[int, list[dict]] = {}
+    per_step: dict[int, list[dict[str, Any]]] = {}
     rollout_rows = 0
     for line_number, line in enumerate(rollouts_path.read_text().splitlines(), start=1):
         record = json.loads(line)
@@ -660,8 +661,8 @@ def build_countdown_evidence_figure() -> go.Figure:
             tickvals=[0, 25, 50, 75, 100],
             tickfont={"family": FONT_FAMILY, "size": 13, "color": TICK_COLOR},
         ),
-        annotations=list(figure.layout.annotations)
-        + [
+        annotations=[
+            *list(figure.layout.annotations),
             {
                 "text": "<b>A. Acceptance eval (in-distribution)</b>",
                 "xref": "paper",
@@ -685,10 +686,8 @@ def build_countdown_evidence_figure() -> go.Figure:
                 "font": panel_caption_font,
             },
             {
-                "text": (
-                    f"<span style='color:{REFERENCE_GREY}'>&#9632;</span> Esme-214M-Chat"
-                    f"   <span style='color:{BLUE}'>&#9632;</span> Esme-214M-RL"
-                ),
+                "text": f"<span style='color:{REFERENCE_GREY}'>&#9632;</span> Esme-214M-Chat"
+                f"   <span style='color:{BLUE}'>&#9632;</span> Esme-214M-RL",
                 "xref": "paper",
                 "yref": "paper",
                 "x": 0.5,

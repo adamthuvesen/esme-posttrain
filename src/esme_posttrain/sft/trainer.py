@@ -10,8 +10,14 @@ import torch
 from tokenizers import Tokenizer
 
 from esme_posttrain.bundle import file_sha256
+from esme_posttrain.chat.data_types import TokenizedExample
+from esme_posttrain.chat.sampling import (
+    generate_samples as _generate_samples,
+)
+from esme_posttrain.chat.sampling import (
+    markdown_fenced_text as _markdown_fenced_text,
+)
 from esme_posttrain.modeling import BackboneConfig, DenseBackbone, language_model_loss
-from esme_posttrain.sft.data import IGNORE_INDEX, TokenizedExample
 from esme_posttrain.sft.eval_suite import (
     EvalMetrics,
     EvalSplit,
@@ -26,16 +32,10 @@ from esme_posttrain.sft.eval_suite import (
     normalize_eval_splits as _normalize_eval_splits,
 )
 from esme_posttrain.sft.eval_suite import (
-    split_response_loss as _split_response_loss,
-)
-from esme_posttrain.sft.sampling import (
-    generate_samples as _generate_samples,
-)
-from esme_posttrain.sft.sampling import (
-    markdown_fenced_text as _markdown_fenced_text,
-)
-from esme_posttrain.sft.sampling import (
     sample_prompt_examples as _sample_prompt_examples,
+)
+from esme_posttrain.sft.eval_suite import (
+    split_response_loss as _split_response_loss,
 )
 from esme_posttrain.training.checkpointing import (
     LoadedTrainingCheckpoint,
@@ -46,7 +46,9 @@ from esme_posttrain.training.checkpointing import (
     restore_rng_state,
     retain_last_checkpoints,
     save_training_checkpoint,
+    write_tokenizer,
 )
+from esme_posttrain.training.collate import IGNORE_INDEX
 from esme_posttrain.training.collate import (
     collate_batch as _collate_batch,
 )
@@ -58,9 +60,7 @@ from esme_posttrain.training.collate import (
 )
 from esme_posttrain.training.errors import TrainerError
 from esme_posttrain.training.metrics import append_metric, train_metric_payload
-from esme_posttrain.training.runtime import (
-    lr_lambda_factory as _lr_lambda_factory,
-)
+from esme_posttrain.training.runtime import adamw_with_lr_schedule
 from esme_posttrain.training.runtime import (
     precision_context as _precision_context,
 )
@@ -214,31 +214,6 @@ class SFTTrainResult:
         }
 
 
-@dataclass(frozen=True)
-class LoadedSFTCheckpoint:
-    model: DenseBackbone
-    config: BackboneConfig
-    step: int
-    metrics: dict[str, Any]
-
-
-def build_full_finetune_optimizer(
-    model: DenseBackbone, config: SFTTrainerConfig
-) -> tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LRScheduler]:
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
-    )
-    scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer,
-        lr_lambda=_lr_lambda_factory(
-            scheduler=config.scheduler,
-            warmup_steps=config.warmup_steps,
-            max_steps=config.max_steps,
-        ),
-    )
-    return optimizer, scheduler
-
-
 def run_sft_training(
     model: DenseBackbone,
     tokenizer: Tokenizer,
@@ -278,11 +253,12 @@ def run_sft_training(
         sample_examples,
         config.sample_new_tokens,
     )
-    optimizer, scheduler = build_full_finetune_optimizer(model, config)
+    optimizer, scheduler = adamw_with_lr_schedule(model, config)
     start_step = 0
     trained_tokens = 0
     supervised_tokens = 0
     resumed_from_checkpoint: Path | None = None
+    restored_best: _BestCheckpointState | None = None
     if config.resume_from_latest:
         resumed = _resume_latest_checkpoint(output_dir, model, optimizer, scheduler, device)
         if resumed is not None:
@@ -328,7 +304,7 @@ def run_sft_training(
     last_components: dict[str, float] = {}
     current_step = start_step
     last_completed_step = start_step
-    if resumed_from_checkpoint is not None:
+    if restored_best is not None:
         best_selector_value = restored_best.selected_metric_value
         selected_step = restored_best.selected_step
         selected_eval_suite = restored_best.selected_eval_suite
@@ -607,7 +583,7 @@ def run_sft_training(
         base_generations=base_generations,
         selected_step=selected_step,
     )
-    _write_tokenizer(tokenizer, output_dir / "tokenizer.json")
+    write_tokenizer(tokenizer, output_dir / "tokenizer.json")
     manifest = _write_manifest(
         manifest_path,
         config,
@@ -758,21 +734,6 @@ def _best_checkpoint_metadata(
             "supervised_tokens": supervised_tokens,
         },
     }
-
-
-def load_sft_checkpoint(
-    path: Path, *, map_location: str | torch.device = "cpu"
-) -> LoadedSFTCheckpoint:
-    try:
-        loaded = load_training_checkpoint(path, map_location=map_location)
-    except ValueError as error:
-        raise TrainerError(str(error)) from error
-    return LoadedSFTCheckpoint(
-        model=loaded.model,
-        config=loaded.config,
-        step=loaded.step,
-        metrics=loaded.metrics,
-    )
 
 
 @dataclass(frozen=True)
@@ -954,12 +915,6 @@ def _write_samples(
             ]
         )
     path.write_text("\n".join(lines), encoding="utf-8")
-
-
-def _write_tokenizer(tokenizer: Tokenizer, path: Path) -> None:
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tokenizer.save(str(tmp_path))
-    tmp_path.replace(path)
 
 
 def _write_manifest(

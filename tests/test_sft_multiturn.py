@@ -2,33 +2,31 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import torch
 from scripts import modal_chat_sft
 
 from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_bundle
-from esme_posttrain.cli import main
-from esme_posttrain.launch.errors import LaunchError
-from esme_posttrain.modeling import DenseBackbone
-from esme_posttrain.sft.data import (
-    IGNORE_INDEX,
-    ChatTurn,
-    DataError,
-    DatasetSource,
-    MultiTurnExample,
+from esme_posttrain.chat.data import (
+    _render_chat_segments,
+    iter_rows,
     measure_multi_turn_lengths,
     tokenize_multi_turn,
 )
-from esme_posttrain.sft.full_multiturn import (
-    SFTFullRunError,
-    run_full_multi_turn_sft,
-)
+from esme_posttrain.chat.data_types import ChatTurn, DataError, DatasetSource, MultiTurnExample
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
+from esme_posttrain.cli import main
+from esme_posttrain.launch.config_models import SWEEP_SPEND_CAP_USD
+from esme_posttrain.launch.errors import LaunchError
+from esme_posttrain.modeling import DenseBackbone
+from esme_posttrain.sft.config import EXPECTED_ARTIFACTS as MULTITURN_EXPECTED_ARTIFACTS
+from esme_posttrain.sft.config import MULTITURN_FULL_RUN_SPEND_CAP_USD
+from esme_posttrain.sft.full_multiturn import run_full_multi_turn_sft
+from esme_posttrain.sft.full_shared import SFTFullRunError
 from esme_posttrain.sft.launch_multiturn import (
-    EXPECTED_ARTIFACTS as MULTITURN_EXPECTED_ARTIFACTS,
-)
-from esme_posttrain.sft.launch_multiturn import (
-    MULTITURN_FULL_RUN_SPEND_CAP_USD,
     build_multi_turn_dry_run,
     full_launch_blockers,
     load_multi_turn_config,
@@ -47,26 +45,18 @@ from esme_posttrain.sft.probe_multiturn import (
     multi_turn_probe_blockers,
 )
 from esme_posttrain.sft.sample_artifacts import write_multi_turn_samples
-from esme_posttrain.sft.smoke_multiturn import (
-    run_multi_turn_cpu_fixture,
-    tiny_backbone_config,
-    tiny_chat_tokenizer,
-)
+from esme_posttrain.sft.smoke_multiturn import run_multi_turn_cpu_fixture
 from esme_posttrain.sft.sweep_multiturn import (
     SWEEP_ARMS,
-    SWEEP_SPEND_CAP_USD,
     build_multi_turn_sweep_preflight,
     multi_turn_sweep_blockers,
 )
-from esme_posttrain.sft.trainer import load_sft_checkpoint
-from esme_posttrain.training.collate import collate_batch
+from esme_posttrain.training.checkpointing import load_training_checkpoint
+from esme_posttrain.training.collate import IGNORE_INDEX, collate_batch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "configs" / "esme-214m-sft-multiturn.json"
 WEIGHTS_FIELD = "key_format"
-
-
-# --- chat template + multi-turn masking ---------------------------------------
 
 
 def test_multi_turn_masking_supervises_every_assistant_turn_and_masks_others() -> None:
@@ -94,7 +84,6 @@ def test_multi_turn_masking_supervises_every_assistant_turn_and_masks_others() -
     assistant_marker = tokenizer.token_to_id("assistant")
     user_marker = tokenizer.token_to_id("user")
 
-    # Supervised labels must equal their input ids; every other position is masked.
     for token, label in zip(tokenized.input_ids, tokenized.labels, strict=True):
         if label != IGNORE_INDEX:
             assert label == token
@@ -105,16 +94,45 @@ def test_multi_turn_masking_supervises_every_assistant_turn_and_masks_others() -
         for token, label in zip(tokenized.input_ids, tokenized.labels, strict=True)
         if label != IGNORE_INDEX
     ]
+    assert eos_id is not None
     assert supervised_ids.count(eos_id) == 3
 
-    # Role markers and user/system content never enter the loss.
     for token, label in zip(tokenized.input_ids, tokenized.labels, strict=True):
         if token in {assistant_marker, user_marker}:
             assert label == IGNORE_INDEX
 
-    # The leading system/user prompt span is fully masked.
     assert all(label == IGNORE_INDEX for label in tokenized.labels[: tokenized.prompt_tokens])
     assert tokenized.prompt_tokens > 0
+
+
+def test_multi_turn_render_and_token_ids_stay_fixed() -> None:
+    example = MultiTurnExample(
+        turns=(
+            ChatTurn("system", "helpful"),
+            ChatTurn("user", "say red"),
+            ChatTurn("assistant", "red"),
+            ChatTurn("user", "say blue again"),
+            ChatTurn("assistant", "blue"),
+        ),
+        source="fixture",
+        row_id="golden-1",
+    )
+
+    tokenized = tokenize_multi_turn(tiny_chat_tokenizer(), example, max_sequence_tokens=64)
+
+    assert _render_chat_segments(example) == [
+        ("system\nhelpful\n", False),
+        ("user\nsay red\n", False),
+        ("assistant\n", False),
+        ("red", True),
+        ("user\nsay blue again\n", False),
+        ("assistant\n", False),
+        ("blue", True),
+    ]
+    assert tokenized.input_ids == (4, 13, 2, 5, 6, 3, 6, 1, 2, 5, 7, 12, 3, 7, 1)
+    m = IGNORE_INDEX
+    assert tokenized.labels == (m, m, m, m, m, m, 6, 1, m, m, m, m, m, 7, 1)
+    assert (tokenized.prompt_tokens, tokenized.response_tokens) == (6, 4)
 
 
 def test_multi_turn_samples_prompt_ends_at_final_assistant_turn(tmp_path: Path) -> None:
@@ -175,9 +193,6 @@ def test_multi_turn_length_measurement_flags_truncation() -> None:
     assert lengths["input_tokens"] > 4
     assert lengths["prompt_truncated"] is False
     assert lengths["assistant_target_truncated"] is True
-
-
-# --- parsing, capacity filtering, mixing --------------------------------------
 
 
 def test_multi_turn_parsing_capacity_filtering_and_turn_distribution(tmp_path: Path) -> None:
@@ -257,7 +272,7 @@ def test_multi_turn_parsing_capacity_filtering_and_turn_distribution(tmp_path: P
     assert smol_counts.selected_multi_turn == 1
     assert smol_counts.selected_single_turn == 1
 
-    distribution = turn_distribution(result.examples).to_dict()
+    distribution: dict[str, Any] = turn_distribution(result.examples).to_dict()
     assert distribution["multi_turn_examples"] >= 1
     assert distribution["single_turn_examples"] >= 1
     assert distribution["mean_assistant_turns"] > 1.0
@@ -333,7 +348,7 @@ def test_multi_turn_modal_smoke_body_refreshes_manifest_with_expected_artifacts(
 
     def fake_run_multi_turn_cpu_fixture(
         config: object, *, output_dir: Path, wandb_enabled: bool
-    ) -> dict:
+    ) -> dict[str, Any]:
         output_dir.mkdir(parents=True)
         return {"status": "local_cpu_fixture_complete", "wandb_enabled": wandb_enabled}
 
@@ -347,20 +362,18 @@ def test_multi_turn_modal_smoke_body_refreshes_manifest_with_expected_artifacts(
         fake_run_multi_turn_cpu_fixture,
     )
     monkeypatch.setattr(modal_chat_sft, "refresh_manifest_files", fake_refresh_manifest_files)
+    monkeypatch.setattr(modal_chat_sft, "time", SimpleNamespace(perf_counter=lambda: 11.0))
 
     payload = modal_chat_sft._run_modal_smoke_body(
         json.loads(CONFIG_PATH.read_text(encoding="utf-8")),
         commit="abc123",
         dirty=False,
-        started=modal_chat_sft.time.perf_counter(),
+        started=10.0,
     )
 
     assert refresh_calls == [(output_dir, MULTITURN_EXPECTED_ARTIFACTS)]
     assert (output_dir / "cost.json").is_file()
     assert payload["status"] == "modal_smoke_complete"
-
-
-# --- matched eval split -------------------------------------------------------
 
 
 def test_matched_eval_splits_are_disjoint_from_train(tmp_path: Path) -> None:
@@ -453,16 +466,13 @@ def test_multi_turn_eval_set_rejects_train_allowed_source(tmp_path: Path) -> Non
         )
 
 
-# --- config + dry-run + guards ------------------------------------------------
-
-
 def test_config_pins_multi_turn_recipe_and_dry_run_never_launches() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     assert config.run_id == "esme_214m_sft_multiturn"
     assert config.artifact_name == "Esme-214M-Instruct"
-    assert config.budgets["max_sequence_tokens"] == 1024
+    assert config.budgets.max_sequence_tokens == 1024
     assert [s.name for s in config.train_sources] == ["smol-smoltalk", "tulu-3-personas"]
-    assert config.runtime["modal_volume"] == "esme-posttrain-esme-sft-multiturn"
+    assert config.runtime.modal_volume == "esme-posttrain-esme-sft-multiturn"
 
     dry_run = build_multi_turn_dry_run(config)
     assert dry_run["will_start_modal_job"] is False
@@ -477,7 +487,7 @@ def test_config_pins_multi_turn_recipe_and_dry_run_never_launches() -> None:
 def test_smoke_cost_is_under_two_dollars() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     assert config.estimated_smoke_cost_usd <= 2
-    assert smoke_launch_blockers(config) == []
+    assert smoke_launch_blockers(config, modal_gpu=None, timeout_hours=None) == []
 
 
 def test_full_run_refused_without_approval() -> None:
@@ -496,7 +506,7 @@ def test_full_run_refused_without_learning_gate_evidence() -> None:
 
 def test_shipped_config_satisfies_learning_gate() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
-    assert config.payload["learning_gate"]["evidence"] is not None
+    assert config.settings.learning_gate.evidence is not None
     assert full_launch_blockers(config, approved=True, modal_gpu="A100") == []
 
 
@@ -556,9 +566,6 @@ def test_config_rejects_noncommercial_training_flag() -> None:
         validate_multi_turn_payload(payload, CONFIG_PATH, require_base_bundle_exists=False)
 
 
-# --- base bundle hash validation ----------------------------------------------
-
-
 def test_base_bundle_hash_validation_and_dense_load(tmp_path: Path) -> None:
     bundle_dir = _write_tiny_chat_bundle(tmp_path / "bundle")
     loaded = load_dense_backbone_bundle(bundle_dir)
@@ -570,9 +577,6 @@ def test_base_bundle_hash_validation_and_dense_load(tmp_path: Path) -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     with pytest.raises(BundleError, match="hash mismatch"):
         load_dense_backbone_bundle(bundle_dir)
-
-
-# --- CPU fixture: loss decrease, masking, checkpoint round-trip ----------------
 
 
 def test_cpu_fixture_multi_turn_loss_decreases_and_masking_asserted(tmp_path: Path) -> None:
@@ -594,7 +598,7 @@ def test_cpu_fixture_checkpoint_reload_reproduces_logits(tmp_path: Path) -> None
     out = tmp_path / "fixture"
     run_multi_turn_cpu_fixture(config, output_dir=out)
 
-    checkpoint = load_sft_checkpoint(out / "best-checkpoint.pt")
+    checkpoint = load_training_checkpoint(out / "best-checkpoint.pt")
     tokenizer = tiny_chat_tokenizer()
     example = tokenize_multi_turn(
         tokenizer,
@@ -626,9 +630,6 @@ def test_full_run_requires_cuda_when_required(tmp_path: Path) -> None:
             require_cuda=True,
             wandb_enabled=False,
         )
-
-
-# --- CLI ----------------------------------------------------------------------
 
 
 def test_cli_multi_turn_dry_run_proves_no_modal_job(
@@ -715,10 +716,7 @@ def test_training_launches_block_when_base_bundle_missing(
     )
 
 
-# --- helpers ------------------------------------------------------------------
-
-
-def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 
@@ -763,14 +761,11 @@ def _write_tiny_chat_bundle(bundle_dir: Path) -> Path:
     return bundle_dir
 
 
-# --- raised $40 full-run cap (multi-turn only) --------------------------------
-
-
 def test_config_pins_forty_dollar_full_run_cap() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     assert MULTITURN_FULL_RUN_SPEND_CAP_USD == 40.0
-    assert float(config.runtime["full_run_max_cost_usd"]) == 40.0
-    assert float(config.runtime["full_run_runtime_spend_stop_usd"]) == 40.0
+    assert float(config.runtime.full_run_max_cost_usd) == 40.0
+    assert float(config.runtime.full_run_runtime_spend_stop_usd) == 40.0
 
 
 def test_full_run_cap_above_forty_is_rejected() -> None:
@@ -800,9 +795,6 @@ def test_full_run_blocks_projected_cost_over_cap() -> None:
     assert any("exceeds runtime.full_run_max_cost_usd" in b for b in blockers)
 
 
-# --- multi-turn throughput probe ----------------------------------------------
-
-
 def test_multi_turn_probe_preflight_never_launches_and_is_bounded() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     preflight = build_multi_turn_probe_preflight(config, modal_gpu="A100", timeout_hours=1)
@@ -824,9 +816,6 @@ def test_multi_turn_probe_blocks_unknown_gpu_and_long_timeout() -> None:
         "SFT_PROBE_TIMEOUT_HOURS" in b
         for b in multi_turn_probe_blockers(modal_gpu="A100", timeout_hours=5)
     )
-
-
-# --- multi-turn matched-eval LR sweep -----------------------------------------
 
 
 def test_multi_turn_sweep_preflight_never_launches_and_fits_cap() -> None:
@@ -854,3 +843,17 @@ def test_multi_turn_sweep_blocks_gpu_mismatch() -> None:
     config = load_multi_turn_config(CONFIG_PATH)
     blockers = multi_turn_sweep_blockers(config, timeout_hours=3, modal_gpu="L4")
     assert any("SFT_MODAL_GPU must match runtime.selected_gpu" in b for b in blockers)
+
+
+def test_remote_dataset_rows_refuse_without_download_approval() -> None:
+    source = DatasetSource(
+        name="smol-smoltalk",
+        source="HuggingFaceTB/smol-smoltalk",
+        revision="0" * 40,
+        license="apache-2.0",
+        split="train",
+        role="train",
+    )
+
+    with pytest.raises(DataError, match="remote dataset access is disabled"):
+        next(iter_rows(source, allow_remote_download=False))

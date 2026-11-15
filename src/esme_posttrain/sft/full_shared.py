@@ -5,19 +5,21 @@ from typing import Any
 
 import torch
 
+from esme_posttrain.sft.config import SFTBudgets
+
 
 class SFTFullRunError(RuntimeError):
     pass
 
 
 def assert_full_run_data_safe(
-    budgets: dict[str, Any], train_report: dict[str, Any], eval_report: dict[str, Any]
+    budgets: SFTBudgets, train_report: dict[str, Any], eval_report: dict[str, Any]
 ) -> None:
-    if int(train_report["selected_samples"]) > int(budgets["max_train_samples"]):
+    if int(train_report["selected_samples"]) > int(budgets.max_train_samples):
         raise SFTFullRunError("train sample cap exceeded")
-    if int(train_report["selected_tokens"]) > int(budgets["max_train_tokens"]):
+    if int(train_report["selected_tokens"]) > int(budgets.max_train_tokens):
         raise SFTFullRunError("train token cap exceeded")
-    if int(eval_report["selected_tokens"]) > int(budgets["max_eval_tokens"]):
+    if int(eval_report["selected_tokens"]) > int(budgets.max_eval_tokens):
         raise SFTFullRunError("eval token cap exceeded")
     if train_report["shortfalls"]:
         raise SFTFullRunError("training data shortfall: " + "; ".join(train_report["shortfalls"]))
@@ -56,24 +58,6 @@ def steps_for_target_tokens(
         if trained_tokens >= target_train_tokens:
             return step
     return max_steps
-
-
-def trained_tokens_for_steps(
-    examples: tuple[Any, ...],
-    *,
-    steps: int,
-    micro_batch_size: int,
-    gradient_accumulation_steps: int,
-) -> int:
-    return sum(
-        tokens_for_step(
-            examples,
-            step=step,
-            micro_batch_size=micro_batch_size,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-        )
-        for step in range(1, steps + 1)
-    )
 
 
 def tokens_for_step(

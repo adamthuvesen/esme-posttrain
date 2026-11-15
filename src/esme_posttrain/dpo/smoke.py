@@ -20,9 +20,12 @@ from typing import Any
 import torch
 from tokenizers import Tokenizer
 
+from esme_posttrain.chat.data_types import ChatTurn
+from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
+from esme_posttrain.dpo.config import EXPECTED_ARTIFACTS
 from esme_posttrain.dpo.data import PreferencePair, tokenize_preference_pair
 from esme_posttrain.dpo.decoding_precheck import run_decoding_precheck
-from esme_posttrain.dpo.launch import EXPECTED_ARTIFACTS, DPOLaunchConfig
+from esme_posttrain.dpo.launch import DPOLaunchConfig
 from esme_posttrain.dpo.sample_artifacts import write_chat_samples
 from esme_posttrain.dpo.trainer import (
     DPOTrainerConfig,
@@ -35,12 +38,11 @@ from esme_posttrain.run_artifacts import (
     write_json,
     write_selected_row_manifest,
 )
-from esme_posttrain.sft.data import ChatTurn
-from esme_posttrain.sft.smoke_multiturn import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.training.checkpointing import (
     latest_checkpoint_path,
     load_training_checkpoint,
 )
+from esme_posttrain.training.runtime import set_reproducible_seed
 from esme_posttrain.training.wandb_init import WandbConfig
 
 FIXTURE_MAX_LENGTH = 48
@@ -61,7 +63,7 @@ def run_dpo_cpu_fixture(
     interrupt_after_step: int | None = None,
 ) -> dict[str, Any]:
     evidence_dir = _prepare_evidence_dir(config, output_dir)
-    fixture_steps = max(20, int(config.optimizer["smoke_max_steps"]))
+    fixture_steps = max(20, config.optimizer.smoke_max_steps)
     composable_fixture = max_steps is not None
     if max_steps is not None:
         if max_steps <= 0:
@@ -70,6 +72,9 @@ def run_dpo_cpu_fixture(
     if interrupt_after_step is not None and not 0 < interrupt_after_step < fixture_steps:
         raise ValueError("interrupt_after_step must be positive and less than max_steps")
 
+    # The tiny reference model draws its weights from the global RNG, which earlier
+    # tests in the same process leave in an arbitrary state.
+    set_reproducible_seed(config.optimizer.seed)
     policy, reference, tokenizer, reference_manifest = _fixture_models(reference_checkpoint_path)
 
     train_pairs = tuple(
@@ -134,18 +139,18 @@ def run_dpo_cpu_fixture(
         micro_batch_size=2,
         gradient_accumulation_steps=1,
         learning_rate=0.02,
-        beta=float(config.payload["dpo"]["beta"]),
-        length_normalized=bool(config.payload["dpo"]["length_normalized"]),
-        scheduler=str(config.optimizer["scheduler"]),
+        beta=config.settings.dpo.beta,
+        length_normalized=config.settings.dpo.length_normalized,
+        scheduler=config.optimizer.scheduler,
         warmup_steps=min(
             fixture_steps,
             3,
-            int(round(float(config.optimizer["warmup_ratio"]) * 10)),
+            round(config.optimizer.warmup_ratio * 10),
         ),
-        weight_decay=float(config.optimizer["weight_decay"]),
+        weight_decay=config.optimizer.weight_decay,
         precision="fp32",
-        pad_to_multiple_of=config.payload["sequence"]["pad_to_multiple_of"],
-        seed=int(config.optimizer["seed"]),
+        pad_to_multiple_of=config.settings.sequence.pad_to_multiple_of,
+        seed=config.optimizer.seed,
         output_dir=evidence_dir,
         artifact_name=config.artifact_name,
         eval_interval=1 if composable_fixture else 5,
@@ -153,9 +158,9 @@ def run_dpo_cpu_fixture(
         log_interval=1 if composable_fixture else 5,
         wandb=WandbConfig(
             enabled=wandb_enabled,
-            project=str(config.payload["monitoring"]["wandb_project"]),
+            project=config.settings.monitoring.wandb_project,
             run_name=f"{config.run_id}-local-cpu-fixture" if wandb_enabled else None,
-            tags=tuple(config.payload["monitoring"]["wandb_tags"]) + ("smoke", "fixture"),
+            tags=(*config.settings.monitoring.wandb_tags, "smoke", "fixture"),
             group=config.run_id,
             job_type="smoke",
             notes=(
@@ -166,8 +171,8 @@ def run_dpo_cpu_fixture(
                 "model": config.artifact_name,
                 "stage": "dpo",
                 "run_type": "smoke",
-                "beta": float(config.payload["dpo"]["beta"]),
-                "length_normalized": bool(config.payload["dpo"]["length_normalized"]),
+                "beta": config.settings.dpo.beta,
+                "length_normalized": config.settings.dpo.length_normalized,
             },
         ),
     )

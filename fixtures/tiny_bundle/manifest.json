@@ -11,7 +11,7 @@
     },
     "tokenizer": {
       "path": "tokenizer.json",
-      "sha256": "e57ac92de67e53b360c70a3013c72eb408e6e937d851d7b28f81257f80120a68"
+      "sha256": "3cf86a197ba7f125d480e1835979aa4104ee971bcc47e838967d34b15f697982"
     },
     "weights": {
       "path": "weights.pt",

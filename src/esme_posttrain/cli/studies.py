@@ -3,11 +3,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from esme_posttrain.cli.output import emit_payload, exit_with_error
+from esme_posttrain.cli.output import Payload, Subparsers, emit_payload, exit_with_error
 from esme_posttrain.studies.report import StudyReportError, generate_study_report
 
 
-def add_study_parsers(subparsers: argparse._SubParsersAction) -> None:
+def add_study_parsers(subparsers: Subparsers) -> None:
     study_report = subparsers.add_parser(
         "study-report",
         help="Generate checked JSON and Markdown from a hashed study specification.",
@@ -33,7 +33,7 @@ def _handle_study_report(args: argparse.Namespace) -> int:
         )
     except StudyReportError as exc:
         exit_with_error(str(exc))
-    payload = {
+    payload: Payload = {
         **generated.payload,
         "json_path": str(generated.json_path),
         "markdown_path": str(generated.markdown_path),

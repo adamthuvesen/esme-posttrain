@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from collections.abc import Callable
 from functools import partial
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import torch
@@ -50,6 +50,43 @@ def linear_warmup_decay_lr(step: int, *, warmup_steps: int, max_steps: int) -> f
     decay_steps = max(1, max_steps - warmup_steps)
     progress = min(1.0, max(0.0, float(step - warmup_steps) / decay_steps))
     return max(1e-8, 1.0 - progress)
+
+
+class OptimizerSettings(Protocol):
+    @property
+    def learning_rate(self) -> float: ...
+    @property
+    def weight_decay(self) -> float: ...
+    @property
+    def scheduler(self) -> str: ...
+    @property
+    def warmup_steps(self) -> int: ...
+    @property
+    def max_steps(self) -> int: ...
+
+
+def adamw_with_lr_schedule(
+    model: torch.nn.Module, settings: OptimizerSettings
+) -> tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LRScheduler]:
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=settings.learning_rate, weight_decay=settings.weight_decay
+    )
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer,
+        lr_lambda=lr_lambda_factory(
+            scheduler=settings.scheduler,
+            warmup_steps=settings.warmup_steps,
+            max_steps=settings.max_steps,
+        ),
+    )
+    return optimizer, lr_scheduler
+
+
+def freeze_reference(reference: torch.nn.Module, device: torch.device) -> None:
+    reference.to(device)
+    reference.eval()
+    for param in reference.parameters():
+        param.requires_grad_(False)
 
 
 def lr_lambda_factory(

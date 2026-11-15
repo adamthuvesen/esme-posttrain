@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
-from esme_posttrain.launch.config_guards import LaunchError, positive_int, require_keys, str_field
-from esme_posttrain.sft.data import DatasetSource
+from esme_posttrain.launch.config_models import FrozenJSON
 
 
 def prepare_evidence_dir(default_output_dir: Path, output_dir: Path | None) -> Path:
@@ -23,113 +22,49 @@ def prepare_evidence_dir(default_output_dir: Path, output_dir: Path | None) -> P
     return evidence_dir
 
 
-def validate_eval_source(
-    payload: dict[str, Any], expected_dataset: dict[str, Any]
-) -> DatasetSource:
-    require_keys(
-        payload,
-        {"name", "source", "revision", "license", "split", "role", "train_allowed", "usage"},
-        "datasets.eval_holdout",
-    )
-    for key, value in expected_dataset.items():
-        if payload[key] != value:
-            raise LaunchError(f"datasets.eval_holdout.{key} must be {value}")
-    if payload["role"] != "eval":
-        raise LaunchError("datasets.eval_holdout.role must be eval")
-    if payload["usage"] != "eval_only":
-        raise LaunchError("datasets.eval_holdout.usage must be eval_only")
-    return DatasetSource(
-        name=expected_dataset["name"],
-        source=expected_dataset["source"],
-        revision=expected_dataset["revision"],
-        license=expected_dataset["license"],
-        split=expected_dataset["split"],
-        role="eval",
-        train_allowed=False,
-    )
-
-
-def validate_sft_budgets(
-    payload: dict[str, Any],
-    *,
-    max_train_samples_cap: int,
-    max_train_tokens_cap: int,
-    require_context_1024: bool = False,
-) -> dict[str, Any]:
-    require_keys(
-        payload,
+def matched_interval_eval_sweep_blockers(evidence: Mapping[str, FrozenJSON]) -> list[str]:
+    label = "learning_gate.evidence.bounded_matched_interval_eval_sweep"
+    missing = sorted(
         {
-            "max_train_samples",
-            "max_train_tokens",
-            "target_train_tokens",
-            "max_eval_samples",
-            "max_eval_tokens",
-            "matched_eval_samples_per_source",
-            "matched_eval_tokens_per_source",
-            "max_sequence_tokens",
-            "smoke_train_samples",
-            "smoke_train_tokens",
-            "smoke_eval_samples",
-        },
-        "budgets",
+            "kind",
+            "eval_metric",
+            "baseline_step",
+            "step0_response_loss",
+            "best_response_loss",
+            "interval_eval_steps",
+            "evidence_uri",
+        }
+        - set(evidence)
     )
-    max_train_samples = positive_int(payload["max_train_samples"], "budgets.max_train_samples")
-    max_train_tokens = positive_int(payload["max_train_tokens"], "budgets.max_train_tokens")
-    target_train_tokens = positive_int(
-        payload["target_train_tokens"], "budgets.target_train_tokens"
-    )
-    if max_train_samples > max_train_samples_cap:
-        raise LaunchError(f"budgets.max_train_samples must be <= {max_train_samples_cap}")
-    if max_train_tokens > max_train_tokens_cap:
-        raise LaunchError(f"budgets.max_train_tokens must be <= {max_train_tokens_cap}")
-    if target_train_tokens > max_train_tokens:
-        raise LaunchError("budgets.target_train_tokens must be <= budgets.max_train_tokens")
-    if require_context_1024 and int(payload["max_sequence_tokens"]) != 1024:
-        raise LaunchError(
-            "budgets.max_sequence_tokens must be 1024 to match the Esme-214M-Base context"
-        )
-    for key in (
-        "max_eval_samples",
-        "max_eval_tokens",
-        "matched_eval_samples_per_source",
-        "matched_eval_tokens_per_source",
-        "max_sequence_tokens",
-        "smoke_train_samples",
-        "smoke_train_tokens",
-        "smoke_eval_samples",
-    ):
-        positive_int(payload[key], f"budgets.{key}")
-    if payload["smoke_train_samples"] > max_train_samples:
-        raise LaunchError("budgets.smoke_train_samples must be <= budgets.max_train_samples")
-    if payload["smoke_train_tokens"] > max_train_tokens:
-        raise LaunchError("budgets.smoke_train_tokens must be <= budgets.max_train_tokens")
-    return payload
-
-
-def validate_sft_monitoring(payload: dict[str, Any]) -> None:
-    keys = {
-        "log_interval",
-        "eval_interval",
-        "checkpoint_interval",
-        "retain_last_checkpoints",
-        "early_stopping_patience",
-        "no_robots_catastrophic_regression_multiplier",
-        "sample_new_tokens",
-        "wandb_project",
-        "wandb_required_for_modal",
-    }
-    require_keys(payload, keys, "monitoring")
-    positive_int(payload["log_interval"], "monitoring.log_interval")
-    positive_int(payload["eval_interval"], "monitoring.eval_interval")
-    positive_int(payload["checkpoint_interval"], "monitoring.checkpoint_interval")
-    positive_int(payload["retain_last_checkpoints"], "monitoring.retain_last_checkpoints")
-    positive_int(payload["early_stopping_patience"], "monitoring.early_stopping_patience")
+    if missing:
+        return [f"{label} is missing required keys: " + ", ".join(missing)]
+    blockers: list[str] = []
+    if evidence["kind"] != "bounded_matched_interval_eval_sweep":
+        blockers.append(f"{label}.kind must be bounded_matched_interval_eval_sweep")
+    if evidence["eval_metric"] != "eval/matched/response_loss":
+        blockers.append(f"{label}.eval_metric must be eval/matched/response_loss")
+    if evidence["baseline_step"] != 0:
+        blockers.append(f"{label}.baseline_step must be 0")
+    step0 = evidence["step0_response_loss"]
+    best = evidence["best_response_loss"]
     if (
-        not isinstance(payload["no_robots_catastrophic_regression_multiplier"], int | float)
-        or payload["no_robots_catastrophic_regression_multiplier"] <= 1.0
+        isinstance(step0, bool)
+        or isinstance(best, bool)
+        or not isinstance(step0, int | float)
+        or not isinstance(best, int | float)
+        or step0 <= 0
+        or best <= 0
     ):
-        raise LaunchError("monitoring.no_robots_catastrophic_regression_multiplier must be > 1")
-    positive_int(payload["sample_new_tokens"], "monitoring.sample_new_tokens")
-    str_field(payload["wandb_project"], "monitoring.wandb_project")
-    if payload["wandb_required_for_modal"] is not True:
-        raise LaunchError("monitoring.wandb_required_for_modal must be true")
+        blockers.append(f"{label} response losses must be positive numbers")
+    elif best >= step0:
+        blockers.append(f"{label} must show best_response_loss < step0_response_loss")
+    steps = evidence["interval_eval_steps"]
+    if (
+        not isinstance(steps, tuple)
+        or not steps
+        or any(isinstance(step, bool) or not isinstance(step, int) or step <= 0 for step in steps)
+    ):
+        blockers.append(f"{label}.interval_eval_steps must list positive steps")
+    if not isinstance(evidence["evidence_uri"], str) or not evidence["evidence_uri"]:
+        blockers.append(f"{label}.evidence_uri must be a non-empty string")
+    return blockers

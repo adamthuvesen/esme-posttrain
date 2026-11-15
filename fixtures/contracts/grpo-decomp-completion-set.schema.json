@@ -1,0 +1,415 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CompletionSet",
+  "description": "A CompletionSet directory. `files` maps each file name to the record that the file holds; completions.jsonl holds one record per line. The loader also checks what this schema cannot express: every problem has exactly `sampling.n` samples, `n_problems` equals the line count, problem ids are unique, and the dataset and manifest.json digests match the bytes and problems.",
+  "files": {
+    "provenance.json": {
+      "$ref": "#/$defs/GenerationProvenance"
+    },
+    "completions.jsonl": {
+      "$ref": "#/$defs/ProblemCompletions"
+    },
+    "manifest.json": {
+      "$ref": "#/$defs/CompletionManifest"
+    }
+  },
+  "$defs": {
+    "CompletionManifest": {
+      "additionalProperties": false,
+      "description": "Version and integrity hashes for a newly published CompletionSet.",
+      "properties": {
+        "schema_version": {
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "provenance_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Provenance Sha256",
+          "type": "string"
+        },
+        "completions_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Completions Sha256",
+          "type": "string"
+        },
+        "dataset_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Dataset Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provenance_sha256",
+        "completions_sha256",
+        "dataset_digest"
+      ],
+      "title": "CompletionManifest",
+      "type": "object"
+    },
+    "DatasetRef": {
+      "additionalProperties": false,
+      "description": "A reproducible pointer to exactly one dataset split.\n\n`revision` is an immutable commit SHA (never a branch name) so a result can\nbe traced back to the precise data snapshot it was produced from.",
+      "properties": {
+        "name": {
+          "description": "HuggingFace repo id, e.g. 'openai/gsm8k'.",
+          "title": "Name",
+          "type": "string"
+        },
+        "config": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "HF config/subset, e.g. 'main'; None if absent.",
+          "title": "Config"
+        },
+        "split": {
+          "description": "Split name, e.g. 'train' or 'test'.",
+          "title": "Split",
+          "type": "string"
+        },
+        "revision": {
+          "description": "Immutable dataset commit SHA.",
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "config",
+        "split",
+        "revision"
+      ],
+      "title": "DatasetRef",
+      "type": "object"
+    },
+    "GenerationProvenance": {
+      "additionalProperties": false,
+      "description": "Everything needed to reproduce one generation pass.",
+      "properties": {
+        "model": {
+          "description": "Model id or checkpoint path.",
+          "title": "Model",
+          "type": "string"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Revision"
+        },
+        "backend": {
+          "description": "'transformers' or 'vllm'.",
+          "title": "Backend",
+          "type": "string"
+        },
+        "device": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Device the generator ran on.",
+          "title": "Device"
+        },
+        "resolved_model_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolved Model Revision"
+        },
+        "training_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Training Run Id"
+        },
+        "training_base_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Training Base Model"
+        },
+        "training_base_model_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Training Base Model Revision"
+        },
+        "training_reward": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Training Reward"
+        },
+        "training_protocol_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Training Protocol Digest"
+        },
+        "training_seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Training Seed"
+        },
+        "training_config_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Training Config Digest"
+        },
+        "checkpoint_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checkpoint Digest"
+        },
+        "prompt_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Digest"
+        },
+        "dataset_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset Digest"
+        },
+        "grader_identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grader Identity"
+        },
+        "prompt_strategy": {
+          "default": "r1_zero",
+          "description": "Prompt strategy used to build prompts (must match training).",
+          "title": "Prompt Strategy",
+          "type": "string"
+        },
+        "sampling": {
+          "$ref": "#/$defs/SamplingConfig"
+        },
+        "dataset": {
+          "$ref": "#/$defs/DatasetRef"
+        },
+        "n_problems": {
+          "minimum": 0,
+          "title": "N Problems",
+          "type": "integer"
+        },
+        "commit": {
+          "title": "Commit",
+          "type": "string"
+        },
+        "dirty": {
+          "default": false,
+          "description": "Worktree had uncommitted changes at capture.",
+          "title": "Dirty",
+          "type": "boolean"
+        },
+        "python_version": {
+          "title": "Python Version",
+          "type": "string"
+        },
+        "package_versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Package Versions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "model",
+        "model_revision",
+        "backend",
+        "sampling",
+        "dataset",
+        "n_problems",
+        "commit",
+        "python_version",
+        "package_versions"
+      ],
+      "title": "GenerationProvenance",
+      "type": "object"
+    },
+    "Problem": {
+      "additionalProperties": false,
+      "description": "One math problem in grpo_decomp's canonical schema, identical across all datasets.\n\n`gold_answer` is the normalized final answer in string form. String \u2014 not\nfloat \u2014 because the family spans integers, decimals, and fractions, and\nexact-match comparison must not be at the mercy of float representation.",
+      "properties": {
+        "id": {
+          "description": "Stable id, synthesized when absent, e.g. 'gsm8k/main/test/42'.",
+          "title": "Id",
+          "type": "string"
+        },
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "gold_answer": {
+          "title": "Gold Answer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "question",
+        "gold_answer"
+      ],
+      "title": "Problem",
+      "type": "object"
+    },
+    "ProblemCompletions": {
+      "additionalProperties": false,
+      "description": "One problem and the completions sampled for it.",
+      "properties": {
+        "problem": {
+          "$ref": "#/$defs/Problem"
+        },
+        "samples": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Samples",
+          "type": "array"
+        }
+      },
+      "required": [
+        "problem",
+        "samples"
+      ],
+      "title": "ProblemCompletions",
+      "type": "object"
+    },
+    "SamplingConfig": {
+      "additionalProperties": false,
+      "description": "How completions are drawn. Validated strictly: a bad knob is an explicit error.",
+      "properties": {
+        "temperature": {
+          "default": 0.0,
+          "description": "0 = greedy (pass@1).",
+          "minimum": 0.0,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "top_p": {
+          "default": 1.0,
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0,
+          "title": "Top P",
+          "type": "number"
+        },
+        "max_new_tokens": {
+          "default": 1024,
+          "exclusiveMinimum": 0,
+          "title": "Max New Tokens",
+          "type": "integer"
+        },
+        "n": {
+          "default": 1,
+          "description": "Completions sampled per problem (uniform).",
+          "exclusiveMinimum": 0,
+          "title": "N",
+          "type": "integer"
+        },
+        "seed": {
+          "default": 0,
+          "title": "Seed",
+          "type": "integer"
+        }
+      },
+      "title": "SamplingConfig",
+      "type": "object"
+    }
+  }
+}

@@ -56,12 +56,12 @@ def build_multi_turn_probe_preflight(
         "modal_run_will_download_real_data": True,
         "uses_full_run_output_dir": False,
         "uses_sweep_output_dir": False,
-        "volume": config.runtime["modal_volume"],
+        "volume": config.runtime.modal_volume,
         "volume_output_root": str(DEFAULT_MODAL_PROBE_ROOT),
         "gpu": modal_gpu,
         "recipe": PROBE_RECIPE,
         "steps": PROBE_STEPS,
-        "max_sequence_tokens": int(config.budgets["max_sequence_tokens"]),
+        "max_sequence_tokens": config.budgets.max_sequence_tokens,
         "data_caps": {
             "train_samples": PROBE_TRAIN_SAMPLE_CAP,
             "train_tokens": PROBE_TRAIN_TOKEN_CAP,
@@ -143,7 +143,7 @@ def run_multi_turn_throughput_probe(
     bundle_path = (base_bundle_path or config.base_bundle_path).expanduser().resolve()
     loaded = load_dense_backbone_bundle(bundle_path, map_location="cpu")
     budgets = config.budgets
-    max_sequence_tokens = int(budgets["max_sequence_tokens"])
+    max_sequence_tokens = budgets.max_sequence_tokens
     train_report = build_multi_turn_mix(
         config.train_sources,
         loaded.tokenizer,
@@ -176,7 +176,7 @@ def run_multi_turn_throughput_probe(
             "recipe": PROBE_RECIPE,
             "steps": PROBE_STEPS,
             "max_sequence_tokens": max_sequence_tokens,
-            "source_config": config.payload,
+            "source_config": config.settings.to_dict(),
             "commit": commit,
             "dirty": dirty,
             "approval": {
@@ -196,8 +196,8 @@ def run_multi_turn_throughput_probe(
             "no_robots_training": False,
         },
     )
-    optimizer_config = config.payload["optimizer"]
-    sequence_config = config.payload["sequence"]
+    optimizer_config = config.settings.optimizer
+    sequence_config = config.settings.sequence
     training_started = time.perf_counter()
     result = run_sft_training(
         loaded.model,
@@ -209,17 +209,17 @@ def run_multi_turn_throughput_probe(
             micro_batch_size=int(PROBE_RECIPE["micro_batch_size"]),
             gradient_accumulation_steps=int(PROBE_RECIPE["gradient_accumulation_steps"]),
             learning_rate=float(PROBE_RECIPE["learning_rate"]),
-            scheduler=str(optimizer_config["scheduler"]),
+            scheduler=optimizer_config.scheduler,
             warmup_steps=10,
-            weight_decay=float(optimizer_config["weight_decay"]),
-            precision=str(config.runtime["precision"]),
-            pad_to_multiple_of=sequence_config["pad_to_multiple_of"],
-            seed=int(optimizer_config["seed"]),
+            weight_decay=optimizer_config.weight_decay,
+            precision=config.runtime.precision,
+            pad_to_multiple_of=sequence_config.pad_to_multiple_of,
+            seed=optimizer_config.seed,
             output_dir=output_dir,
-            assistant_only_loss=bool(config.payload["loss"]["assistant_only_loss"]),
-            completion_only_loss=bool(config.payload["loss"]["completion_only_loss"]),
-            tuning_mode=str(config.payload["tuning"]["mode"]),
-            grad_clip=float(optimizer_config["grad_clip"]),
+            assistant_only_loss=config.settings.loss.assistant_only_loss,
+            completion_only_loss=config.settings.loss.completion_only_loss,
+            tuning_mode=config.settings.tuning.mode,
+            grad_clip=optimizer_config.grad_clip,
             log_interval=20,
             eval_interval=0,
             checkpoint_interval=0,
@@ -238,7 +238,7 @@ def run_multi_turn_throughput_probe(
     training_elapsed = time.perf_counter() - training_started
     trained_tokens_per_second = result.trained_tokens / max(1e-9, training_elapsed)
     supervised_tokens_per_second = result.supervised_tokens / max(1e-9, training_elapsed)
-    target_train_tokens = int(budgets["target_train_tokens"])
+    target_train_tokens = budgets.target_train_tokens
     projected_full_seconds = target_train_tokens / max(1e-9, trained_tokens_per_second)
     projected_full_cost = projected_full_seconds * usd_per_hour / 3600.0
     cost = spend_tracker.write_cost(step=result.steps_completed, status="throughput_probe_complete")
@@ -250,7 +250,7 @@ def run_multi_turn_throughput_probe(
         "gpu": modal_gpu,
         "launch_id": launch_id,
         "output_dir": str(output_dir),
-        "volume": config.runtime["modal_volume"],
+        "volume": config.runtime.modal_volume,
         "commit": commit,
         "dirty": dirty,
         "device": device.type,

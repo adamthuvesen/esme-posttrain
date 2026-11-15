@@ -10,11 +10,12 @@ import time
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any
 
 import torch
 
 from esme_posttrain.bundle import file_sha256, load_dense_backbone_bundle
+from esme_posttrain.rl.config import PIPELINE_SMOKE_PROFILE
 from esme_posttrain.rl.countdown_lite import load_countdown_lite_rows
 from esme_posttrain.rl.countdown_lite_baseline import (
     PASS_AT_KS,
@@ -24,7 +25,6 @@ from esme_posttrain.rl.countdown_lite_baseline import (
 from esme_posttrain.rl.grpo import CountdownGRPOTrainerConfig, run_countdown_lite_grpo
 from esme_posttrain.rl.launch import (
     FULL_EVAL_PROFILE,
-    PIPELINE_SMOKE_PROFILE,
     RLVRLaunchConfig,
     build_eval_profile,
     pipeline_smoke_grpo_settings,
@@ -83,7 +83,7 @@ def run_countdown_lite_grpo_job(
         output_dir.mkdir(parents=True, exist_ok=True)
         _emit_milestone("output_dir_ready", milestone_callback, output_dir=str(output_dir))
 
-        if config.estimated_full_cost_usd > float(config.runtime["full_run_max_cost_usd"]):
+        if config.estimated_full_cost_usd > config.runtime.full_run_max_cost_usd:
             raise CountdownGRPOFullRunError(
                 "projected GRPO cost exceeds runtime.full_run_max_cost_usd"
             )
@@ -92,8 +92,8 @@ def run_countdown_lite_grpo_job(
         profile = config.selected_gpu_profile
         spend_tracker = RuntimeSpendTracker(
             started=started or time.perf_counter(),
-            usd_per_hour=float(profile["usd_per_hour"]) if paid_compute else 0.0,
-            stop_usd=float(config.runtime["full_run_runtime_spend_stop_usd"]),
+            usd_per_hour=profile.usd_per_hour if paid_compute else 0.0,
+            stop_usd=config.runtime.full_run_runtime_spend_stop_usd,
             output_dir=output_dir,
             paid_compute=paid_compute,
         )
@@ -133,9 +133,9 @@ def run_countdown_lite_grpo_job(
         policy = loaded.model
         reference = copy.deepcopy(policy)
 
-        dataset = config.payload["dataset"]
+        dataset = config.settings.dataset
         budgets = config.budgets
-        required_artifacts = tuple(config.payload["artifacts"]["required_files"])
+        required_artifacts = tuple(config.settings.artifacts.required_files)
         if skip_acceptance_eval:
             # The placebo decomposition run needs only the trained bundle; its completions
             # come from the emitter and checkpoint selection uses train/reward_mean, not the
@@ -145,7 +145,7 @@ def run_countdown_lite_grpo_job(
                 name for name in required_artifacts if name not in eval_artifacts
             )
         final_eval_required = "eval-after-final.json" in required_artifacts
-        precision = str(config.runtime["precision"])
+        precision = config.runtime.precision
         if pipeline_smoke and device.type != "cuda" and precision == "bf16":
             # The no-spend lifecycle gate runs on CPU where bf16 autocast is
             # unsupported; downgrade loudly instead of refusing the smoke.
@@ -159,13 +159,11 @@ def run_countdown_lite_grpo_job(
             )
         grpo_settings = pipeline_smoke_grpo_settings(config) if pipeline_smoke else config.grpo
         train_task_budget = (
-            int(config.pipeline_smoke["train_task_budget"])
-            if pipeline_smoke
-            else int(budgets["train_task_budget"])
+            config.pipeline_smoke.train_task_budget if pipeline_smoke else budgets.train_task_budget
         )
-        monitoring = config.payload["monitoring"]
+        monitoring = config.settings.monitoring
         train_rows = tuple(
-            list(load_countdown_lite_rows(dataset_manifest, split=str(dataset["train_split"])))[
+            list(load_countdown_lite_rows(dataset_manifest, split=dataset.train_split))[
                 :train_task_budget
             ]
         )
@@ -231,7 +229,7 @@ def run_countdown_lite_grpo_job(
                 "eval_profile": eval_settings["profile"],
                 "output_dir": str(output_dir),
                 "bundle_dir": None,
-                "volume": config.runtime["modal_volume"],
+                "volume": config.runtime.modal_volume,
                 "commit": commit,
                 "dirty": dirty,
                 "device": device.type,
@@ -260,9 +258,9 @@ def run_countdown_lite_grpo_job(
             "trainer_start",
             milestone_callback,
             wandb_run=wandb_run,
-            max_steps=int(grpo_settings["max_steps"]),
-            prompts_per_step=int(grpo_settings["prompts_per_step"]),
-            group_size=int(grpo_settings["group_size"]),
+            max_steps=int(grpo_settings.max_steps),
+            prompts_per_step=int(grpo_settings.prompts_per_step),
+            group_size=int(grpo_settings.group_size),
             eval_profile=eval_settings["profile"],
             pipeline_smoke=pipeline_smoke,
         )
@@ -272,58 +270,40 @@ def run_countdown_lite_grpo_job(
             loaded.tokenizer,
             train_rows,
             CountdownGRPOTrainerConfig(
-                max_steps=int(grpo_settings["max_steps"]),
-                prompts_per_step=int(grpo_settings["prompts_per_step"]),
-                group_size=int(grpo_settings["group_size"]),
-                max_new_tokens=int(grpo_settings["max_new_tokens"]),
-                temperature=float(grpo_settings["temperature"]),
-                kl_beta=float(grpo_settings["kl_beta"]),
-                learning_rate=float(grpo_settings["learning_rate"]),
-                weight_decay=float(grpo_settings["weight_decay"]),
-                warmup_steps=int(grpo_settings["warmup_steps"]),
-                scheduler=str(grpo_settings["scheduler"]),
-                grad_clip=float(grpo_settings["grad_clip"]),
-                seed=int(grpo_settings["seed"]),
+                max_steps=int(grpo_settings.max_steps),
+                prompts_per_step=int(grpo_settings.prompts_per_step),
+                group_size=int(grpo_settings.group_size),
+                max_new_tokens=int(grpo_settings.max_new_tokens),
+                temperature=float(grpo_settings.temperature),
+                kl_beta=float(grpo_settings.kl_beta),
+                learning_rate=float(grpo_settings.learning_rate),
+                weight_decay=float(grpo_settings.weight_decay),
+                warmup_steps=int(grpo_settings.warmup_steps),
+                scheduler=str(grpo_settings.scheduler),
+                grad_clip=float(grpo_settings.grad_clip),
+                seed=int(grpo_settings.seed),
                 output_dir=output_dir,
-                max_rollout_tokens=int(grpo_settings["max_rollout_tokens"])
+                max_rollout_tokens=config.pipeline_smoke.max_rollout_tokens
                 if pipeline_smoke
-                else int(budgets["max_rollout_tokens"]),
-                exact_solve_reward=float(config.payload["reward_policy"]["exact_solve_reward"]),
-                valid_expression_reward=float(
-                    config.payload["reward_policy"]["valid_expression_reward"]
-                ),
-                invalid_reward=float(config.payload["reward_policy"]["invalid_reward"]),
-                format_expression_reward=float(
-                    config.payload["reward_policy"].get("format_expression_reward", 0.0)
-                ),
-                closeness_weight=float(
-                    config.payload["reward_policy"].get("closeness_weight", 0.0)
-                ),
-                reward_mode=cast(
-                    Literal["verifier", "random"],
-                    grpo_settings.get("reward_mode", "verifier"),
-                ),
-                random_reward_seed=int(grpo_settings.get("random_reward_seed", 0)),
-                zero_variance_max_resamples=int(
-                    grpo_settings.get("zero_variance_max_resamples", 0)
-                ),
-                replay_buffer_max_age_steps=int(
-                    grpo_settings.get("replay_buffer_max_age_steps", 0)
-                ),
-                stratified_difficulty_sampling=bool(
-                    grpo_settings.get("stratified_difficulty_sampling", False)
-                ),
-                advantage_normalization=cast(
-                    Literal["mean", "std"],
-                    grpo_settings.get("advantage_normalization", "mean"),
-                ),
+                else budgets.max_rollout_tokens,
+                exact_solve_reward=config.settings.reward_policy.exact_solve_reward,
+                valid_expression_reward=config.settings.reward_policy.valid_expression_reward,
+                invalid_reward=config.settings.reward_policy.invalid_reward,
+                format_expression_reward=config.settings.reward_policy.format_expression_reward,
+                closeness_weight=config.settings.reward_policy.closeness_weight,
+                reward_mode=grpo_settings.reward_mode,
+                random_reward_seed=int(grpo_settings.random_reward_seed),
+                zero_variance_max_resamples=int(grpo_settings.zero_variance_max_resamples),
+                replay_buffer_max_age_steps=int(grpo_settings.replay_buffer_max_age_steps),
+                stratified_difficulty_sampling=bool(grpo_settings.stratified_difficulty_sampling),
+                advantage_normalization=grpo_settings.advantage_normalization,
                 write_final_bundle=final_eval_required,
                 precision=precision,
                 device=device.type,
-                log_interval=int(monitoring["log_interval"]),
-                checkpoint_interval=int(monitoring["checkpoint_interval"]),
+                log_interval=monitoring.log_interval,
+                checkpoint_interval=monitoring.checkpoint_interval,
                 artifact_name=config.artifact_name,
-                reference_artifact_name=str(config.payload["starts_from"]),
+                reference_artifact_name=config.settings.starts_from,
                 source_manifest=loaded.bundle.manifest,
                 source_checkpoint=str(loaded.bundle.weights_path),
                 source_checkpoint_sha256=file_sha256(loaded.bundle.weights_path),
@@ -412,7 +392,7 @@ def run_countdown_lite_grpo_job(
             _emit_milestone("after_final_eval_complete", milestone_callback, wandb_run=wandb_run)
 
         cost = spend_tracker.write_cost(step=result.steps_completed, status="complete")
-        if float(cost["estimated_cost_usd"]) > float(config.runtime["full_run_max_cost_usd"]):
+        if float(cost["estimated_cost_usd"]) > config.runtime.full_run_max_cost_usd:
             raise CountdownGRPOFullRunError("GRPO run exceeded runtime.full_run_max_cost_usd")
 
         write_environment(output_dir / "environment.txt", device=device)
@@ -428,7 +408,7 @@ def run_countdown_lite_grpo_job(
             "eval_profile": eval_settings["profile"],
             "output_dir": str(output_dir),
             "bundle_dir": str(result.bundle_dir),
-            "volume": config.runtime["modal_volume"],
+            "volume": config.runtime.modal_volume,
             "commit": commit,
             "dirty": dirty,
             "device": device.type,
@@ -503,11 +483,11 @@ def _run_progress_reporting_eval(
             manifest_path=manifest_path,
             bundle_path=bundle_path,
             output_dir=output_dir,
-            split=str(config.payload["dataset"]["eval_split"]),
+            split=config.settings.dataset.eval_split,
             samples_per_task=int(settings["samples_per_task"]),
             max_tasks=int(settings["tasks"]),
             max_new_tokens=int(settings["max_new_tokens"]),
-            seed=int(config.grpo["seed"]),
+            seed=config.grpo.seed,
             device=device,
             progress_label=label,
             progress_callback=progress_callback,
@@ -540,7 +520,7 @@ def _start_rlvr_wandb(
     before_eval_only: bool,
     pipeline_smoke: bool,
 ) -> Any | None:
-    monitoring = config.payload["monitoring"]
+    monitoring = config.settings.monitoring
     if pipeline_smoke:
         eval_profile = build_eval_profile(config, pipeline_smoke=True)
         run_kind = PIPELINE_SMOKE_PROFILE
@@ -552,10 +532,10 @@ def _start_rlvr_wandb(
         run_kind = "full-grpo"
     wandb_config = WandbConfig(
         enabled=enabled,
-        project=str(monitoring["wandb_project"]),
+        project=monitoring.wandb_project,
         run_name=f"{config.run_id}-{run_kind}",
         mode=mode,
-        tags=tuple(monitoring["wandb_tags"]) + (run_kind, str(eval_profile["profile"])),
+        tags=(*monitoring.wandb_tags, run_kind, str(eval_profile["profile"])),
         group=config.run_id,
         job_type=run_kind,
         notes="Countdown-Lite RLVR GRPO with verifiable rewards only.",
@@ -564,27 +544,27 @@ def _start_rlvr_wandb(
             "stage": "rlvr",
             "run_type": run_kind,
             "eval_profile": eval_profile["profile"],
-            "selected_gpu": config.runtime["selected_gpu"],
+            "selected_gpu": config.runtime.selected_gpu,
             "eval_task_budget": eval_profile["tasks"],
             "samples_per_eval_task": eval_profile["samples_per_task"],
             "eval_rollouts": eval_profile["total_samples"],
-            "debug_eval_task_budget": monitoring["debug_eval_task_budget"],
-            "debug_samples_per_eval_task": monitoring["debug_samples_per_eval_task"],
+            "debug_eval_task_budget": monitoring.debug_eval_task_budget,
+            "debug_samples_per_eval_task": monitoring.debug_samples_per_eval_task,
         },
     )
     return start_wandb(
         wandb_config,
         run_config={
             "artifact_name": config.artifact_name,
-            "max_steps": int(config.grpo["max_steps"]),
-            "prompts_per_step": int(config.grpo["prompts_per_step"]),
-            "group_size": int(config.grpo["group_size"]),
-            "learning_rate": float(config.grpo["learning_rate"]),
-            "scheduler": str(config.grpo["scheduler"]),
-            "warmup_steps": int(config.grpo["warmup_steps"]),
-            "weight_decay": float(config.grpo["weight_decay"]),
-            "precision": str(config.runtime["precision"]),
-            "seed": int(config.grpo["seed"]),
+            "max_steps": config.grpo.max_steps,
+            "prompts_per_step": config.grpo.prompts_per_step,
+            "group_size": config.grpo.group_size,
+            "learning_rate": config.grpo.learning_rate,
+            "scheduler": config.grpo.scheduler,
+            "warmup_steps": config.grpo.warmup_steps,
+            "weight_decay": config.grpo.weight_decay,
+            "precision": config.runtime.precision,
+            "seed": config.grpo.seed,
         },
         base_bundle_manifest=base_bundle_manifest,
     )
@@ -667,7 +647,9 @@ def _selected_eval_metrics(report: dict[str, Any], *, eval_profile: str) -> dict
 
 
 def _config_hash(config: RLVRLaunchConfig) -> str:
-    payload = json.dumps(config.payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    payload = json.dumps(config.settings.to_dict(), sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
     return hashlib.sha256(payload).hexdigest()
 
 
