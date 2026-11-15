@@ -54,7 +54,6 @@ from esme_posttrain.dpo.launch import (
 from esme_posttrain.dpo.smoke import run_dpo_cpu_fixture
 from esme_posttrain.dpo.sweep import (
     SWEEP_ARMS,
-    SWEEP_SPEND_CAP_USD,
     build_dpo_sweep_preflight,
     dpo_sweep_blockers,
     learning_gate_payload,
@@ -69,6 +68,8 @@ from esme_posttrain.dpo.trainer import (
     run_dpo_training,
     sequence_logprob,
 )
+from esme_posttrain.export.chat_template import CHAT_TEMPLATE_ID
+from esme_posttrain.launch.config_models import SWEEP_SPEND_CAP_USD
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.training.checkpointing import load_training_checkpoint, save_training_checkpoint
@@ -529,6 +530,7 @@ def test_decoding_precheck_summarizes_both_decoders() -> None:
     )
     payload = report.to_dict()
     assert payload["is_real_checkpoint"] is False
+    assert payload["chat_template_id"] == CHAT_TEMPLATE_ID
     assert set(payload["per_decoding_summary"]) == {GREEDY.name, NUCLEUS_REP_PENALTY.name}
     for summary in payload["per_decoding_summary"].values():
         assert "mean_response_length" in summary
@@ -589,8 +591,11 @@ def test_chat_eval_compares_two_checkpoints_and_writes_markdown(tmp_path: Path) 
     assert "DPO vs SFT chat-quality comparison" in md
     assert "Side-by-side generations" in md
     assert "SFT (" in md and "DPO (" in md  # both sides present per prompt
+    assert f"- Chat template: `{CHAT_TEMPLATE_ID}`" in md
     saved = json.loads(json_path.read_text(encoding="utf-8"))
     assert saved["mode"] == "dpo_chat_eval"
+    assert saved["chat_template_id"] == CHAT_TEMPLATE_ID
+    assert saved["sft"]["report"]["chat_template_id"] == CHAT_TEMPLATE_ID
     assert {"sft", "dpo", "summary_comparison", "degeneration_flags"} <= set(saved)
 
 

@@ -42,4 +42,5 @@ def tiny_chat_tokenizer() -> Tokenizer:
     }
     tokenizer = Tokenizer(WordLevel(vocab=vocab, unk_token="<unk>"))
     tokenizer.pre_tokenizer = Whitespace()
+    tokenizer.add_special_tokens(["<eos>"])
     return tokenizer

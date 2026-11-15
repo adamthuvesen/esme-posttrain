@@ -158,8 +158,8 @@ ignore = ["E501"]
 "wandb".msg = "Start W&B through esme_posttrain.training.wandb_init.start_wandb(); only that file imports wandb."
 "datasets".msg = "Read datasets through esme_posttrain.chat.data.iter_rows(); remote reads need allow_remote_download=True."
 "huggingface_hub".msg = "Download through esme_posttrain.chat.data.iter_rows(); remote reads need allow_remote_download=True."
-"openai".msg = "This repo calls no paid LLM API. Score with the local evals in esme_posttrain.evals instead."
-"anthropic".msg = "This repo calls no paid LLM API. Score with the local evals in esme_posttrain.evals instead."
+"openai".msg = "This repo calls no paid LLM API. Score outputs with the local verifiers in esme_posttrain.sft.eval_suite and esme_posttrain.rl.countdown_lite instead."
+"anthropic".msg = "This repo calls no paid LLM API. Score outputs with the local verifiers in esme_posttrain.sft.eval_suite and esme_posttrain.rl.countdown_lite instead."
 
 [tool.ruff.lint.per-file-ignores]
 # Owner files only. tests/test_strict_mode.py::OWNED_BANS holds each file to the modules it owns.

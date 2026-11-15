@@ -14,21 +14,12 @@ from esme_posttrain.bundle import (
     load_dense_backbone_bundle,
 )
 from esme_posttrain.export.bundle_writer import DenseBundleStageMetadata, write_dense_bundle
+from esme_posttrain.export.chat_template import (
+    ChatTemplateError,
+    chat_template_manifest,
+    require_eos_text_is_eos_id,
+)
 from esme_posttrain.training.checkpointing import load_training_checkpoint
-
-CHAT_TEMPLATE_ID = "esme_newline_v1"
-DEFAULT_CHAT_TEMPLATE = {
-    "id": CHAT_TEMPLATE_ID,
-    "format": "role_newline_content_newline",
-    "roles": {
-        "system": "system\n{content}\n",
-        "user": "user\n{content}\n",
-        "assistant": "assistant\n{content}\n",
-    },
-    "generation_prompt": "assistant\n",
-    "example": "user\n...\nassistant\n",
-    "add_special_tokens": False,
-}
 
 
 class ExportError(ValueError):
@@ -52,13 +43,12 @@ def export_dense_bundle(request: ExportRequest) -> dict[str, Any]:
     artifact_dir = request.artifact_dir.expanduser().resolve()
     output_dir = request.output_dir.expanduser().resolve()
     _require_artifact_files(artifact_dir)
+    eos_token_ids = _eos_token_ids(Tokenizer.from_file(str(artifact_dir / "tokenizer.json")))
 
     output_dir.mkdir(parents=True, exist_ok=True)
     _copy_file_atomically(artifact_dir / "tokenizer.json", output_dir / "tokenizer.json")
 
     checkpoint = load_training_checkpoint(artifact_dir / "best-checkpoint.pt", map_location="cpu")
-    tokenizer = Tokenizer.from_file(str(output_dir / "tokenizer.json"))
-    eos_token_ids = _eos_token_ids(tokenizer)
     write_dense_bundle(
         output_dir,
         model=checkpoint.model,
@@ -123,7 +113,7 @@ def _stage_metadata(
             "name": "Esme-214M-Chat",
             "stage": "dpo",
         },
-        "chat_template": DEFAULT_CHAT_TEMPLATE,
+        "chat_template": chat_template_manifest(),
         "provenance": {
             "source": "modal_volume",
             "modal_volume": request.source_volume,
@@ -204,10 +194,10 @@ def _readme(*, request: ExportRequest, checkpoint_step: int, eos_token_ids: list
 
 
 def _eos_token_ids(tokenizer: Tokenizer) -> list[int]:
-    eos_id = tokenizer.token_to_id("<eos>")
-    if eos_id is None:
-        raise ExportError("tokenizer is missing required <eos> token")
-    return [int(eos_id)]
+    try:
+        return [require_eos_text_is_eos_id(tokenizer)]
+    except ChatTemplateError as exc:
+        raise ExportError(str(exc)) from exc
 
 
 def _copy_file_atomically(source: Path, target: Path) -> None:

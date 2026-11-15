@@ -21,6 +21,7 @@ from pydantic import (
 from esme_posttrain.launch.errors import LaunchError
 
 SMOKE_SPEND_CAP_USD = 2.0
+SWEEP_SPEND_CAP_USD = 8.0
 
 
 class FrozenConfig(BaseModel):

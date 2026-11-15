@@ -9,8 +9,9 @@ of samples per problem.
 This module builds those artifacts from an Esme Countdown-Lite held-out set and a local
 Esme bundle, reusing the same generation path the acceptance eval uses (``model.generate``
 + ``extract_candidate_expression``). The repos exchange artifacts, never code, so the
-schema is reproduced here rather than imported from grpo-decomp; the two sides agree on
-the contract by construction (and a fixture test pins it).
+schema is reproduced here rather than imported from grpo-decomp. Tests check the emitted
+files against a copy of grpo-decomp's published JSON Schema
+(``fixtures/contracts/grpo-decomp-completion-set.schema.json``) and pin the problem set.
 
 Contract with the grpo-decomp ``esme-countdown`` task-set (see grpo-decomp
 ``llm_grpo_gains/esme_countdown.py``):

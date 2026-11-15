@@ -11,6 +11,8 @@ from itertools import permutations, product
 from pathlib import Path
 from typing import Any
 
+from esme_posttrain.export.chat_template import render_prompt
+
 COUNTDOWN_REWARD_NAME = "countdown_lite_exact_solve"
 DEFAULT_OPERATORS = ("+", "-", "*")
 DEFAULT_SEED = 214
@@ -71,8 +73,7 @@ _TOKEN_PATTERN = re.compile(r"\s*(\d+|[()+\-*])")
 
 
 def render_chat_prompt(prompt: str) -> str:
-    # Must match the repo newline chat template used by SFT and dense export.
-    return f"user\n{prompt}\nassistant\n"
+    return render_prompt([("user", prompt)])
 
 
 def build_countdown_lite_tasks() -> tuple[CountdownTask, ...]:

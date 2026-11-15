@@ -45,6 +45,8 @@ Prove changes with `make verify` (`verify-esme-posttrain` skill at `.agents/skil
 
 ## Where Things Live
 
+Domain terms are in `GLOSSARY.md`. A change that adds, renames, or redefines a term updates it in the same commit.
+
 - `README.md`: current stage of the stack, active CLI commands, launch prep.
 - `docs/architecture.md`: stage pipeline, module seams, artifact handoffs.
 - `docs/package-layout.md`: change table with owners and focused checks.

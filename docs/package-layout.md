@@ -9,6 +9,8 @@ This repo keeps stage-specific implementation code out of the package root. When
 | Launch config field or recipe constraint | The stage's `config.py`, then typed consumers | `make type`, stage launch tests |
 | Budget or launch condition | The matching run card, the stage's `config.py` for caps, and its launch module for blockers | `tests/test_launch_cap_enforcement.py` and stage launch tests |
 | Dense-bundle field shared by stages | `export/bundle_writer.py` and `bundle.py` | `tests/test_artifact_contract.py` |
+| Chat template: training render and exported `chat_template` | `export/chat_template.py` | `tests/test_export_dense_bundle.py`, `tests/test_sft_multiturn.py` |
+| Upgrade a v1 bundle's `chat_template` | `export/chat_template_upgrade.py`, `cli/export.py` | `tests/test_export_dense_bundle.py` |
 | DPO export provenance | `export/dense_bundle.py` | `tests/test_export_dense_bundle.py` |
 | RL export provenance or checkpoint conversion | `rl/bundle.py` and `rl/checkpoint_bundle.py` | `tests/test_rlvr_decomp.py` |
 | Training objective | The stage trainer | The stage's trainer tests |
@@ -56,7 +58,7 @@ Do not add root compatibility aliases.
   command construction, and launch utilities.
 - `src/esme_posttrain/acceptance/`: the full-path CPU smoke that coordinates stage handoffs.
 - `src/esme_posttrain/training/`: shared training runtime used by the stage packages: collation, metrics, checkpointing, seeding/precision, and W&B setup.
-- `src/esme_posttrain/export/`: one canonical dense-bundle writer plus DPO export and generation verification.
+- `src/esme_posttrain/export/`: one canonical dense-bundle writer, the chat template owner, plus DPO export and generation verification.
 
 Each stage's `config.py` owns its typed settings and recipe checks, so a parsed
 settings object is always a valid recipe. Its launch module checks files on disk,

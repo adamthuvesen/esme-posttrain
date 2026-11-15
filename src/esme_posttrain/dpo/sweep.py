@@ -32,12 +32,12 @@ from esme_posttrain.launch.config_guards import (
     MODAL_CLIENT_VERSION,
     projected_cost_usd,
 )
+from esme_posttrain.launch.config_models import SWEEP_SPEND_CAP_USD
 from esme_posttrain.run_artifacts import RuntimeSpendTracker, write_environment, write_json
 from esme_posttrain.training.wandb_init import WandbConfig
 
 SWEEP_OUTPUT_STEM = "esme-chat-dpo-beta-sweep"
 SWEEP_GROUP = "esme_214m_chat_dpo_beta_sweep"
-SWEEP_SPEND_CAP_USD = 8.0
 SWEEP_TIMEOUT_HOURS = 3
 SWEEP_TRAIN_PAIR_CAP = 512
 SWEEP_TRAIN_TOKEN_CAP = 1_572_864

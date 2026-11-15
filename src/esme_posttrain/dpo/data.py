@@ -23,6 +23,7 @@ from tokenizers import Tokenizer
 
 from esme_posttrain.chat.data import clean_text, iter_rows
 from esme_posttrain.chat.data_types import ChatTurn, DataError, DatasetSource
+from esme_posttrain.export.chat_template import render_prompt
 from esme_posttrain.training.collate import IGNORE_INDEX
 
 # UltraFeedback-binarized has a handful of rows with an empty/whitespace chosen or
@@ -160,22 +161,13 @@ class PreferenceBuildResult:
 
 
 def _render_prompt(prompt_turns: tuple[ChatTurn, ...]) -> str:
-    """Render the prompt context, mirroring ``sft_data._render_chat_segments``.
+    """Render the prompt context with the generation prompt that opens the response.
 
-    The final ``assistant\\n`` marker that opens the response is included here so
-    both completions tokenize against an identical, supervised-aligned prompt.
+    Both completions tokenize against this identical, supervised-aligned prompt.
     """
-    parts: list[str] = []
-    for turn in prompt_turns:
-        content = clean_text(turn.content)
-        if turn.role == "system":
-            parts.append(f"system\n{content}\n")
-        elif turn.role == "user":
-            parts.append(f"user\n{content}\n")
-        else:  # pragma: no cover - guarded by PreferencePair.__post_init__
-            raise DataError("prompt turns must be system or user")
-    parts.append("assistant\n")
-    return "".join(parts)
+    if any(turn.role == "assistant" for turn in prompt_turns):  # pragma: no cover
+        raise DataError("prompt turns must be system or user")  # guarded by PreferencePair
+    return render_prompt((turn.role, clean_text(turn.content)) for turn in prompt_turns)
 
 
 def tokenize_preference_pair(

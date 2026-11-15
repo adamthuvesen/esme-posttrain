@@ -10,10 +10,16 @@ import torch
 from scripts import modal_chat_sft
 
 from esme_posttrain.bundle import BundleError, file_sha256, load_dense_backbone_bundle
-from esme_posttrain.chat.data import iter_rows, measure_multi_turn_lengths, tokenize_multi_turn
+from esme_posttrain.chat.data import (
+    _render_chat_segments,
+    iter_rows,
+    measure_multi_turn_lengths,
+    tokenize_multi_turn,
+)
 from esme_posttrain.chat.data_types import ChatTurn, DataError, DatasetSource, MultiTurnExample
 from esme_posttrain.chat.fixtures import tiny_backbone_config, tiny_chat_tokenizer
 from esme_posttrain.cli import main
+from esme_posttrain.launch.config_models import SWEEP_SPEND_CAP_USD
 from esme_posttrain.launch.errors import LaunchError
 from esme_posttrain.modeling import DenseBackbone
 from esme_posttrain.sft.config import EXPECTED_ARTIFACTS as MULTITURN_EXPECTED_ARTIFACTS
@@ -42,7 +48,6 @@ from esme_posttrain.sft.sample_artifacts import write_multi_turn_samples
 from esme_posttrain.sft.smoke_multiturn import run_multi_turn_cpu_fixture
 from esme_posttrain.sft.sweep_multiturn import (
     SWEEP_ARMS,
-    SWEEP_SPEND_CAP_USD,
     build_multi_turn_sweep_preflight,
     multi_turn_sweep_blockers,
 )
@@ -98,6 +103,36 @@ def test_multi_turn_masking_supervises_every_assistant_turn_and_masks_others() -
 
     assert all(label == IGNORE_INDEX for label in tokenized.labels[: tokenized.prompt_tokens])
     assert tokenized.prompt_tokens > 0
+
+
+def test_multi_turn_render_and_token_ids_stay_fixed() -> None:
+    example = MultiTurnExample(
+        turns=(
+            ChatTurn("system", "helpful"),
+            ChatTurn("user", "say red"),
+            ChatTurn("assistant", "red"),
+            ChatTurn("user", "say blue again"),
+            ChatTurn("assistant", "blue"),
+        ),
+        source="fixture",
+        row_id="golden-1",
+    )
+
+    tokenized = tokenize_multi_turn(tiny_chat_tokenizer(), example, max_sequence_tokens=64)
+
+    assert _render_chat_segments(example) == [
+        ("system\nhelpful\n", False),
+        ("user\nsay red\n", False),
+        ("assistant\n", False),
+        ("red", True),
+        ("user\nsay blue again\n", False),
+        ("assistant\n", False),
+        ("blue", True),
+    ]
+    assert tokenized.input_ids == (4, 13, 2, 5, 6, 3, 6, 1, 2, 5, 7, 12, 3, 7, 1)
+    m = IGNORE_INDEX
+    assert tokenized.labels == (m, m, m, m, m, m, 6, 1, m, m, m, m, m, 7, 1)
+    assert (tokenized.prompt_tokens, tokenized.response_tokens) == (6, 4)
 
 
 def test_multi_turn_samples_prompt_ends_at_final_assistant_turn(tmp_path: Path) -> None:

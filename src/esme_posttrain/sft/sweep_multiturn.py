@@ -24,6 +24,7 @@ from esme_posttrain.launch.config_guards import (
     MODAL_CLIENT_VERSION,
     projected_cost_usd,
 )
+from esme_posttrain.launch.config_models import SWEEP_SPEND_CAP_USD
 from esme_posttrain.run_artifacts import (
     RuntimeSpendTracker,
     write_environment,
@@ -68,7 +69,6 @@ from esme_posttrain.training.wandb_init import WandbConfig
 
 SWEEP_OUTPUT_STEM = "esme-multiturn-sft-interval-sweep"
 SWEEP_GROUP = "esme_214m_sft_multiturn_interval_sweep"
-SWEEP_SPEND_CAP_USD = 8.0
 SWEEP_TIMEOUT_HOURS = 3
 SWEEP_TRAIN_SAMPLE_CAP = 512
 SWEEP_TRAIN_TOKEN_CAP = 1_572_864

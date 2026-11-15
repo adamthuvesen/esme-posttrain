@@ -237,7 +237,31 @@ GRPO training and checkpoint conversion both use that RL export path.
 Checkpoint conversion does not import the trainer.
 
 Stages prepare the tokenizer before calling the shared writer. DPO preserves
-the source tokenizer bytes and requires `<eos>`. RL serializes its tokenizer
+the source tokenizer bytes and requires `<eos>`.
+
+DPO export writes the `esme_newline_v2` `chat_template`
+([`export/chat_template.py`](../src/esme_posttrain/export/chat_template.py)).
+Its assistant pattern ends with the literal text `<eos>`, so served history
+tokenizes to the same ids as training. Export refuses a tokenizer that does not
+encode `<eos>` as the single `<eos>` id. To fix it, register `<eos>` as a special
+token in `tokenizer.json` `added_tokens`.
+
+A bundle exported before v2 carries `esme_newline_v1`. It still loads, but its
+served history ends assistant turns with a newline. Upgrade it in place:
+
+```bash
+uv run esme-posttrain upgrade-chat-template --bundle-dir exports/esme-214m-chat --dry-run
+uv run esme-posttrain upgrade-chat-template --bundle-dir exports/esme-214m-chat
+```
+
+The command rewrites only `manifest.json`, atomically. The manifest hashes do not
+cover `manifest.json`, so the bundle still verifies. It accepts bundles exported
+before the canonical v1 contract (no `README.md`, no `readme` files entry): before
+and after the rewrite it checks the sha256 of every file `manifest.files` lists. It
+also rewrites a v1 copy nested under `tokenizer.chat_template`. It refuses a bundle with no
+`chat_template` (RL bundles omit it), a template that is not the exact v1 object,
+and a tokenizer that fails the `<eos>` check. A v2 bundle is reported and left
+unchanged. `--dry-run` prints the manifest diff and writes nothing. RL serializes its tokenizer
 and preserves its existing empty-EOS behavior. Stage-specific provenance stays
 with the stage, including the distinction between warm-start and exported checkpoints.
 

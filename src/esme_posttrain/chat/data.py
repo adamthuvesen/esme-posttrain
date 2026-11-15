@@ -15,6 +15,7 @@ from esme_posttrain.chat.data_types import (
     MultiTurnExample,
     TokenizedExample,
 )
+from esme_posttrain.export.chat_template import GENERATION_PROMPT, render_turn
 from esme_posttrain.training.collate import IGNORE_INDEX
 
 
@@ -71,12 +72,10 @@ def _render_chat_segments(example: MultiTurnExample) -> list[tuple[str, bool]]:
         if turn.role == "assistant":
             if not content:
                 raise DataError(f"{example.source}:{example.row_id} has an empty assistant turn")
-            segments.append(("assistant\n", False))
+            segments.append((GENERATION_PROMPT, False))
             segments.append((content, True))
-        elif turn.role == "system":
-            segments.append((f"system\n{content}\n", False))
         else:
-            segments.append((f"user\n{content}\n", False))
+            segments.append((render_turn(turn.role, content), False))
     return segments
 
 
